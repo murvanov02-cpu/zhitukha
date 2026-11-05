@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Житуха</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="style.css?v=6">
+</head>
+<body>
+  <div id="app">
+    <header class="hdr">
+      <button class="who" data-action="profile">
+        <div class="ava" id="ava">?</div>
+        <div>
+          <div class="name" id="pname">Игрок</div>
+          <div class="small muted" id="prank"></div>
+        </div>
+      </button>
+      <div class="bal">
+        <div class="money"><span id="money">0</span> ₽</div>
+        <div class="inc"><span id="inc">+0</span> ₽/мес</div>
+      </div>
+    </header>
+
+    <main id="view"></main>
+  </div>
+
+  <nav class="nav">
+    <button data-tab="home" class="active"><i class="ti ti-home"></i>Главная</button>
+    <button data-tab="cases"><i class="ti ti-box"></i>Кейсы</button>
+    <button data-tab="career"><i class="ti ti-briefcase"></i>Карьера</button>
+    <button data-tab="biz"><i class="ti ti-building-factory-2"></i>Бизнес</button>
+    <button data-tab="conn"><i class="ti ti-users"></i>Связи</button>
+  </nav>
+
+  <div id="roulette" class="overlay hidden">
+    <div class="rl-box">
+      <div class="rl-title" id="rl-title"></div>
+      <div class="rl-window" id="rl-window">
+        <div class="rl-strip" id="rl-strip"></div>
+        <div class="rl-marker"></div>
+      </div>
+      <button class="btn btn-ghost" id="rl-skip">Пропустить</button>
+    </div>
+  </div>
+
+  <div id="modal" class="overlay hidden"><div class="modal" id="modal-body"></div></div>
+  <div id="toast" class="toast"></div>
+
+  <script src="js/data.js?v=6"></script>
+  <script src="js/game.js?v=6"></script>
+</body>
+</html>
