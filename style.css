@@ -398,3 +398,13 @@ details.more-card .card { background: var(--card2); }
 .pogon-pair .pogon { width: 46px; height: 120px; }
 .pogon-pair .pogon.old { opacity: .45; transform: scale(.85); }
 .pogon-pair .pogon.new { animation: winpop .6s ease-out; }
+
+/* репутация на службе: слева взяточник, справа честный */
+.rep-bar { position: relative; height: 10px; border-radius: 5px; margin: 6px 0 8px;
+  background: linear-gradient(90deg, #8f1d22, var(--red) 25%, var(--card3) 50%, #5f9c6c 75%, var(--green)); }
+.rep-bar i { position: absolute; top: -4px; width: 4px; height: 18px; margin-left: -2px; border-radius: 2px; background: #fff;
+  box-shadow: 0 0 0 2px var(--bg); transition: left .4s; }
+.rank-perk { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; color: var(--muted); }
+.rank-perk.on { color: var(--text); }
+.rank-perk.on .ti { color: var(--green); }
+.call-fail { font-size: 40px; filter: drop-shadow(0 0 12px var(--red)); animation: winpop .5s ease-out; }
