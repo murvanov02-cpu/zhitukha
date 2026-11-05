@@ -384,3 +384,10 @@ details.more-card .card { background: var(--card2); }
 .plate-row { border-left: 3px solid var(--rc); }
 .list-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; margin-top: 6px; border-radius: 12px;
   background: var(--card2); color: inherit; border: 1px solid var(--line); text-align: left; font: inherit; }
+
+/* уровень игрока на аватаре */
+.ava-wrap { position: relative; flex: none; }
+.lvl { position: absolute; right: -4px; bottom: -4px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+  background: var(--gold); color: #1a1407; font-size: 11px; font-weight: 800; display: grid; place-items: center;
+  box-shadow: 0 0 0 2px var(--bg); }
+.choice .btn-danger .small, .choice .btn-line .small { opacity: .85; }
