@@ -351,3 +351,23 @@ details.more-card .card { background: var(--card2); }
 .race-vs { display: flex; align-items: center; justify-content: center; gap: 12px; text-align: center; margin: 4px 0 6px; }
 .race-vs > div { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .race-vs .vs { color: var(--lc); font-size: 18px; }
+
+/* номера */
+.plate { display: inline-flex; align-items: stretch; background: #f4f4f0; color: #111; border: 2px solid #111;
+  border-radius: 5px; font: 700 15px/1 'Roboto Mono', ui-monospace, Menlo, monospace; box-shadow: 0 0 0 1px #f4f4f0; flex: none; }
+.plate .pl-main { padding: 5px 7px; letter-spacing: 1px; text-transform: uppercase; }
+.plate .pl-main b { font-size: 1.2em; margin: 0 2px; }
+.plate .pl-reg { border-left: 2px solid #111; padding: 3px 5px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; font-size: .85em; }
+.plate .pl-reg i { font-style: normal; font-size: .5em; letter-spacing: .5px; margin-top: 1px; }
+.plate.sm { font-size: 10px; border-width: 1.5px; vertical-align: middle; }
+.plate.sm .pl-main { padding: 2px 4px; }
+.plate.sm .pl-reg { padding: 1px 3px; border-left-width: 1.5px; }
+.plate.big { font-size: 26px; border-width: 3px; }
+.plate.big .pl-main { padding: 8px 12px; }
+.plate.big .pl-reg { border-left-width: 3px; padding: 4px 8px; }
+.plate.win { animation: winpop .5s ease-out; box-shadow: 0 0 0 2px #f4f4f0, 0 0 28px var(--rc); }
+.plate-stage { display: flex; justify-content: center; padding: 18px 0 4px; }
+.plate-row { border-left: 3px solid var(--rc); }
+.list-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; margin-top: 6px; border-radius: 12px;
+  background: var(--card2); color: inherit; border: 1px solid var(--line); text-align: left; font: inherit; }
