@@ -615,8 +615,8 @@
   function pool() { regen(S.pool, RACE_POOL, POOL_REGEN_MIN); return S.pool; }
   // до двух значащих цифр: 23 456 → 23 000
   const round2 = v => { if (v <= 0) return 0; const mag = Math.pow(10, Math.floor(Math.log10(v)) - 1); return Math.round(v / mag) * mag; };
-  // Единица ставки U: доля месячного дохода × множитель класса
-  const raceUnit = id => Math.max(RACE_FEE_MIN, incomeMonth() * RACE_FEE_MONTHS) * rclass(id).mult;
+  // Единица ставки U — доля цены машины: на дорогой машине и гонки дороже
+  const raceUnit = id => Math.max(RACE_UNIT_MIN, ITEM[id].value * RACE_CAR_SHARE);
   function raceStake(id, lv) {
     const u = raceUnit(id), L = RACE_LEVELS[lv];
     return { fee: round2(u * L.fee), prize: round2(u * L.prize) };
@@ -632,11 +632,11 @@
   const stageStars = st => `<span class="stars">${'★'.repeat(st)}<span class="off">${'★'.repeat(TUNE_STAGES.length - st)}</span></span>`;
   // Шанс победы на уровне lv (0…4): соперник уровня затюнингован на Stage lv, сравниваем с твоим Stage
   // roll — «форма» соперника (0…1, см. rivals): чем он сильнее, тем ниже шанс.
-  // Верных побед нет: где по тюнингу было бы 100%, шанс от RACE_TOP_MIN до RACE_TOP_MAX (кроме «Новичка»).
+  // Верных побед нет: где по тюнингу было бы 100%, шанс в полосе своего уровня (кроме «Новичка»), сложнее — ниже.
   function raceChance(id, lv, stage, roll) {
     const s = stage === undefined ? carState(id).stage : stage, d = lv + 1 - s;
     const r = roll === undefined ? rivals(id)[lv].roll : roll;
-    if (d <= 0) return lv === 0 ? 100 : Math.round(RACE_TOP_MAX - (RACE_TOP_MAX - RACE_TOP_MIN) * r);
+    if (d <= 0) return lv === 0 ? 100 : Math.ceil(RACE_TOP_MAX - RACE_TOP_STEP * (lv - 1 + r));
     if (d === 1 && s > 0) return RACE_NEAR_WIN;
     const base = RACE_LEVELS[d - 1].base;
     return base > 0 && base < 100 ? base + Math.round(RACE_FORM * (1 - 2 * r)) : base;
@@ -1411,7 +1411,7 @@
         <div class="small muted" style="margin-top:6px">Тюнинг остаётся в машине: при продаже вернётся ${Math.round(TUNE_SELL_RATE * 100)}% вложенного${st.tuneInv ? ` (+${fmt(tuneValue(id))} ₽)` : ''}.</div></div>
       ${block ? `<p class="small bad" style="text-align:center">${block}</p>` : ''}
       ${levels}
-      <p class="small muted" style="text-align:center">Всего побед: ${S.raceWins} · ставки растут с твоим доходом, у классов выше — ×${rc.mult}</p>`;
+      <p class="small muted" style="text-align:center">Всего побед: ${S.raceWins} · ставки — ${Math.round(RACE_CAR_SHARE * 100)}% цены машины за единицу: дороже машина — крупнее куш</p>`;
   }
 
   // Заезд: светофор → старт (реакция) → переключение передачи → результат
@@ -1499,8 +1499,9 @@
       const shiftQ = sh >= 0.72 && sh <= 0.88 ? 1 : sh >= 0.6 && sh <= 0.94 ? 0 : -1;
       const skill = (r.rt < 0.3 ? 1 : r.rt > 0.6 ? -1 : 0) + shiftQ;
       const skillBonus = r.chance > 0 && r.chance < 100 ? Math.sign(skill) * RACE_SKILL : 0;
-      const p = Math.max(0, Math.min(r.lv === 0 ? 100 : RACE_TOP_MAX, r.chance + skillBonus));
-      const bonus = p - r.chance;   // сколько реально дало мастерство (выше RACE_TOP_MAX не поднимает)
+      const top = r.lv === 0 ? 100 : RACE_TOP_MAX - RACE_TOP_STEP * (r.lv - 1);
+      const p = Math.max(0, Math.min(Math.max(top, r.chance), r.chance + skillBonus));
+      const bonus = p - r.chance;   // сколько реально дало мастерство (выше полосы своего уровня не поднимает)
       win = Math.random() * 100 < p;
       const myTime = carTime(id) + (r.rt - 0.2) + [SHIFT_MISS, 0, SHIFT_PERFECT][shiftQ + 1] + (Math.random() - 0.5) * 0.1;
       const gap = 0.04 + Math.random() * 0.45;
