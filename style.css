@@ -41,7 +41,9 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- шапка ---------- */
-.hdr { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0 14px; }
+.hdr { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 16px 10px; margin: -10px -16px 6px;
+  position: sticky; top: 0; z-index: 30; background: var(--bg); transition: box-shadow .2s; }
+.hdr.scrolled { box-shadow: 0 1px 0 var(--line), 0 8px 16px -12px rgba(0,0,0,.6); }
 .who { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .ava {
   width: 40px; height: 40px; border-radius: 50%; flex: none; position: relative;
@@ -408,3 +410,22 @@ details.more-card .card { background: var(--card2); }
 .rank-perk.on { color: var(--text); }
 .rank-perk.on .ti { color: var(--green); }
 .call-fail { font-size: 40px; filter: drop-shadow(0 0 12px var(--red)); animation: winpop .5s ease-out; }
+
+/* выбор вещей на продажу после открытия пачки */
+.pick-wrap { position: relative; cursor: pointer; border-radius: 12px; }
+.pick-wrap .pick-mark { position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(0,0,0,.45); color: transparent; font-size: 13px; border: 1.5px solid rgba(255,255,255,.4); }
+.pick-wrap.picked .pick-mark { background: var(--gold); color: #1a1407; border-color: var(--gold); }
+.pick-wrap.picked .tile { outline: 2px solid var(--gold); outline-offset: -2px; }
+/* кнопка, ждущая подтверждения */
+.btn.armed { background: var(--gold) !important; color: #1a1407 !important; animation: armpulse 1s ease-in-out infinite; }
+@keyframes armpulse { 50% { box-shadow: 0 0 0 4px var(--gold-bg); } }
+
+/* цвет уровня: значок, имя */
+.hdr .ava { border-color: var(--lc, var(--gold-line)); color: var(--lc, var(--gold)); }
+.hdr .lvl, .prof .lvl { background: var(--lc, var(--gold)); }
+.hdr #pname { color: var(--lc, var(--text)); }
+.prof .ava { border-color: var(--lc); color: var(--lc); }
+.prof-name { font-weight: 700; font-size: 17px; color: var(--lc); }
+.lvl-bar i { background: var(--lc) !important; }
+.list-btn.active { border-color: var(--gold); }
