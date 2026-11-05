@@ -182,42 +182,101 @@ const ITEMS = [
   { id: 'k_minister', cat: 'conn', name: 'Министр экономики',       icon: '🕴️',   rarity: 'mythic',    perk: 'bizBoost',   lv: [10, 13, 16, 20, 25], special: { type: 'tender', hours: 40 } },
 ];
 
-// Шансы редкостей в процентах (сумма 100) для ценовых категорий кейсов
-const W_CHEAP = { common: 80, rare: 17, epic: 2.5, legendary: 0.45, mythic: 0.05 };
-const W_MID   = { common: 35, rare: 45, epic: 15,  legendary: 4.5,  mythic: 0.5 };
-const W_ELITE = { common: 0,  rare: 0,  epic: 60,  legendary: 32,   mythic: 8 };
+// Шансы редкостей в процентах; выпадают только редкости, которые есть в списке предметов кейса
+const W_CHEAP = { common: 85, rare: 15, epic: 0,  legendary: 0,  mythic: 0 };
+const W_MID   = { common: 0,  rare: 75, epic: 25, legendary: 0,  mythic: 0 };
 
-// tag — тематический кейс: выпадают только предметы с этой темой
-// Цена кейса — чуть ниже средней рыночной стоимости выпадающего:
-// держать выгодно, а сразу продавать (за 70%) в среднем убыточно.
-// group — заголовок раздела на экране кейсов
+// Каждый кейс — свой список предметов (items). Дешёвые кейсы не содержат дорогих вещей,
+// поэтому случайно разбогатеть в начале нельзя: мифические вещи бывают только в дорогих кейсах.
+// tier: cheap / mid / elite — раздел на экране; theme: true — тематический (показывается скромнее).
+// price: 'auto' — цена = AUTO_PRICE_RATE от средней рыночной стоимости выпадающего (считается при запуске),
+// поэтому держать выпавшее выгодно, а сразу продавать (за 70%) в среднем убыточно.
+const AUTO_PRICE_RATE = 0.95;
 const CASES = [
-  { id: 'free', cover: 'img/cases/free.jpg', credit: 'Wikimedia Commons · Public domain', group: 'Бесплатно', name: 'Ежедневный', icon: '🎁', price: 0, cooldown: 24 * 3600e3,
-    cats: ['car', 'home'], desc: 'Раз в сутки: машина или жильё', w: W_CHEAP },
+  { id: 'free', cover: 'img/cases/free.jpg', credit: 'Wikimedia Commons · Public domain', name: 'Ежедневный', icon: '🎁', price: 0, cooldown: 24 * 3600e3, tier: 'free',
+    desc: 'Раз в сутки: недорогая машина или жильё', w: W_CHEAP,
+    items: ['c_2107', 'c_2109', 'c_matiz', 'c_logan', 'c_granta', 'c_niva', 'h_bed', 'h_garage', 'h_dacha', 'h_village', 'c_tiggo', 'h_room'] },
 
-  { id: 'car_used', cover: 'img/cases/car_used.jpg', credit: '293.xx.xxx.xx · CC BY-SA 3.0',  group: '🚗 Авто', name: 'Авторынок б/у',      icon: '🚗', price: 2e6, cats: ['car'], desc: 'В основном народные машины', w: W_CHEAP },
-  { id: 'car_new', cover: 'img/cases/car_new.jpg', credit: 'Swoodchatla · CC BY-SA 3.0',   group: '🚗 Авто', name: 'Автосалон',          icon: '🚘', price: 6.5e6, cats: ['car'], desc: 'Бизнес-класс и шанс на спорткар', w: W_MID },
-  { id: 'car_elite', cover: 'img/cases/car_elite.jpg', credit: 'Rex Gray from Southern California · CC BY 2.0', group: '🚗 Авто', name: 'Элитный автосалон',  icon: '🏎️', price: 35e6,  cats: ['car'], desc: 'Только эпик и выше', w: W_ELITE },
-  { id: 'car_ru', cover: 'img/cases/car_ru.jpg', credit: 'ShinePhantom · CC BY-SA 3.0',    group: '🚗 Авто: тематические', name: 'Отечественный автопром', icon: '🇷🇺', price: 650e3, cats: ['car'], tag: 'ru', desc: 'Жигули, Нива, Веста — дёшево и сердито', w: W_CHEAP },
-  { id: 'car_cn', cover: 'img/cases/car_cn.jpg', credit: 'N509FZ · CC BY-SA 4.0',    group: '🚗 Авто: тематические', name: 'Китайцы',               icon: '🇨🇳', price: 2.9e6, cats: ['car'], tag: 'cn', desc: 'Haval, Chery, Geely', w: W_MID },
-  { id: 'car_jp', cover: 'img/cases/car_jp.jpg', credit: 'TTTNIS · CC0',    group: '🚗 Авто: тематические', name: 'Японцы',                icon: '🇯🇵', price: 7e6,   cats: ['car'], tag: 'jp', desc: 'Toyota, Nissan, Mazda, Lexus', w: W_MID },
-  { id: 'car_de', cover: 'img/cases/car_de.jpg', credit: 'Diego Delso · CC BY-SA 3.0',    group: '🚗 Авто: тематические', name: 'Немецкое качество',     icon: '🇩🇪', price: 5.5e6,   cats: ['car'], tag: 'de', desc: 'BMW, Mercedes, Audi, Porsche', w: W_MID },
-  { id: 'car_sc', cover: 'img/cases/car_sc.jpg', credit: 'Axion23 · CC BY 2.0',    group: '🚗 Авто: тематические', name: 'Суперкары',             icon: '🏁', price: 40e6,  cats: ['car'], tag: 'sc', desc: 'Ferrari, Lamborghini, Pagani, Koenigsegg', w: W_ELITE },
+  { id: 'car_garage', cover: 'img/cases/car_ru.jpg', credit: 'ShinePhantom · CC BY-SA 3.0', name: 'Гаражный кооператив', icon: '🔧', price: 'auto', tier: 'cheap',
+    desc: 'Жигули, Нива, Матиз — дёшево и сердито', w: W_CHEAP,
+    items: ['c_2109', 'c_2107', 'c_matiz', 'c_logan', 'c_granta', 'c_niva'] },
+  { id: 'car_used', cover: 'img/cases/car_used.jpg', credit: '293.xx.xxx.xx · CC BY-SA 3.0', name: 'Авторынок б/у', icon: '🚗', price: 'auto', tier: 'cheap',
+    desc: 'Народные машины и иногда иномарка получше', w: W_CHEAP,
+    items: ['c_logan', 'c_granta', 'c_niva', 'c_polo', 'c_vesta', 'c_solaris', 'c_rio', 'c_jolion', 'c_tiggo', 'c_octavia', 'c_k5', 'c_mazda6'] },
+  { id: 'car_new', cover: 'img/cases/car_new.jpg', credit: 'Swoodchatla · CC BY-SA 3.0', name: 'Автосалон', icon: '🚘', price: 'auto', tier: 'mid',
+    desc: 'Новые машины бизнес-класса', w: W_MID,
+    items: ['c_octavia', 'c_k5', 'c_mazda6', 'c_xtrail', 'c_camry', 'c_rav4', 'c_tiguan', 'c_monjaro', 'c_eclass', 'c_lc300', 'c_x5', 'c_cayenne'] },
+  { id: 'car_premium', cover: 'img/cases/car_de.jpg', credit: 'Diego Delso · CC BY-SA 3.0', name: 'Премиум-салон', icon: '💼', price: 'auto', tier: 'elite',
+    desc: 'Мощные седаны и внедорожники, шанс на спорткар', w: { common: 0, rare: 0, epic: 80, legendary: 20, mythic: 0 },
+    items: ['c_eclass', 'c_lc300', 'c_x5', 'c_cayenne', 'c_gtr', 'c_m5', 'c_rs6', 'c_sclass', 'c_lx', 'c_911', 'c_g63', 'c_bentley'] },
+  { id: 'car_elite', cover: 'img/cases/car_elite.jpg', credit: 'Rex Gray from Southern California · CC BY 2.0', name: 'Элитный автосалон Дубая', icon: '🏎️', price: 'auto', tier: 'elite',
+    desc: 'Спорткары и редкие роскошные машины', w: { common: 0, rare: 0, epic: 0, legendary: 85, mythic: 15 },
+    items: ['c_911', 'c_g63', 'c_bentley', 'c_mclaren', 'c_ferrari', 'c_urus', 'c_aventador', 'c_phantom', 'c_cullinan'] },
+  { id: 'car_hyper', cover: 'img/cases/car_sc.jpg', credit: 'Axion23 · CC BY 2.0', name: 'Гиперкары', icon: '🏁', price: 'auto', tier: 'elite',
+    desc: 'Только здесь: Bugatti, Pagani, Koenigsegg', w: { common: 0, rare: 0, epic: 0, legendary: 55, mythic: 45 },
+    items: ['c_mclaren', 'c_ferrari', 'c_urus', 'c_aventador', 'c_huayra', 'c_jesko', 'c_chiron'] },
+  { id: 'car_cn', cover: 'img/cases/car_cn.jpg', credit: 'N509FZ · CC BY-SA 4.0', name: 'Китайцы', icon: '🇨🇳', price: 'auto', tier: 'cheap', theme: true,
+    desc: 'Haval, Chery, Geely', w: { common: 55, rare: 45, epic: 0, legendary: 0, mythic: 0 }, items: ['c_jolion', 'c_tiggo', 'c_monjaro'] },
+  { id: 'car_jp', cover: 'img/cases/car_jp.jpg', credit: 'TTTNIS · CC0', name: 'Японцы', icon: '🇯🇵', price: 'auto', tier: 'mid', theme: true,
+    desc: 'Toyota, Nissan, Mazda, Lexus', w: { common: 0, rare: 65, epic: 35, legendary: 0, mythic: 0 },
+    items: ['c_mazda6', 'c_xtrail', 'c_camry', 'c_rav4', 'c_lc300', 'c_gtr', 'c_lx'] },
+  { id: 'car_de', cover: 'img/cases/car_de.jpg', credit: 'Diego Delso · CC BY-SA 3.0', name: 'Немецкое качество', icon: '🇩🇪', price: 'auto', tier: 'mid', theme: true,
+    desc: 'VW, Skoda, BMW, Mercedes, Audi, Porsche', w: { common: 0, rare: 55, epic: 42, legendary: 3, mythic: 0 },
+    items: ['c_octavia', 'c_tiguan', 'c_eclass', 'c_x5', 'c_cayenne', 'c_m5', 'c_rs6', 'c_sclass', 'c_911', 'c_g63'] },
 
-  { id: 'home_used', cover: 'img/cases/home_used.jpg', credit: 'Andreas Wolf 01 · CC BY-SA 4.0',  group: '🏠 Жильё', name: 'Вторичка',              icon: '🏚️', price: 6e6,   cats: ['home'], desc: 'Комнаты, гаражи, иногда квартиры', w: W_CHEAP },
-  { id: 'home_new', cover: 'img/cases/home_new.jpg', credit: 'Anneli Vaniala · CC BY-SA 4.0',   group: '🏠 Жильё', name: 'Новостройки',           icon: '🏗️', price: 30e6,  cats: ['home'], desc: 'Квартиры и загородные дома', w: W_MID },
-  { id: 'home_elite', cover: 'img/cases/home_elite.jpg', credit: 'mos.ru · CC BY 4.0', group: '🏠 Жильё', name: 'Элитная недвижимость',  icon: '🌆', price: 260e6, cats: ['home'], desc: 'Только эпик и выше', w: W_ELITE },
-  { id: 'home_msk', cover: 'img/cases/home_msk.jpg', credit: 'U.S. Department of State · Public domain',     group: '🏠 Жильё: тематические', name: 'Москва',                   icon: '🏙️', price: 17e6,  cats: ['home'], tag: 'msk', desc: 'От коммуналки до Москва-Сити', w: W_MID },
-  { id: 'home_country', cover: 'img/cases/home_country.jpg', credit: 'Peretz Partensky from San Francisco, USA · CC BY-SA 2.0', group: '🏠 Жильё: тематические', name: 'Загородная жизнь',         icon: '🌲', price: 27e6,  cats: ['home'], tag: 'country', desc: 'Дачи, дома, Рублёвка', w: { common: 60, rare: 0, epic: 35, legendary: 4.5, mythic: 0.5 } },
-  { id: 'home_abroad', cover: 'img/cases/home_abroad.jpg', credit: 'Phil6007 · CC BY-SA 4.0',  group: '🏠 Жильё: тематические', name: 'Зарубежная недвижимость',  icon: '✈️', price: 34e6,  cats: ['home'], tag: 'abroad', desc: 'Батуми, Дубай, Лондон, Монако', w: W_MID },
+  { id: 'home_dorm', cover: 'img/cases/home_used.jpg', credit: 'Andreas Wolf 01 · CC BY-SA 4.0', name: 'Общаги и гаражи', icon: '🛏️', price: 'auto', tier: 'cheap',
+    desc: 'Койка, гараж, дача, дом в деревне', w: W_CHEAP, items: ['h_bed', 'h_garage', 'h_dacha', 'h_village'] },
+  { id: 'home_used', cover: 'img/cases/home_used.jpg', credit: 'Andreas Wolf 01 · CC BY-SA 4.0', name: 'Вторичка', icon: '🏚️', price: 'auto', tier: 'cheap',
+    desc: 'Комнаты и квартиры в старых домах', w: { common: 75, rare: 25, epic: 0, legendary: 0, mythic: 0 },
+    items: ['h_garage', 'h_room', 'h_studio', 'h_flat'] },
+  { id: 'home_new', cover: 'img/cases/home_new.jpg', credit: 'Anneli Vaniala · CC BY-SA 4.0', name: 'Новостройки', icon: '🏗️', price: 'auto', tier: 'mid',
+    desc: 'Квартиры, таунхаусы и дома', w: W_MID, items: ['h_studio', 'h_flat', 'h_newflat', 'h_house', 'h_town'] },
+  { id: 'home_elite', cover: 'img/cases/home_elite.jpg', credit: 'mos.ru · CC BY 4.0', name: 'Элитная Москва', icon: '🌆', price: 'auto', tier: 'elite',
+    desc: 'Патриаршие, Москва-Сити, пентхаусы', w: { common: 0, rare: 0, epic: 70, legendary: 30, mythic: 0 },
+    items: ['h_patriki', 'h_city', 'h_pent', 'h_hotel'] },
+  { id: 'home_abroad', cover: 'img/cases/home_abroad.jpg', credit: 'Phil6007 · CC BY-SA 4.0', name: 'Зарубежная элитка', icon: '✈️', price: 'auto', tier: 'elite',
+    desc: 'Дубай, Лондон, Лазурный берег, Монако', w: { common: 0, rare: 0, epic: 60, legendary: 36, mythic: 4 },
+    items: ['h_cottage', 'h_dubai_apt', 'h_palm', 'h_london', 'h_riviera', 'h_monaco'] },
+  { id: 'home_castle', cover: 'img/cases/home_country.jpg', credit: 'Peretz Partensky from San Francisco, USA · CC BY-SA 2.0', name: 'Замки и острова', icon: '🏰', price: 'auto', tier: 'elite',
+    desc: 'Только здесь: замок и частный остров', w: { common: 0, rare: 0, epic: 0, legendary: 65, mythic: 35 },
+    items: ['h_rublyovka', 'h_palm', 'h_london', 'h_castle', 'h_island', 'h_riviera', 'h_monaco'] },
+  { id: 'home_resort', cover: 'img/cases/home_abroad.jpg', credit: 'Phil6007 · CC BY-SA 4.0', name: 'Курорты', icon: '🏖️', price: 'auto', tier: 'mid', theme: true,
+    desc: 'Батуми, Алания, Сочи, Дубай', w: { common: 35, rare: 55, epic: 10, legendary: 0, mythic: 0 },
+    items: ['h_batumi', 'h_alanya', 'h_sochi', 'h_dubai_apt'] },
+  { id: 'home_country', cover: 'img/cases/home_country.jpg', credit: 'Peretz Partensky from San Francisco, USA · CC BY-SA 2.0', name: 'Загородная жизнь', icon: '🌲', price: 'auto', tier: 'mid', theme: true,
+    desc: 'Дачи, дома в деревне, коттеджи и таунхаусы', w: { common: 50, rare: 0, epic: 50, legendary: 0, mythic: 0 },
+    items: ['h_dacha', 'h_village', 'h_house', 'h_town'] },
+  { id: 'home_msk', cover: 'img/cases/home_msk.jpg', credit: 'U.S. Department of State · Public domain', name: 'Москва', icon: '🏙️', price: 'auto', tier: 'mid', theme: true,
+    desc: 'От коммуналки до квартиры на Патриарших', w: { common: 30, rare: 55, epic: 15, legendary: 0, mythic: 0 },
+    items: ['h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_patriki'] },
 
-
-  { id: 'conn_free', cover: 'img/cases/conn_free.jpg', credit: 'Rufino · CC BY-SA 2.0',  group: '🤝 Связи', name: 'Знакомство дня', icon: '🍀', price: 0, cooldown: 24 * 3600e3, cats: ['conn'],
-    desc: 'Раз в сутки: полезный человек', w: W_MID },
-  { id: 'conn_forum', cover: 'img/cases/conn_forum.jpg', credit: 'USDAgov · Public domain', group: '🤝 Связи', name: 'Деловой форум',  icon: '🎤', price: 3e6,   cats: ['conn'], desc: 'Чиновники, банкиры, силовики', w: W_MID },
-  { id: 'conn_club', cover: 'img/cases/conn_club.jpg', credit: 'Wikimedia Commons · Public domain',  group: '🤝 Связи', name: 'Закрытый клуб',  icon: '🥃', price: 150e6, cats: ['conn'], desc: 'Только эпик и выше', w: W_ELITE },
+  { id: 'conn_free', cover: 'img/cases/conn_free.jpg', credit: 'Rufino · CC BY-SA 2.0', name: 'Знакомство дня', icon: '🍀', price: 0, cooldown: 24 * 3600e3, tier: 'free',
+    desc: 'Раз в сутки: полезный человек', w: { common: 75, rare: 20, epic: 4, legendary: 0.9, mythic: 0.1 },
+    items: ['k_police', 'k_gibdd', 'k_zhkh', 'k_tax', 'k_official', 'k_banker', 'k_prosecutor', 'k_judge', 'k_deputy', 'k_governor', 'k_oligarch', 'k_minister'] },
+  { id: 'conn_district', cover: 'img/cases/conn_free.jpg', credit: 'Rufino · CC BY-SA 2.0', name: 'Районные знакомства', icon: '🏘️', price: 150e3, tier: 'cheap',
+    desc: 'Участковый, гаишник, ЖКХ — иногда кто-то повыше', w: W_CHEAP,
+    items: ['k_police', 'k_gibdd', 'k_zhkh', 'k_tax', 'k_banker'] },
+  { id: 'conn_forum', cover: 'img/cases/conn_forum.jpg', credit: 'USDAgov · Public domain', name: 'Деловой форум', icon: '🎤', price: 4e6, tier: 'mid',
+    desc: 'Чиновники, банкиры, силовики', w: W_MID,
+    items: ['k_tax', 'k_official', 'k_banker', 'k_prosecutor', 'k_judge'] },
+  { id: 'conn_club', cover: 'img/cases/conn_club.jpg', credit: 'Wikimedia Commons · Public domain', name: 'Закрытый клуб', icon: '🥃', price: 150e6, tier: 'elite',
+    desc: 'Только влиятельные люди', w: { common: 0, rare: 0, epic: 60, legendary: 32, mythic: 8 },
+    items: ['k_prosecutor', 'k_judge', 'k_deputy', 'k_governor', 'k_oligarch', 'k_minister'] },
 ];
-// cover — фото на обложке кейса (если нет — иконка)
+// Цена кейсов с price: 'auto' — от средней стоимости (округлённо до двух значащих цифр)
+for (const c of CASES) {
+  if (c.price !== 'auto') continue;
+  const pool = c.items.map(id => ITEMS.find(i => i.id === id));
+  const rars = RARITY_ORDER.filter(r => c.w[r] > 0 && pool.some(i => i.rarity === r));
+  const tw = rars.reduce((a, r) => a + c.w[r], 0);
+  let ev = 0;
+  for (const r of rars) {
+    const list = pool.filter(i => i.rarity === r);
+    ev += list.reduce((a, i) => a + i.value, 0) / list.length * c.w[r] / tw;
+  }
+  const p = ev * AUTO_PRICE_RATE, mag = Math.pow(10, Math.floor(Math.log10(p)) - 1);
+  c.price = Math.round(p / mag) * mag;
+}
 const MULTI_OPEN = [1, 5, 10];      // варианты открытия за раз
 const MULTI_DISCOUNT = { 10: 0.1 }; // ×10 — скидка 10%
 const PITY = 30;                    // не позже чем на 30-м кейсе гарантированно эпик или выше
@@ -264,12 +323,12 @@ const JOBS = [
   { id: 'barista',  name: 'Бариста',              icon: '☕', pay: 65e3,  req: { cha: 3 },  perk: 'meetCheap', v: 20 },
   { id: 'seller',   name: 'Продавец-консультант', icon: '🛍️', pay: 80e3,  req: { cha: 5, int: 2 }, perk: 'caseCheap', v: 5 },
   { id: 'taxi',     name: 'Таксист',              icon: '🚕', pay: 120e3, req: { fit: 4 }, needCar: true, perk: 'gibdd', v: 1, solves: ['e_gibdd'] },
-  { id: 'junior',   name: 'Junior-программист',   icon: '💻', pay: 150e3, req: { int: 8 },  perk: 'study', v: 20 },
+  { id: 'junior',   name: 'Junior-программист',   icon: '💻', pay: 150e3, req: { int: 8 },  perk: 'skillCheap', v: 15 },
   { id: 'trainer',  name: 'Фитнес-тренер',        icon: '🏋️', pay: 180e3, req: { fit: 12, cha: 5 }, perk: 'trustUp', v: 25 },
   { id: 'sales',    name: 'Менеджер по продажам', icon: '📞', pay: 220e3, req: { cha: 10, biz: 5 }, perk: 'demandUp', v: 10 },
   { id: 'taxman',   name: 'Сотрудник налоговой',  icon: '🧾', pay: 250e3, req: { int: 10, biz: 6 }, perk: 'taxCut', v: 5, solves: ['e_tax'] },
   { id: 'lawyer',   name: 'Юрист',                icon: '⚖️', pay: 320e3, req: { int: 12, cha: 8 }, perk: 'court', v: 1, solves: ['e_raid', 'e_court'] },
-  { id: 'senior',   name: 'Senior-разработчик',   icon: '🧑‍💻', pay: 450e3, req: { int: 18 }, perk: 'study', v: 35 },
+  { id: 'senior',   name: 'Senior-разработчик',   icon: '🧑‍💻', pay: 450e3, req: { int: 18 }, perk: 'skillCheap', v: 25 },
   { id: 'director', name: 'Директор филиала',     icon: '🏢', pay: 700e3, req: { biz: 15, cha: 15 }, perk: 'bizEff', v: 20 },
   { id: 'mayor',    name: 'Мэр города',           icon: '🏛️', pay: 1.2e6, req: { cha: 22, biz: 15, int: 15 }, perk: 'licenseCut', v: 50, solves: ['e_fire', 'e_flood'] },
   { id: 'blogger',  name: 'Блогер-миллионник',    icon: '📱', pay: 1.5e6, req: { cha: 25 }, perk: 'demandUp', v: 20 },
@@ -286,11 +345,8 @@ const SKILLS = [
   { id: 'fit', name: 'Физуха',    icon: '💪', desc: '+5% к оплате подработок за уровень. Нужна для физической работы.' },
   { id: 'biz', name: 'Бизнес',    icon: '📈', desc: '+2% к аренде за уровень. Нужен для руководящих должностей.' },
 ];
-const skillCost = lvl => Math.round(30e3 * Math.pow(1.3, lvl)); // курсы, тренер, MBA…
-// Учёба: можно сразу пройти до STUDY_BATCH уровней (любых навыков), потом перерыв.
-// Перерыв растёт с общим числом уровней: в начале минуты, ближе к концу игры — несколько часов.
-const STUDY_BATCH = 5;
-const studyRestHours = totalLevels => 0.25 + 0.04 * totalLevels;
+// Учёба без перерывов: прокачка ограничена только деньгами, каждый уровень на 30% дороже предыдущего
+const skillCost = lvl => Math.round(100e3 * Math.pow(1.3, lvl)); // курсы, тренер, MBA…
 
 // ---------- подработки ----------
 // Разовые задания по таймеру: запустил — вернулся — забрал. Одна за раз, работе не мешает.
@@ -335,37 +391,37 @@ const WEEKLY_QUESTS = [
 const QUESTS_PER_DAY = 3;
 const QUESTS_PER_WEEK = 3;
 // Награды: деньги — в месяцах текущего дохода (не меньше min), билеты — бесплатное открытие кейса
-const DAILY_REWARD = { hours: 2, min: 20e3 };
-const DAILY_BONUS = { hours: 4, min: 50e3, ticket: 'car_ru' };          // за все ежедневные
-const WEEKLY_TICKETS = ['car_used', 'home_used', 'conn_forum'];         // по одному за каждое недельное
-const WEEKLY_BONUS = { ticket: 'car_new' };                           // за все недельные
+const DAILY_REWARD = { hours: 0.75, min: 10e3 };
+const DAILY_BONUS = { hours: 1.5, min: 20e3, ticket: 'car_garage' };          // за все ежедневные
+const WEEKLY_TICKETS = ['car_used', 'home_dorm', 'conn_district'];         // по одному за каждое недельное
+const WEEKLY_BONUS = { ticket: 'car_cn' };                           // за все недельные
 
 // «Жизненный путь» — цепочка целей по порядку. type: job (зарплата от v), car, skills (сумма уровней),
 // home (объектов от v), rank (статус от v), carRarity (редкость машины от v),
 // biz (бизнесов от v), bizProfit (прибыль всех бизнесов от v ₽/мес), conn (связей от v), connLv (доверие любой связи от v)
 // reward: money или ticket (id кейса)
 const LIFE_PATH = [
-  { type: 'job',       v: 60e3,  text: 'Устройся на работу получше', reward: { money: 100e3 } },
-  { type: 'car',                 text: 'Получи первую машину',       reward: { money: 150e3 } },
-  { type: 'skills',    v: 5,     text: 'Пройди 5 курсов',            reward: { money: 200e3 } },
-  { type: 'home',      v: 1,     text: 'Получи своё жильё',          reward: { money: 300e3 } },
+  { type: 'job',       v: 60e3,  text: 'Устройся на работу получше', reward: { money: 50000 } },
+  { type: 'car',                 text: 'Получи первую машину',       reward: { money: 75000 } },
+  { type: 'skills',    v: 5,     text: 'Пройди 5 курсов',            reward: { money: 100000 } },
+  { type: 'home',      v: 1,     text: 'Получи своё жильё',          reward: { money: 150000 } },
   { type: 'rank',      v: 2,     text: 'Стань «Работягой»',          reward: { ticket: 'car_used' } },
-  { type: 'biz',       v: 1,     text: 'Открой свой бизнес',         reward: { money: 500e3 } },
-  { type: 'conn',      v: 3,     text: 'Заведи 3 полезные связи',     reward: { ticket: 'conn_forum' } },
-  { type: 'job',       v: 150e3, text: 'Зарплата от 150 тыс ₽/мес',  reward: { money: 1e6 } },
-  { type: 'connLv',    v: 3,     text: 'Подними доверие любой связи до 3', reward: { ticket: 'home_used' } },
-  { type: 'rank',      v: 3,     text: 'Стань «Средним классом»',    reward: { money: 2e6 } },
+  { type: 'biz',       v: 1,     text: 'Открой свой бизнес',         reward: { money: 250000 } },
+  { type: 'conn',      v: 3,     text: 'Заведи 3 полезные связи',     reward: { ticket: 'conn_district' } },
+  { type: 'job',       v: 150e3, text: 'Зарплата от 150 тыс ₽/мес',  reward: { money: 500000 } },
+  { type: 'connLv',    v: 3,     text: 'Подними доверие любой связи до 3', reward: { ticket: 'home_dorm' } },
+  { type: 'rank',      v: 3,     text: 'Стань «Средним классом»',    reward: { money: 1e06 } },
   { type: 'carRarity', v: 2,     text: 'Получи эпическую машину',    reward: { ticket: 'car_new' } },
-  { type: 'home',      v: 5,     text: 'Собери 5 объектов недвижимости', reward: { money: 5e6 } },
-  { type: 'rank',      v: 4,     text: 'Стань «Успешным»',           reward: { ticket: 'home_new' } },
+  { type: 'home',      v: 5,     text: 'Собери 5 объектов недвижимости', reward: { money: 2.5e06 } },
+  { type: 'rank',      v: 4,     text: 'Стань «Успешным»',           reward: { ticket: 'home_used' } },
   { type: 'bizProfit', v: 1e6,   text: 'Прибыль бизнеса от 1 млн ₽/мес', reward: { ticket: 'car_new' } },
-  { type: 'connLv',    v: 5,     text: 'Доведи связь до полного доверия', reward: { money: 20e6 } },
-  { type: 'job',       v: 450e3, text: 'Зарплата от 450 тыс ₽/мес',  reward: { money: 30e6 } },
-  { type: 'rank',      v: 5,     text: 'Стань «Богачом»',            reward: { ticket: 'car_elite' } },
-  { type: 'biz',       v: 4,     text: 'Владей четырьмя бизнесами',   reward: { money: 100e6 } },
-  { type: 'conn',      v: 8,     text: 'Собери 8 разных связей',     reward: { ticket: 'conn_club' } },
-  { type: 'rank',      v: 6,     text: 'Стань миллиардером',         reward: { ticket: 'home_elite' } },
-  { type: 'rank',      v: 7,     text: 'Стань «Магнатом»',           reward: { money: 1e9 } },
+  { type: 'connLv',    v: 5,     text: 'Доведи связь до полного доверия', reward: { money: 1e07 } },
+  { type: 'job',       v: 450e3, text: 'Зарплата от 450 тыс ₽/мес',  reward: { money: 1.5e07 } },
+  { type: 'rank',      v: 5,     text: 'Стань «Богачом»',            reward: { ticket: 'car_new' } },
+  { type: 'biz',       v: 4,     text: 'Владей четырьмя бизнесами',   reward: { money: 5e07 } },
+  { type: 'conn',      v: 8,     text: 'Собери 8 разных связей',     reward: { ticket: 'conn_forum' } },
+  { type: 'rank',      v: 6,     text: 'Стань миллиардером',         reward: { ticket: 'car_premium' } },
+  { type: 'rank',      v: 7,     text: 'Стань «Магнатом»',           reward: { money: 5e08 } },
 ];
 
 // Статус по состоянию: деньги + рыночная стоимость имущества
@@ -382,52 +438,38 @@ const RANKS = [
 ];
 
 // ---------- бизнес ----------
-// Прибыль/мес = продано × наценка × эффективность − зарплаты − аренда − управляющий, минус налог с прибыли.
-// Продано = меньшее из производства и спроса. Производство = рабочие места × perSlot,
-// а рабочее место = станок + сотрудник (чего меньше, столько мест и работает).
-// Без управляющего бизнес работает с эффективностью OWNER_EFF_EMPLOYED или OWNER_EFF_FREE (см. выше).
+// Всё просто: «Рабочие места» дают мощность (сколько клиентов можешь обслужить),
+// «Реклама» даёт клиентов. Продано = меньшее из двух. Прибыль = выручка − зарплаты − аренда − управляющий − налог.
+// При покупке мощность и клиенты равны; дальше чередуй: место → реклама → место…
+// Все цифры бизнеса считаются от его цены по единым формулам — так бизнесы одинаково сбалансированы.
 const BIZ_TAX = 0.15;
-const MKT_STEP = 0.25;        // +25% спроса за уровень рекламы
-const MKT_MAX = 5;
-const MACHINE_GROWTH = 1.25;  // каждый следующий станок дороже
-const MKT_GROWTH = 2;         // каждый следующий уровень рекламы дороже
-const BIZ_SELL_RATE = 0.6;    // бизнес продаётся за 60% вложенного
-const HIRE_COST = 0.5;        // найм (подбор, оформление) — доля месячной зарплаты
+const BIZ_SELL_RATE = 0.6;      // бизнес продаётся за 60% вложенного
+const BIZ_LICENSE = 0.1;        // лицензии — доля цены
+const BIZ_START = 2;            // рабочих мест и уровней клиентов на старте
+const BIZ_MAX = 10;             // максимум рабочих мест (и столько же уровней клиентов)
+const BIZ_REV = 0.035;          // выручка одного загруженного места в месяц — доля цены бизнеса
+const BIZ_SALARY = 0.008;       // зарплата на одно место в месяц
+const BIZ_RENT = 0.006;         // аренда помещения в месяц
+const BIZ_MGR = 0.008;          // управляющий в месяц
+const BIZ_SLOT_COST = 0.55;     // первое новое место — доля цены бизнеса
+const BIZ_AD_COST = 0.35;       // первый уровень рекламы
+const BIZ_GROWTH = 1.12;        // каждое следующее место и уровень рекламы дороже
+const HIRE_MGR_MONTHS = 2;      // найм управляющего — столько его зарплат
 
-// price — помещение и запуск; license — лицензии и разрешения; rank / req — что нужно для открытия
-// margin — наценка с единицы; perSlot — единиц в месяц с одного рабочего места; demand — спрос в месяц
-// machine / worker — названия станка и сотрудника; machineCost — первый докупленный станок
-// slots — максимум рабочих мест; start — сколько мест (станков и людей) уже есть при покупке
-// salary — зарплата сотрудника; rentCost — аренда помещения; mktCost — первый уровень рекламы; mgrSalary — управляющий
+// price — помещение и запуск; rank / req — что нужно для открытия; unit — чем меряем клиентов; perSlot — клиентов на место в месяц
 const BUSINESSES = [
-  { id: 'b_shawarma', name: 'Ларёк с шаурмой', icon: '🌯', price: 1.5e6, license: 150e3, rank: 2, req: { biz: 2 },
-    unit: 'шаурм', margin: 90, perSlot: 1500, demand: 4000,
-    machine: 'Гриль', machineIcon: '🔥', machineCost: 400e3, worker: 'Повар', workerIcon: '👨‍🍳',
-    slots: 4, start: 1, salary: 45e3, rentCost: 20e3, mktCost: 90e3, mgrSalary: 80e3 },
-  { id: 'b_carwash', name: 'Автомойка', icon: '🚿', price: 6e6, license: 600e3, rank: 3, req: { biz: 5 },
-    unit: 'машин', margin: 550, perSlot: 400, demand: 1500,
-    machine: 'Моечный пост', machineIcon: '🫧', machineCost: 2e6, worker: 'Мойщик', workerIcon: '🧽',
-    slots: 6, start: 2, salary: 60e3, rentCost: 100e3, mktCost: 375e3, mgrSalary: 120e3 },
-  { id: 'b_coffee', name: 'Кофейня', icon: '☕', price: 12e6, license: 1.2e6, rank: 3, req: { biz: 8 },
-    unit: 'чашек', margin: 130, perSlot: 3000, demand: 12000,
-    machine: 'Кофемашина', machineIcon: '⚙️', machineCost: 4e6, worker: 'Бариста', workerIcon: '🧑‍🍳',
-    slots: 5, start: 2, salary: 70e3, rentCost: 250e3, mktCost: 750e3, mgrSalary: 150e3 },
-  { id: 'b_service', name: 'Автосервис', icon: '🔧', price: 30e6, license: 3e6, rank: 4, req: { biz: 12 },
-    unit: 'заказов', margin: 11e3, perSlot: 60, demand: 400,
-    machine: 'Подъёмник', machineIcon: '🏗️', machineCost: 8e6, worker: 'Механик', workerIcon: '👨‍🔧',
-    slots: 8, start: 2, salary: 120e3, rentCost: 400e3, mktCost: 1.8e6, mgrSalary: 250e3 },
-  { id: 'b_furniture', name: 'Мебельный цех', icon: '🪑', price: 120e6, license: 12e6, rank: 4, req: { biz: 18 },
-    unit: 'комплектов', margin: 38e3, perSlot: 40, demand: 300,
-    machine: 'Станок ЧПУ', machineIcon: '🛠️', machineCost: 35e6, worker: 'Столяр', workerIcon: '🪚',
-    slots: 10, start: 2, salary: 150e3, rentCost: 800e3, mktCost: 7.5e6, mgrSalary: 400e3 },
-  { id: 'b_factory', name: 'Завод стройматериалов', icon: '🏭', price: 800e6, license: 80e6, rank: 5, req: { biz: 25 },
-    unit: 'тонн', margin: 2800, perSlot: 4000, demand: 30000,
-    machine: 'Производственная линия', machineIcon: '🏭', machineCost: 280e6, worker: 'Бригада', workerIcon: '👷',
-    slots: 10, start: 2, salary: 1.5e6, rentCost: 5e6, mktCost: 45e6, mgrSalary: 3e6 },
-  { id: 'b_it', name: 'IT-холдинг', icon: '🏢', price: 5e9, license: 500e6, rank: 6, req: { biz: 35 },
-    unit: 'проектов', margin: 18e6, perSlot: 4, demand: 30,
-    machine: 'Офис и серверы', machineIcon: '🖥️', machineCost: 1.2e9, worker: 'Команда разработчиков', workerIcon: '👩‍💻',
-    slots: 12, start: 2, salary: 10e6, rentCost: 20e6, mktCost: 300e6, mgrSalary: 20e6 },
+  { id: 'b_shawarma',  name: 'Ларёк с шаурмой',       icon: '🌯', price: 1.5e6, rank: 2, req: { biz: 2 },  unit: 'покупателей', perSlot: 1500, slot: 'Повар у гриля' },
+  { id: 'b_tires',     name: 'Шиномонтаж',            icon: '🛞', price: 4e6,   rank: 2, req: { biz: 4 },  unit: 'машин',       perSlot: 300,  slot: 'Мастер со стендом' },
+  { id: 'b_carwash',   name: 'Автомойка',             icon: '🚿', price: 8e6,   rank: 3, req: { biz: 6 },  unit: 'машин',       perSlot: 400,  slot: 'Моечный пост' },
+  { id: 'b_coffee',    name: 'Кофейня',               icon: '☕', price: 15e6,  rank: 3, req: { biz: 9 },  unit: 'гостей',      perSlot: 3000, slot: 'Бариста с кофемашиной' },
+  { id: 'b_bakery',    name: 'Пекарня',               icon: '🥐', price: 30e6,  rank: 4, req: { biz: 12 }, unit: 'покупателей', perSlot: 4000, slot: 'Пекарь с печью' },
+  { id: 'b_service',   name: 'Автосервис',            icon: '🔧', price: 60e6,  rank: 4, req: { biz: 15 }, unit: 'заказов',     perSlot: 60,   slot: 'Механик с подъёмником' },
+  { id: 'b_gym',       name: 'Фитнес-клуб',           icon: '🏋️', price: 120e6, rank: 5, req: { biz: 18 }, unit: 'абонементов', perSlot: 300,  slot: 'Тренер и зал' },
+  { id: 'b_furniture', name: 'Мебельный цех',         icon: '🪑', price: 300e6, rank: 5, req: { biz: 22 }, unit: 'комплектов',  perSlot: 40,   slot: 'Столяр со станком ЧПУ' },
+  { id: 'b_logistics', name: 'Логистическая компания', icon: '🚛', price: 800e6, rank: 6, req: { biz: 26 }, unit: 'рейсов',      perSlot: 120,  slot: 'Фура с водителем' },
+  { id: 'b_gas',       name: 'Сеть АЗС',              icon: '⛽', price: 2e9,   rank: 6, req: { biz: 30 }, unit: 'заправок',    perSlot: 20e3, slot: 'Заправка с персоналом' },
+  { id: 'b_factory',   name: 'Завод стройматериалов', icon: '🏭', price: 6e9,   rank: 7, req: { biz: 35 }, unit: 'тонн',        perSlot: 4000, slot: 'Производственная линия' },
+  { id: 'b_it',        name: 'IT-холдинг',            icon: '🏢', price: 20e9,  rank: 7, req: { biz: 40 }, unit: 'проектов',    perSlot: 4,    slot: 'Команда разработчиков' },
 ];
 
 // ---------- блат: связи и события ----------
@@ -448,7 +490,7 @@ const PERKS = {
   gigUp:      '+{v}% к оплате подработок',
   meetCheap:  'Встречи со связями дешевле на {v}%',
   caseCheap:  'Кейсы дешевле на {v}%',
-  study:      'Курсы проходятся на {v}% быстрее',
+  skillCheap: 'Учёба дешевле на {v}%',
   trustUp:    '+{v}% доверия от встреч',
   bizEff:     '+{v}% к эффективности бизнесов без управляющего',
 };

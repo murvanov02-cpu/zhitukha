@@ -27,7 +27,6 @@
       inv: {}, car: null, job: 'flyers',
       lastTick: Date.now(), cd: {}, opened: 0,  // cd: id кейса → когда открыт бесплатно
       pity: 0, fast: false, autoSell: false,
-      study: { left: STUDY_BATCH, until: 0 },   // учёба: сколько уровней осталось в пачке и до какого времени перерыв
       gig: null,                  // идущая подработка: { id, until }
       tickets: {},                // бесплатные открытия: id кейса → сколько
       daily: null, weekly: null,  // задания: { key, list: [{ id, target, prog, claimed }], bonus }
@@ -65,8 +64,15 @@
     }
     if (s.job && !JOB[s.job]) s.job = 'flyers';
     if (s.event && !EV[s.event.id]) s.event = null;
-    if (!s.study || typeof s.study.left !== 'number') s.study = { left: STUDY_BATCH, until: 0 };
-    for (const k of ['rel', 'love', 'pref', 'course', 'lastFree', 'energy', 'taps']) delete s[k];
+    // бизнес раньше хранил станки, сотрудников и рекламу отдельно — переводим в места + клиентов
+    for (const [id, b] of Object.entries(s.biz)) {
+      if (!BIZ[id]) { delete s.biz[id]; continue; }
+      if (b.slots === undefined) {
+        const slots = Math.max(BIZ_START, Math.min(BIZ_MAX, Math.min(b.m || 0, b.w || 0)));
+        s.biz[id] = { slots, ads: slots - BIZ_START, mgr: !!b.mgr, inv: b.inv || BIZ[id].price };
+      }
+    }
+    for (const k of ['rel', 'love', 'pref', 'course', 'lastFree', 'energy', 'taps', 'study']) delete s[k];
     for (const id of Object.keys(s.tickets)) if (!CASE[id]) delete s.tickets[id];
     return o.eco === ECO ? s : rescale(s);
   }
@@ -171,7 +177,7 @@
     if (kind === 'license') r *= 1 - perk('license') / 100;
     return Math.round(r * (1 - perk('safe') / 100));
   }
-  const licenseCost = d => Math.round(d.license * (1 - perk('licenseCut') / 100));
+  const licenseCost = d => Math.round(d.price * BIZ_LICENSE * (1 - perk('licenseCut') / 100));
 
   // ---------- экономика ----------
   const carBonus = () => (S.car && S.inv[S.car] ? ITEM[S.car].bonus : 0);
@@ -192,26 +198,29 @@
   const frozen = id => !!(S.event && EV[S.event.id].freeze && S.event.biz === id);
   // Без управляющего: занят на работе — мало времени на бизнес, уволился — почти всё под контролем
   const ownerEff = () => Math.min(1, (S.job ? OWNER_EFF_EMPLOYED : OWNER_EFF_FREE) * (1 + perk('bizEff') / 100));
-  function bizStats(id) {
-    const d = BIZ[id], b = S.biz[id];
-    const slots = Math.min(b.m, b.w);
-    const cap = slots * d.perSlot;
-    const demand = Math.round(d.demand * (1 + MKT_STEP * b.mk + perk('demandUp') / 100));
+  // Денежные параметры бизнеса — доли его цены (см. data.js)
+  const bizNum = d => ({ rev: d.price * BIZ_REV, salary: d.price * BIZ_SALARY, rent: d.price * BIZ_RENT,
+    mgr: d.price * BIZ_MGR, license: d.price * BIZ_LICENSE });
+  // b — состояние бизнеса (можно передать «а что если» для подсказок на кнопках)
+  function bizStats(id, b = S.biz[id]) {
+    const d = BIZ[id], n = bizNum(d);
+    const cap = b.slots * d.perSlot;
+    const demand = Math.round((BIZ_START + b.ads) * d.perSlot * (1 + perk('demandUp') / 100));
     const sold = Math.min(cap, demand);
     const eff = b.mgr ? 1 : ownerEff();
-    const revenue = frozen(id) ? 0 : sold * d.margin * eff * (1 + perk('bizBoost') / 100);
-    const wages = b.w * d.salary, mgr = b.mgr ? d.mgrSalary : 0;
-    const pre = revenue - wages - d.rentCost - mgr;
+    const revenue = frozen(id) ? 0 : sold / d.perSlot * n.rev * eff * (1 + perk('bizBoost') / 100);
+    const wages = b.slots * n.salary, mgr = b.mgr ? n.mgr : 0;
+    const pre = revenue - wages - n.rent - mgr;
     const tax = pre > 0 ? pre * taxRate() : 0;
-    let neck = '';
-    if (cap < demand) neck = b.m < b.w ? 'machines' : b.w < b.m ? 'staff' : 'both';
-    else if (b.w > b.m || cap > demand * 1.15) neck = 'demand';
-    return { slots, cap, demand, sold, eff, revenue, wages, mgr, rent: d.rentCost, tax, profit: pre - tax, neck };
+    const neck = cap < demand ? 'slots' : cap > demand ? 'ads' : '';
+    return { cap, demand, sold, eff, revenue, wages, mgr, rent: n.rent, tax, profit: pre - tax, neck };
   }
   const bizProfit = () => Object.keys(S.biz).reduce((a, id) => a + (BIZ[id] ? bizStats(id).profit : 0), 0);
-  const machineCost = id => Math.round(BIZ[id].machineCost * Math.pow(MACHINE_GROWTH, S.biz[id].m - BIZ[id].start));
-  const mktCost = id => Math.round(BIZ[id].mktCost * Math.pow(MKT_GROWTH, S.biz[id].mk));
-  const hireCost = id => Math.round(BIZ[id].salary * HIRE_COST);
+  const slotCost = id => Math.round(BIZ[id].price * BIZ_SLOT_COST * Math.pow(BIZ_GROWTH, S.biz[id].slots - BIZ_START));
+  const adCost = id => Math.round(BIZ[id].price * BIZ_AD_COST * Math.pow(BIZ_GROWTH, S.biz[id].ads));
+  const mgrHire = id => Math.round(bizNum(BIZ[id]).mgr * HIRE_MGR_MONTHS);
+  // Насколько изменится прибыль, если поменять состояние бизнеса
+  const bizDelta = (id, change) => bizStats(id, Object.assign({}, S.biz[id], change)).profit - bizStats(id).profit;
   function bizOpen(d) {
     if (rankIdx() < d.rank) return false;
     for (const [k, v] of Object.entries(d.req)) if (S.skills[k] < v) return false;
@@ -278,11 +287,7 @@
   }
 
   // ---------- учёба ----------
-  const studyRest = () => studyRestHours(Object.values(S.skills).reduce((a, b) => a + b, 0)) * (1 - perk('study') / 100);
-  function studyReady() {
-    if (S.study.left <= 0 && Date.now() >= S.study.until) S.study = { left: STUDY_BATCH, until: 0 };
-    return S.study.left > 0;
-  }
+  const skillPrice = lvl => Math.round(skillCost(lvl) * (1 - perk('skillCheap') / 100));
 
   // ---------- задания ----------
   const dayKey = d => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
@@ -451,7 +456,7 @@
   }
   function favorCost(f) {
     if (!f.cost) return 0;
-    if (f.cost.salary) return BIZ[S.favor.biz].salary * f.cost.salary;
+    if (f.cost.salary) return Math.round(bizNum(BIZ[S.favor.biz]).salary * f.cost.salary);
     return monthsMoney(f.cost.hours, f.cost.min);
   }
   function maybeFavor() {
@@ -528,7 +533,7 @@
 
   // ---------- кейсы ----------
   function poolOf(c) {
-    return ITEMS.filter(i => c.cats.includes(i.cat) && (!c.tag || (i.t || []).includes(c.tag)));
+    return c.items.map(id => ITEM[id]).filter(Boolean);
   }
   // real = настоящий дроп (учитывает и двигает гарантию), иначе — заполнитель ленты рулетки
   function rollItem(c, real) {
@@ -546,7 +551,7 @@
     return list[Math.floor(Math.random() * list.length)];
   }
   const cdLeft = c => Math.max(0, (S.cd[c.id] || 0) + c.cooldown - Date.now());
-  const caseSection = c => (c.cats.includes('conn') ? 'conn' : c.cats.length > 1 ? 'free' : c.cats[0]);
+  const caseSection = c => ITEM[c.items[0]].cat;
 
   function openCase(id, n, byTicket) {
     if (spinning) return;
@@ -825,11 +830,6 @@
         <div class="kv"><span>Открыто кейсов</span><b>${S.opened}</b></div>
         <div class="kv"><span>Коллекция</span><b>${Object.keys(S.inv).filter(id => ITEM[id]).length} из ${ITEMS.filter(i => i.cat !== 'conn').length}</b></div>
       </div>
-      <div class="section">Настройки</div>
-      <div class="card">
-        <label class="toggle"><input type="checkbox" data-toggle="fast" ${S.fast ? 'checked' : ''}><i></i>Быстрое открытие кейсов</label>
-        <label class="toggle"><input type="checkbox" data-toggle="autoSell" ${S.autoSell ? 'checked' : ''}><i></i>Продавать обычные повторки</label>
-      </div>
       <div class="row"><button class="btn btn-ghost btn-sm grow" data-action="credits">${ic('camera')} Авторы фото</button>
         <button class="btn btn-danger btn-sm grow" data-action="reset">Начать заново</button></div>
       ${DEBUG ? debugPanel() : ''}`, true);
@@ -864,7 +864,7 @@
     const nConn = Object.keys(S.conn).length;
     const ev = S.event && EV[S.event.id];
     const life = LIFE_PATH[S.life], lifeOk = life && lifeDone(life);
-    const studyLine = studyReady() ? `учёба: доступно ${S.study.left} ур.` : `учёба: перерыв <span data-timer="${S.study.until}">${fmtTime(S.study.until - Date.now())}</span>`;
+    const studyLine = `навыки: ${Object.values(S.skills).reduce((a, b) => a + b, 0)} ур.`;
     const gigLine = S.gig ? (Date.now() >= S.gig.until ? ' · подработка готова' : ` · подработка <span data-timer="${S.gig.until}">${fmtTime(S.gig.until - Date.now())}</span>`) : '';
     const row = (go, icon, title, subline, cls = 'muted') => `<button class="card tap" ${go}><div class="list-row"><div class="ico-box">${ic(icon)}</div>
       <div class="grow"><div class="val">${title}</div><div class="small ${cls}">${subline}</div></div><span class="chev">${ic('chevron-right')}</span></div></button>`;
@@ -938,19 +938,29 @@
       <div class="grow"><div class="case-name">${c.name}</div><div class="small muted">${c.desc}</div></div>
       <button class="btn btn-sm ${left ? 'btn-ghost' : 'btn-green'}" data-cdcase="${c.id}" data-action="open" data-id="${c.id}" data-n="1" ${left ? 'disabled' : ''}>${left ? fmtTime(left) : 'Бесплатно'}</button></div>`;
   }
+  function themeRow(c) {
+    return `<button class="card tap" data-action="case" data-id="${c.id}"><div class="list-row">
+      <div class="ico-box" style="font-size:20px">${c.icon}</div>
+      <div class="grow"><div class="val">${c.name}${S.tickets[c.id] ? ` · ${ic('ticket', 'gold')}×${S.tickets[c.id]}` : ''}</div><div class="small muted ellipsis">${c.desc}</div></div>
+      <span class="case-price">${fmt(casePrice(c))} ₽</span></div></button>`;
+  }
   function renderCases() {
     const sec = sub.cases;
-    const list = CASES.filter(c => caseSection(c) === sec && !c.cooldown);
-    const main = list.filter(c => !c.tag), themed = list.filter(c => c.tag);
+    const list = CASES.filter(c => !c.cooldown && caseSection(c) === sec);
     const dot = c => (!cdLeft(c) ? ' <span class="dotty">•</span>' : '');
+    const tierBlock = (tier, title) => {
+      const l = list.filter(c => c.tier === tier && !c.theme);
+      return l.length ? `<div class="section">${title}</div><div class="case-grid">${l.map(caseTile).join('')}</div>` : '';
+    };
+    const themed = list.filter(c => c.theme);
     return `<div class="seg">
         <button class="${sec === 'car' ? 'active' : ''}" data-sub="cases:car">Авто${dot(CASE.free)}</button>
         <button class="${sec === 'home' ? 'active' : ''}" data-sub="cases:home">Жильё</button>
         <button class="${sec === 'conn' ? 'active' : ''}" data-sub="cases:conn">Связи${dot(CASE.conn_free)}</button></div>
-      <p class="pity mb">${ic('target')} Эпик или выше не позже чем через ${PITY - S.pity} шт.${S.skills.cha ? ` · скидка ${Math.min(S.skills.cha, 30)}%` : ''}</p>
+      <p class="pity mb">${ic('target')} Эпик или выше не позже чем через ${PITY - S.pity} шт. в кейсах, где он есть${S.skills.cha ? ` · скидка ${Math.min(S.skills.cha, 30)}%` : ''}</p>
       ${freeCaseCard(sec === 'conn' ? CASE.conn_free : CASE.free)}
-      ${main.length ? `<div class="section">По цене</div><div class="case-grid">${main.map(caseTile).join('')}</div>` : ''}
-      ${themed.length ? `<div class="section">Тематические</div><div class="case-grid">${themed.map(caseTile).join('')}</div>` : ''}`;
+      ${tierBlock('cheap', 'Недорогие')}${tierBlock('mid', 'Средние')}${tierBlock('elite', 'Дорогие')}
+      ${themed.length ? `<details class="more"><summary>${ic('category')} Тематические · ${themed.length}</summary>${themed.map(themeRow).join('')}</details>` : ''}`;
   }
   function showCase(id) {
     const c = CASE[id], pool = poolOf(c);
@@ -966,7 +976,11 @@
       ${tickets ? `<button class="btn full" style="margin-top:12px" data-action="ticket" data-id="${id}">${ic('ticket')} Открыть по билету · осталось ${tickets}</button>` : ''}
       <div class="open-row">${MULTI_OPEN.map(n => `<button class="btn ${n > 1 ? 'btn-ghost' : ''}" data-action="open" data-id="${id}" data-n="${n}">
         <span class="btn-top">×${n}${MULTI_DISCOUNT[n] ? ` <s>−${MULTI_DISCOUNT[n] * 100}%</s>` : ''}</span>${fmt(batchPrice(c, n))} ₽</button>`).join('')}</div>
-      <button class="btn btn-ghost full" style="margin-top:8px" data-action="peek" data-id="${id}">${ic('list-search')} Что внутри</button>`, true);
+      <button class="btn btn-ghost full" style="margin-top:8px" data-action="peek" data-id="${id}">${ic('list-search')} Что внутри</button>
+      <div style="margin-top:8px">
+        <label class="toggle"><input type="checkbox" data-toggle="fast" ${S.fast ? 'checked' : ''}><i></i>Быстрое открытие</label>
+        ${caseSection(c) !== 'conn' ? `<label class="toggle"><input type="checkbox" data-toggle="autoSell" ${S.autoSell ? 'checked' : ''}><i></i>Сразу продавать обычные повторки</label>` : ''}
+      </div>`, true);
   }
 
   // ---------- карьера ----------
@@ -975,7 +989,7 @@
     const gigReady = S.gig && Date.now() >= S.gig.until;
     return `<div class="seg">
         <button class="${v === 'jobs' ? 'active' : ''}" data-sub="career:jobs">Работа</button>
-        <button class="${v === 'skills' ? 'active' : ''}" data-sub="career:skills">Учёба${studyReady() ? ' <span class="dotty">•</span>' : ''}</button>
+        <button class="${v === 'skills' ? 'active' : ''}" data-sub="career:skills">Учёба</button>
         <button class="${v === 'gigs' ? 'active' : ''}" data-sub="career:gigs">Подработки${gigReady ? ' <span class="dotty">•</span>' : ''}</button></div>
       ${v === 'jobs' ? renderJobs() : v === 'skills' ? renderSkills() : renderGigs()}`;
   }
@@ -1012,20 +1026,16 @@
       ${open.map(jobCard).join('')}`;
   }
   function renderSkills() {
-    const ready = studyReady(), rest = studyRest();
     const skIcon = { int: 'brain', cha: 'message-circle', fit: 'barbell', biz: 'chart-line' };
-    return `<div class="card ${ready ? 'accent' : ''}">
-        ${ready ? `<div class="big-text">Можно пройти ещё ${S.study.left} ${S.study.left === 1 ? 'уровень' : 'уровня'}</div>
-          <div class="small muted">Потом перерыв ${hoursText(rest)}. Чем выше навыки, тем дольше перерыв.</div>`
-        : `<div class="big-text">Перерыв в учёбе</div><div class="small muted">Новые уровни через <span data-timer="${S.study.until}">${fmtTime(S.study.until - Date.now())}</span></div>`}
-      </div>
+    return `<p class="hint">Учёба без перерывов — ограничивают только деньги: каждый следующий уровень на 30% дороже.${
+      perk('skillCheap') ? ` Профессия даёт скидку ${perk('skillCheap')}%.` : ''}</p>
       ${SKILLS.map(s => {
-        const lvl = S.skills[s.id], max = lvl >= SKILL_MAX, cost = skillCost(lvl);
+        const lvl = S.skills[s.id], max = lvl >= SKILL_MAX, cost = skillPrice(lvl);
         return `<div class="card job"><div class="ico-box">${ic(skIcon[s.id])}</div>
           <div class="grow"><div class="job-name">${s.name} <span class="gold">${lvl}</span><span class="muted small">/${SKILL_MAX}</span></div>
             <div class="small muted">${s.desc}</div><div class="bar"><i style="width:${lvl / SKILL_MAX * 100}%"></i></div></div>
           ${max ? '<span class="tag">MAX</span>'
-            : `<button class="btn btn-sm btn-col" data-action="skill" data-id="${s.id}" ${!ready || S.money < cost ? 'disabled' : ''}>+1<span class="btn-top">${fmt(cost)} ₽</span></button>`}
+            : `<button class="btn btn-sm btn-col" data-action="skill" data-id="${s.id}" ${S.money < cost ? 'disabled' : ''}>+1<span class="btn-top">${fmt(cost)} ₽</span></button>`}
         </div>`;
       }).join('')}`;
   }
@@ -1058,59 +1068,62 @@
   function renderBiz() {
     const owned = BUSINESSES.filter(d => S.biz[d.id]);
     const total = bizProfit();
+    const plus = v => `${v >= 0 ? '+' : ''}${fmt(v)}`;
     const cards = owned.map(d => {
-      const b = S.biz[d.id], st = bizStats(d.id);
-      const neck = {
-        machines: `Не хватает станков: ${b.w - b.m > 0 ? `${b.w - b.m} сотр. простаивают` : 'спрос выше производства'}`,
-        staff: `Не хватает людей: ${b.m - b.w > 0 ? `${b.m - b.w} станк. простаивают` : 'спрос выше производства'}`,
-        both: 'Спрос выше производства: добавь станок и сотрудника',
-        demand: b.w > b.m ? `Лишние сотрудники: ${b.w - b.m} без станка` : 'Производишь больше, чем покупают: нужна реклама',
-      }[st.neck];
-      const full = b.m >= d.slots, fullW = b.w >= d.slots, fullMk = b.mk >= MKT_MAX;
+      const b = S.biz[d.id], st = bizStats(d.id), n = bizNum(d);
+      const fullS = b.slots >= BIZ_MAX, fullA = b.ads >= BIZ_MAX - BIZ_START;
+      const dS = bizDelta(d.id, { slots: b.slots + 1 }), dA = bizDelta(d.id, { ads: b.ads + 1 });
+      const neck = st.neck === 'slots' ? `Клиентов больше, чем мест — добавь рабочее место`
+        : st.neck === 'ads' ? `Места простаивают — нужна реклама`
+        : `Места и клиенты в балансе — расширяйся: место, потом реклама`;
       return `<div class="card ${frozen(d.id) ? 'danger' : ''}">
         <div class="biz-head"><div class="ico-box" style="font-size:22px">${d.icon}</div>
           <div class="grow"><div class="job-name">${d.name}</div>
             <div class="small muted">${frozen(d.id) ? '🔒 Опечатан' : b.mgr ? 'С управляющим: 100%' : `Без управляющего: ${Math.round(st.eff * 100)}%`}</div></div>
-          <div class="biz-profit ${st.profit < 0 ? 'bad' : ''}">${st.profit >= 0 ? '+' : ''}${fmt(st.profit)}<div class="small muted">₽/мес</div></div></div>
+          <div class="biz-profit ${st.profit < 0 ? 'bad' : ''}">${plus(st.profit)}<div class="small muted">₽/мес</div></div></div>
         <div class="biz-grid">
-          <div><span class="small muted">Производство</span><b>${fmt(st.cap)}</b></div>
-          <div><span class="small muted">Спрос</span><b>${fmt(st.demand)}</b></div>
-          <div><span class="small muted">Продано</span><b>${fmt(st.sold)}</b></div></div>
-        <div class="small ${neck ? 'gold' : 'good'}" style="margin-bottom:10px">${neck ? ic('alert-triangle') + ' ' + neck : ic('check') + ' Производство и спрос в балансе'}</div>
-        <div class="acts">
-          <button class="act" data-action="biz-machine" data-id="${d.id}" ${full ? 'disabled' : ''}>${ic('settings-2')}
-            <span class="act-name">${d.machine}</span><span class="act-sub">${b.m}/${d.slots}</span><span class="act-cost">${full ? 'макс.' : fmt(machineCost(d.id))}</span></button>
-          <button class="act" data-action="biz-hire" data-id="${d.id}" ${fullW ? 'disabled' : ''}>${ic('user-plus')}
-            <span class="act-name">${d.worker}</span><span class="act-sub">${b.w}/${d.slots} · ${fmt(d.salary)}/мес</span><span class="act-cost">${fullW ? 'макс.' : 'найм ' + fmt(hireCost(d.id))}</span></button>
-          <button class="act" data-action="biz-mkt" data-id="${d.id}" ${fullMk ? 'disabled' : ''}>${ic('speakerphone')}
-            <span class="act-name">Реклама</span><span class="act-sub">ур. ${b.mk}/${MKT_MAX}</span><span class="act-cost">${fullMk ? 'макс.' : fmt(mktCost(d.id))}</span></button></div>
+          <div><span class="small muted">Мощность</span><b>${fmt(st.cap)}</b><span class="small muted">${b.slots} мест</span></div>
+          <div><span class="small muted">Клиенты</span><b>${fmt(st.demand)}</b><span class="small muted">${d.unit}/мес</span></div>
+          <div><span class="small muted">Обслужено</span><b>${fmt(st.sold)}</b><span class="small muted">${d.unit}</span></div></div>
+        <div class="small ${st.neck ? 'gold' : 'good'}" style="margin-bottom:10px">${ic(st.neck ? 'bulb' : 'check')} ${neck}</div>
+        <div class="acts" style="grid-template-columns:1fr 1fr">
+          <button class="act" data-action="biz-slot" data-id="${d.id}" ${fullS ? 'disabled' : ''}>${ic('user-plus')}
+            <span class="act-name">Рабочее место</span><span class="act-sub">${d.slot} · ${b.slots}/${BIZ_MAX}</span>
+            <span class="act-sub ${dS > 0 ? 'good' : 'bad'}">${fullS ? 'максимум' : plus(dS) + ' ₽/мес'}</span>
+            <span class="act-cost">${fullS ? '' : fmt(slotCost(d.id)) + ' ₽'}</span></button>
+          <button class="act" data-action="biz-ad" data-id="${d.id}" ${fullA ? 'disabled' : ''}>${ic('speakerphone')}
+            <span class="act-name">Реклама</span><span class="act-sub">+${fmt(d.perSlot)} ${d.unit} · ${b.ads}/${BIZ_MAX - BIZ_START}</span>
+            <span class="act-sub ${dA > 0 ? 'good' : 'muted'}">${fullA ? 'максимум' : plus(dA) + ' ₽/мес'}</span>
+            <span class="act-cost">${fullA ? '' : fmt(adCost(d.id)) + ' ₽'}</span></button></div>
         <details class="more"><summary>${ic('receipt')} Доходы, расходы и управление</summary>
           <div class="kv small"><span>Выручка</span><b>${fmt(st.revenue)}</b></div>
-          <div class="kv small"><span>Зарплаты (${b.w} × ${fmt(d.salary)})</span><b>−${fmt(st.wages)}</b></div>
+          <div class="kv small"><span>Зарплаты (${b.slots} × ${fmt(n.salary)})</span><b>−${fmt(st.wages)}</b></div>
           <div class="kv small"><span>Аренда помещения</span><b>−${fmt(st.rent)}</b></div>
           ${b.mgr ? `<div class="kv small"><span>Управляющий</span><b>−${fmt(st.mgr)}</b></div>` : ''}
           <div class="kv small"><span>Налог ${Math.round(taxRate() * 100)}%</span><b>−${fmt(st.tax)}</b></div>
           <div class="kv small"><span>Вложено</span><b>${fmt(b.inv)}</b></div>
           <div class="row" style="margin-top:10px;flex-wrap:wrap">
-            <button class="btn btn-sm ${b.mgr ? 'btn-ghost' : 'btn-line'}" data-action="biz-mgr" data-id="${d.id}">${b.mgr ? 'Уволить управляющего' : `Нанять управляющего · ${fmt(d.mgrSalary)}/мес`}</button>
-            ${b.w > 0 ? `<button class="btn btn-sm btn-ghost" data-action="biz-fire" data-id="${d.id}">Уволить сотрудника</button>` : ''}
+            ${b.mgr ? `<button class="btn btn-sm btn-ghost" data-action="biz-mgr" data-id="${d.id}">Уволить управляющего</button>`
+              : `<button class="btn btn-sm btn-line" data-action="biz-mgr" data-id="${d.id}">Нанять управляющего · ${fmt(n.mgr)}/мес · ${plus(bizDelta(d.id, { mgr: true }))}</button>`}
             <button class="btn btn-sm btn-danger" data-action="biz-sell" data-id="${d.id}">Продать за ${fmt(b.inv * bizSellRate())}</button></div>
         </details></div>`;
     }).join('');
     const rest = BUSINESSES.filter(d => !S.biz[d.id]);
     const shop = rest.map(d => {
       const open = bizOpen(d);
+      const start = Math.round((BIZ_START * bizNum(d).rev - BIZ_START * bizNum(d).salary - bizNum(d).rent - bizNum(d).mgr) * (1 - BIZ_TAX));
       const reqs = reqTags(d.req, [`<span class="req ${rankIdx() >= d.rank ? 'ok' : 'no'}">${RANKS[d.rank].name}</span>`]);
       return `<div class="card job ${open ? '' : 'locked'}"><div class="ico-box" style="font-size:22px">${d.icon}</div>
         <div class="grow"><div class="job-name">${d.name}</div>
-          <div class="small muted">${fmt(d.price)} ₽ + лицензии ${fmt(licenseCost(d))} ₽ · до ${d.slots} мест</div>
+          <div class="small muted">${fmt(d.price)} ₽ + лицензии ${fmt(licenseCost(d))} ₽</div>
+          <div class="small good">≈ ${fmt(start)} ₽/мес на старте с управляющим, до ${BIZ_MAX} мест</div>
           ${open ? '' : `<div class="reqs">${reqs}</div>`}</div>
         ${open ? `<button class="btn btn-sm" data-action="biz-buy" data-id="${d.id}">Открыть</button>` : `<span class="tag lock">${ic('lock')}</span>`}</div>`;
     }).join('');
     return `<div class="title">Бизнес</div>
       ${owned.length ? `<div class="card"><div class="kv"><span>Прибыль всех бизнесов</span><b class="${total < 0 ? 'bad' : 'good'}">${fmt(total)} ₽/мес</b></div>
         <div class="small muted" style="margin-top:6px">Без управляющего бизнес работает на ${Math.round(ownerEff() * 100)}% — ${S.job ? 'ты занят на работе' : 'ты занят только бизнесом'}.</div></div>${cards}`
-        : '<p class="hint">Прибыль = продажи × наценка − зарплаты − аренда − налог. Каждому рабочему месту нужны станок и сотрудник, а продаётся не больше, чем есть спроса.</p>'}
+        : `<p class="hint">Рабочие места дают мощность, реклама — клиентов. Заработаешь на меньшем из двух, поэтому развивай их по очереди. На каждой кнопке видно, сколько прибыли она добавит.</p>`}
       ${rest.length ? `<details class="more" ${owned.length ? '' : 'open'}><summary>${ic('plus')} Открыть новый бизнес</summary>${shop}</details>` : ''}`;
   }
 
@@ -1210,11 +1223,13 @@
     });
     $('#ava').classList.toggle('dot', profileClaimable());
     $('.nav [data-tab="cases"]').classList.toggle('dot', !cdLeft(CASE.free));
-    $('.nav [data-tab="career"]').classList.toggle('dot', !!(S.gig && now >= S.gig.until) || (studyReady() && S.money >= Math.min(...Object.values(S.skills).map(skillCost))));
+    $('.nav [data-tab="career"]').classList.toggle('dot', !!(S.gig && now >= S.gig.until));
     $('.nav [data-tab="conn"]').classList.toggle('dot', !cdLeft(CASE.conn_free) || !!S.favor || !!(S.deal && now >= S.deal.until));
     // закончился перерыв в учёбе или подработка — перерисовать карьеру
-    if (tab === 'career' && ((S.study.left <= 0 && now >= S.study.until) ||
-        (S.gig && now >= S.gig.until && sub.career === 'gigs' && !$('[data-action="gig-claim"]')))) render();
+    if (tab === 'career' && S.gig && now >= S.gig.until && sub.career === 'gigs' && !$('[data-action="gig-claim"]')) render();
+    if (tab === 'career' && sub.career === 'skills') {
+      document.querySelectorAll('[data-action="skill"]').forEach(b => { b.disabled = S.money < skillPrice(S.skills[b.dataset.id]); });
+    }
   }
 
   // Улучшение бизнеса: засчитывается в задания и показывает, как изменилась прибыль
@@ -1258,12 +1273,10 @@
     }),
     skill: id => {
       const lvl = S.skills[id];
-      if (!studyReady() || lvl >= SKILL_MAX || !pay(skillCost(lvl))) return;
+      if (lvl >= SKILL_MAX || !pay(skillPrice(lvl))) return;
       S.skills[id]++;
-      S.study.left--;
       progress('skill');
-      if (S.study.left <= 0) S.study.until = Date.now() + studyRest() * 3600e3;
-      haptic('medium'); toast(`${SKILL[id].name}: уровень ${S.skills[id]}${S.study.left <= 0 ? ' · перерыв ' + hoursText(studyRest()) : ''}`);
+      haptic('medium'); toast(`${SKILL[id].name}: уровень ${S.skills[id]}`);
       save(); render();
     },
     gig: id => {
@@ -1341,7 +1354,7 @@
       const lic = licenseCost(d);
       if (!pay(d.price + (how === 'bribe' ? Math.round(lic / BRIBE_DIVISOR) : lic))) return;
       closeModal();
-      S.biz[id] = { m: d.start, w: d.start, mk: 0, mgr: false, inv: d.price };
+      S.biz[id] = { slots: BIZ_START, ads: 0, mgr: false, inv: d.price };
       if (how === 'bribe' && Math.random() * 100 < bribeRisk('license')) {
         S.money = Math.max(0, S.money - lic * BRIBE_FINE);
         showModal(`<h3>🚨 Попался</h3><p>Взятку за лицензию заметили. Бизнес оформили, но пришлось заплатить штраф ${fmt(lic * BRIBE_FINE)} ₽.</p>
@@ -1352,27 +1365,21 @@
       }
       save(); render();
     },
-    'biz-machine': id => bizUp(id, () => {
-      const b = S.biz[id], c = machineCost(id);
-      if (b.m >= BIZ[id].slots || !pay(c)) return false;
-      b.m++; b.inv += c;
+    'biz-slot': id => bizUp(id, () => {
+      const b = S.biz[id], c = slotCost(id);
+      if (b.slots >= BIZ_MAX || !pay(c)) return false;
+      b.slots++; b.inv += c;
     }),
-    'biz-hire': id => bizUp(id, () => {
-      const b = S.biz[id];
-      if (b.w >= BIZ[id].slots || !pay(hireCost(id))) return false;
-      b.w++;
-    }),
-    'biz-fire': id => { const b = S.biz[id]; if (!b || b.w <= 0) return; b.w--; haptic('light'); save(); render(); },
-    'biz-mkt': id => bizUp(id, () => {
-      const b = S.biz[id], c = mktCost(id);
-      if (b.mk >= MKT_MAX || !pay(c)) return false;
-      b.mk++; b.inv += c;
+    'biz-ad': id => bizUp(id, () => {
+      const b = S.biz[id], c = adCost(id);
+      if (b.ads >= BIZ_MAX - BIZ_START || !pay(c)) return false;
+      b.ads++; b.inv += c;
     }),
     'biz-mgr': id => {
       const b = S.biz[id];
       if (!b) return;
       if (b.mgr) { b.mgr = false; haptic('light'); save(); render(); return; }
-      bizUp(id, () => { if (!pay(hireCost(id) * 2)) return false; b.mgr = true; });
+      bizUp(id, () => { if (!pay(mgrHire(id))) return false; b.mgr = true; });
     },
     'biz-sell': id => {
       const b = S.biz[id], d = BIZ[id];
@@ -1458,7 +1465,7 @@
     },
     'dbg-free': () => {
       if (!DEBUG) return;
-      S.cd = {}; S.study = { left: STUDY_BATCH, until: 0 }; if (S.gig) S.gig.until = 0;
+      S.cd = {}; if (S.gig) S.gig.until = 0;
       for (const c of Object.values(S.conn)) { c.cd = {}; c.sp = 0; }
       save(); render(); showProfile(); toast('Таймеры сброшены');
     },
