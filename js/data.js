@@ -111,6 +111,38 @@ const ITEMS = [
     img: 'img/cars/c_huayra.png', credit: 'Matti Blume · CC BY-SA 4.0' },
   { id: 'c_jesko', cat: 'car', name: 'Koenigsegg Jesko', icon: '🏎️', rarity: 'mythic', bonus: 60, t: ['sc'], value: 320e6,
     img: 'img/cars/c_jesko.png', credit: 'Matti Blume · CC BY-SA 4.0' },
+  { id: 'c_moskvich', cat: 'car', name: 'Москвич-412', icon: '🚗', rarity: 'common', bonus: 2, t: ['ru'], value: 100e3,
+    img: 'img/cars/c_moskvich.png', credit: 'Sergey Korovkin 84 · CC BY-SA 4.0' },
+  { id: 'c_lanos', cat: 'car', name: 'Chevrolet Lanos', icon: '🚗', rarity: 'common', bonus: 2, value: 300e3,
+    img: 'img/cars/c_lanos.png', credit: 'IFCAR · Public domain' },
+  { id: 'c_focus', cat: 'car', name: 'Ford Focus', icon: '🚗', rarity: 'common', bonus: 3, value: 900e3,
+    img: 'img/cars/c_focus.png', credit: 'M 93 · CC BY-SA 3.0 de' },
+  { id: 'c_largus', cat: 'car', name: 'Lada Largus', icon: '🚙', rarity: 'common', bonus: 3, t: ['ru'], value: 1.3e6,
+    img: 'img/cars/c_largus.png', credit: 'Throwawayacc222 · CC0' },
+  { id: 'c_uaz', cat: 'car', name: 'УАЗ Патриот (списанный из полиции)', icon: '🚙', rarity: 'common', bonus: 4, t: ['ru'], value: 1.8e6,
+    img: 'img/cars/c_uaz.png', credit: 'Max071086 · CC BY-SA 4.0' },
+  { id: 'c_corolla', cat: 'car', name: 'Toyota Corolla', icon: '🚘', rarity: 'rare', bonus: 7, t: ['jp'], value: 2.6e6,
+    img: 'img/cars/c_corolla.png', credit: 'EurovisionNim · CC BY-SA 4.0' },
+  { id: 'c_passat', cat: 'car', name: 'Volkswagen Passat', icon: '🚘', rarity: 'rare', bonus: 8, t: ['de'], value: 3.3e6,
+    img: 'img/cars/c_passat.png', credit: 'Vauxford · CC BY-SA 4.0' },
+  { id: 'c_a4', cat: 'car', name: 'Audi A4', icon: '🚘', rarity: 'rare', bonus: 9, t: ['de'], value: 4e6,
+    img: 'img/cars/c_a4.png', credit: 'Alexander-93 · CC BY-SA 4.0' },
+  { id: 'c_prado', cat: 'car', name: 'Toyota Land Cruiser Prado', icon: '🚙', rarity: 'epic', bonus: 14, t: ['jp'], value: 8.5e6,
+    img: 'img/cars/c_prado.png', credit: 'Mr.choppers · CC BY-SA 4.0' },
+  { id: 'c_m3', cat: 'car', name: 'BMW M3', icon: '🏎️', rarity: 'epic', bonus: 16, t: ['de'], value: 12e6,
+    img: 'img/cars/c_m3.png', credit: 'Alexander Migl · CC BY-SA 4.0' },
+  { id: 'c_tesla', cat: 'car', name: 'Tesla Model S Plaid', icon: '🚘', rarity: 'epic', bonus: 16, value: 13e6,
+    img: 'img/cars/c_tesla.png', credit: 'Peteratkins · CC BY-SA 4.0' },
+  { id: 'c_range', cat: 'car', name: 'Range Rover', icon: '🚙', rarity: 'epic', bonus: 18, value: 19e6,
+    img: 'img/cars/c_range.png', credit: 'Vauxford · CC BY-SA 4.0' },
+  { id: 'c_amggt', cat: 'car', name: 'Mercedes-AMG GT', icon: '🏎️', rarity: 'legendary', bonus: 30, t: ['de'], value: 25e6,
+    img: 'img/cars/c_amggt.png', credit: 'Thesupermat · CC BY-SA 4.0' },
+  { id: 'c_db11', cat: 'car', name: 'Aston Martin DB11', icon: '🏎️', rarity: 'legendary', bonus: 32, value: 30e6,
+    img: 'img/cars/c_db11.png', credit: 'Vauxford · CC BY-SA 4.0' },
+  { id: 'c_nevera', cat: 'car', name: 'Rimac Nevera', icon: '🏎️', rarity: 'mythic', bonus: 60, value: 220e6,
+    img: 'img/cars/c_nevera.png', credit: 'MrWalkr · CC BY-SA 4.0' },
+  { id: 'c_laferrari', cat: 'car', name: 'LaFerrari', icon: '🏎️', rarity: 'mythic', bonus: 58, value: 300e6,
+    img: 'img/cars/c_laferrari.png', credit: 'Axion23 · CC BY 2.0' },
   { id: 'h_garage', cat: 'home', name: 'Гараж',                    icon: '🅿️', rarity: 'common',    bonus: 4e3,  value: 600e3,
     img: 'img/homes/h_garage.jpg', credit: 'Celest · CC BY 4.0' },
   { id: 'h_bed',    cat: 'home', name: 'Койка в общаге',           icon: '🛏️', rarity: 'common',    bonus: 5e3,  value: 400e3,
@@ -165,6 +197,24 @@ const ITEMS = [
   { id: 'h_monaco', cat: 'home', name: 'Пентхаус в Монако', icon: '🎰', rarity: 'mythic', bonus: 12e6, t: ['abroad'], value: 3e9,
     img: 'img/homes/h_monaco.jpg', credit: 'Tobi 87 · CC BY-SA 3.0' },
 
+  { id: 'h_brezh', cat: 'home', name: 'Брежневка в регионе', icon: '🏢', rarity: 'common', bonus: 12e3, value: 2.2e6,
+    img: 'img/homes/h_brezh.jpg', credit: 'Jelger Groeneveld · CC BY 2.0' },
+  { id: 'h_kazan', cat: 'home', name: 'Квартира в Казани', icon: '🕌', rarity: 'rare', bonus: 40e3, value: 8e6,
+    img: 'img/homes/h_kazan.jpg', credit: 'Vitaly Ilyin · CC BY-SA 4.0' },
+  { id: 'h_spb', cat: 'home', name: 'Квартира в Петербурге', icon: '🌉', rarity: 'rare', bonus: 55e3, value: 11e6,
+    img: 'img/homes/h_spb.jpg', credit: 'A.Savin · FAL' },
+  { id: 'h_loft', cat: 'home', name: 'Лофт в центре', icon: '🏭', rarity: 'rare', bonus: 65e3, value: 13e6,
+    img: 'img/homes/h_loft.jpg', credit: 'Jennifer D. Ames · CC BY-SA 3.0' },
+  { id: 'h_polyana', cat: 'home', name: 'Шале в Красной Поляне', icon: '🏔️', rarity: 'epic', bonus: 150e3, value: 30e6,
+    img: 'img/homes/h_polyana.jpg', credit: 'Sergei Kazantsev · CC BY-SA 4.0' },
+  { id: 'h_chalet', cat: 'home', name: 'Шале в Альпах', icon: '🏔️', rarity: 'epic', bonus: 180e3, value: 38e6,
+    img: 'img/homes/h_chalet.jpg', credit: 'Leemburg-CH · CC BY-SA 4.0' },
+  { id: 'h_tuscany', cat: 'home', name: 'Вилла в Тоскане', icon: '🌳', rarity: 'legendary', bonus: 900e3, value: 180e6,
+    img: 'img/homes/h_tuscany.jpg', credit: 'Anton Sulsky · CC BY 2.0' },
+  { id: 'h_ny', cat: 'home', name: 'Пентхаус на Манхэттене', icon: '🗽', rarity: 'legendary', bonus: 1.7e6, value: 350e6,
+    img: 'img/homes/h_ny.jpg', credit: 'Gryffindor · CC BY-SA 3.0' },
+  { id: 'h_tower', cat: 'home', name: 'Собственный небоскрёб', icon: '🏙️', rarity: 'mythic', bonus: 25e6, value: 5e9,
+    img: 'img/homes/h_tower.jpg', credit: 'Anton Galakhov · CC BY-SA 4.0' },
 
   // Связи: cat conn, perk — что даёт (см. PERKS), lv — сила по уровню доверия 1–5,
   // special — особая услуга на максимальном доверии (см. SPECIALS)
@@ -199,56 +249,56 @@ const CASES = [
 
   { id: 'car_garage', cover: 'img/cases/car_ru.jpg', credit: 'ShinePhantom · CC BY-SA 3.0', name: 'Гаражный кооператив', icon: '🔧', price: 'auto', tier: 'cheap',
     desc: 'Жигули, Нива, Матиз — дёшево и сердито', w: W_CHEAP,
-    items: ['c_2109', 'c_2107', 'c_matiz', 'c_logan', 'c_granta', 'c_niva'] },
+    items: ['c_2109', 'c_2107', 'c_matiz', 'c_logan', 'c_granta', 'c_niva', 'c_moskvich', 'c_lanos', 'c_largus'] },
   { id: 'car_used', cover: 'img/cases/car_used.jpg', credit: '293.xx.xxx.xx · CC BY-SA 3.0', name: 'Авторынок б/у', icon: '🚗', price: 'auto', tier: 'cheap',
     desc: 'Народные машины и иногда иномарка получше', w: W_CHEAP,
-    items: ['c_logan', 'c_granta', 'c_niva', 'c_polo', 'c_vesta', 'c_solaris', 'c_rio', 'c_jolion', 'c_tiggo', 'c_octavia', 'c_k5', 'c_mazda6'] },
+    items: ['c_logan', 'c_granta', 'c_niva', 'c_polo', 'c_vesta', 'c_solaris', 'c_rio', 'c_jolion', 'c_tiggo', 'c_octavia', 'c_k5', 'c_mazda6', 'c_focus', 'c_largus', 'c_uaz', 'c_corolla', 'c_passat'] },
   { id: 'car_new', cover: 'img/cases/car_new.jpg', credit: 'Swoodchatla · CC BY-SA 3.0', name: 'Автосалон', icon: '🚘', price: 'auto', tier: 'mid',
     desc: 'Новые машины бизнес-класса', w: W_MID,
-    items: ['c_octavia', 'c_k5', 'c_mazda6', 'c_xtrail', 'c_camry', 'c_rav4', 'c_tiguan', 'c_monjaro', 'c_eclass', 'c_lc300', 'c_x5', 'c_cayenne'] },
+    items: ['c_octavia', 'c_k5', 'c_mazda6', 'c_xtrail', 'c_camry', 'c_rav4', 'c_tiguan', 'c_monjaro', 'c_eclass', 'c_lc300', 'c_x5', 'c_cayenne', 'c_corolla', 'c_passat', 'c_a4', 'c_prado', 'c_m3'] },
   { id: 'car_premium', cover: 'img/cases/car_premium.jpg', credit: 'Diego Delso · CC BY-SA 3.0', name: 'Премиум-салон', icon: '💼', price: 'auto', tier: 'elite',
     desc: 'Мощные седаны и внедорожники, шанс на спорткар', w: { common: 0, rare: 0, epic: 80, legendary: 20, mythic: 0 },
-    items: ['c_eclass', 'c_lc300', 'c_x5', 'c_cayenne', 'c_gtr', 'c_m5', 'c_rs6', 'c_sclass', 'c_lx', 'c_911', 'c_g63', 'c_bentley'] },
+    items: ['c_eclass', 'c_lc300', 'c_x5', 'c_cayenne', 'c_gtr', 'c_m5', 'c_rs6', 'c_sclass', 'c_lx', 'c_911', 'c_g63', 'c_bentley', 'c_prado', 'c_m3', 'c_tesla', 'c_range', 'c_amggt', 'c_db11'] },
   { id: 'car_elite', cover: 'img/cases/car_elite.jpg', credit: 'Saaremees · CC BY-SA 4.0', name: 'Элитный автосалон Дубая', icon: '🏎️', price: 'auto', tier: 'elite',
     desc: 'Спорткары и редкие роскошные машины', w: { common: 0, rare: 0, epic: 0, legendary: 85, mythic: 15 },
-    items: ['c_911', 'c_g63', 'c_bentley', 'c_mclaren', 'c_ferrari', 'c_urus', 'c_aventador', 'c_phantom', 'c_cullinan'] },
+    items: ['c_911', 'c_g63', 'c_bentley', 'c_mclaren', 'c_ferrari', 'c_urus', 'c_aventador', 'c_phantom', 'c_cullinan', 'c_amggt', 'c_db11'] },
   { id: 'car_hyper', cover: 'img/cases/car_sc.jpg', credit: 'Axion23 · CC BY 2.0', name: 'Гиперкары', icon: '🏁', price: 'auto', tier: 'elite',
     desc: 'Только здесь: Bugatti, Pagani, Koenigsegg', w: { common: 0, rare: 0, epic: 0, legendary: 55, mythic: 45 },
-    items: ['c_mclaren', 'c_ferrari', 'c_urus', 'c_aventador', 'c_huayra', 'c_jesko', 'c_chiron'] },
+    items: ['c_mclaren', 'c_ferrari', 'c_urus', 'c_aventador', 'c_huayra', 'c_jesko', 'c_chiron', 'c_laferrari', 'c_nevera'] },
   { id: 'car_cn', cover: 'img/cases/car_cn.jpg', credit: 'N509FZ · CC BY-SA 4.0', name: 'Китайцы', icon: '🇨🇳', price: 'auto', tier: 'cheap', theme: true,
     desc: 'Haval, Chery, Geely', w: { common: 55, rare: 45, epic: 0, legendary: 0, mythic: 0 }, items: ['c_jolion', 'c_tiggo', 'c_monjaro'] },
   { id: 'car_jp', cover: 'img/cases/car_jp.jpg', credit: 'TTTNIS · CC0', name: 'Японцы', icon: '🇯🇵', price: 'auto', tier: 'mid', theme: true,
     desc: 'Toyota, Nissan, Mazda, Lexus', w: { common: 0, rare: 65, epic: 35, legendary: 0, mythic: 0 },
-    items: ['c_mazda6', 'c_xtrail', 'c_camry', 'c_rav4', 'c_lc300', 'c_gtr', 'c_lx'] },
+    items: ['c_mazda6', 'c_xtrail', 'c_camry', 'c_rav4', 'c_lc300', 'c_gtr', 'c_lx', 'c_corolla', 'c_prado'] },
   { id: 'car_de', cover: 'img/cases/car_de.jpg', credit: 'Diego Delso · CC BY-SA 3.0', name: 'Немецкое качество', icon: '🇩🇪', price: 'auto', tier: 'mid', theme: true,
     desc: 'VW, Skoda, BMW, Mercedes, Audi, Porsche', w: { common: 0, rare: 55, epic: 42, legendary: 3, mythic: 0 },
-    items: ['c_octavia', 'c_tiguan', 'c_eclass', 'c_x5', 'c_cayenne', 'c_m5', 'c_rs6', 'c_sclass', 'c_911', 'c_g63'] },
+    items: ['c_octavia', 'c_tiguan', 'c_eclass', 'c_x5', 'c_cayenne', 'c_m5', 'c_rs6', 'c_sclass', 'c_911', 'c_g63', 'c_passat', 'c_a4', 'c_m3', 'c_amggt'] },
 
   { id: 'home_dorm', cover: 'img/cases/home_dorm.jpg', credit: 'benuski from Richmond, VA, USA · CC BY-SA 2.0', name: 'Общаги и гаражи', icon: '🛏️', price: 'auto', tier: 'cheap',
     desc: 'Койка, гараж, дача, дом в деревне', w: W_CHEAP, items: ['h_bed', 'h_garage', 'h_dacha', 'h_village'] },
   { id: 'home_used', cover: 'img/cases/home_used.jpg', credit: 'Andreas Wolf 01 · CC BY-SA 4.0', name: 'Вторичка', icon: '🏚️', price: 'auto', tier: 'cheap',
     desc: 'Комнаты и квартиры в старых домах', w: { common: 75, rare: 25, epic: 0, legendary: 0, mythic: 0 },
-    items: ['h_garage', 'h_room', 'h_studio', 'h_flat'] },
+    items: ['h_garage', 'h_room', 'h_studio', 'h_flat', 'h_brezh', 'h_kazan'] },
   { id: 'home_new', cover: 'img/cases/home_new.jpg', credit: 'Anneli Vaniala · CC BY-SA 4.0', name: 'Новостройки', icon: '🏗️', price: 'auto', tier: 'mid',
-    desc: 'Квартиры, таунхаусы и дома', w: W_MID, items: ['h_studio', 'h_flat', 'h_newflat', 'h_house', 'h_town'] },
+    desc: 'Квартиры, таунхаусы и дома', w: W_MID, items: ['h_studio', 'h_flat', 'h_newflat', 'h_house', 'h_town', 'h_kazan', 'h_spb', 'h_loft', 'h_polyana'] },
   { id: 'home_elite', cover: 'img/cases/home_elite.jpg', credit: 'mos.ru · CC BY 4.0', name: 'Элитная Москва', icon: '🌆', price: 'auto', tier: 'elite',
     desc: 'Патриаршие, Москва-Сити, пентхаусы', w: { common: 0, rare: 0, epic: 70, legendary: 30, mythic: 0 },
     items: ['h_patriki', 'h_city', 'h_pent', 'h_hotel'] },
   { id: 'home_abroad', cover: 'img/cases/home_abroad.jpg', credit: 'Phil6007 · CC BY-SA 4.0', name: 'Зарубежная элитка', icon: '✈️', price: 'auto', tier: 'elite',
     desc: 'Дубай, Лондон, Лазурный берег, Монако', w: { common: 0, rare: 0, epic: 60, legendary: 36, mythic: 4 },
-    items: ['h_cottage', 'h_dubai_apt', 'h_palm', 'h_london', 'h_riviera', 'h_monaco'] },
+    items: ['h_cottage', 'h_dubai_apt', 'h_palm', 'h_london', 'h_riviera', 'h_monaco', 'h_chalet', 'h_tuscany', 'h_ny'] },
   { id: 'home_castle', cover: 'img/cases/home_castle.jpg', credit: 'WorldKnowledge0815 · CC BY-SA 3.0', name: 'Замки и острова', icon: '🏰', price: 'auto', tier: 'elite',
     desc: 'Только здесь: замок и частный остров', w: { common: 0, rare: 0, epic: 0, legendary: 65, mythic: 35 },
-    items: ['h_rublyovka', 'h_palm', 'h_london', 'h_castle', 'h_island', 'h_riviera', 'h_monaco'] },
+    items: ['h_rublyovka', 'h_palm', 'h_london', 'h_castle', 'h_island', 'h_riviera', 'h_monaco', 'h_ny', 'h_tower'] },
   { id: 'home_resort', cover: 'img/cases/home_resort.jpg', credit: 'Narek75 · CC BY-SA 4.0', name: 'Курорты', icon: '🏖️', price: 'auto', tier: 'mid', theme: true,
     desc: 'Батуми, Алания, Сочи, Дубай', w: { common: 35, rare: 55, epic: 10, legendary: 0, mythic: 0 },
-    items: ['h_batumi', 'h_alanya', 'h_sochi', 'h_dubai_apt'] },
+    items: ['h_batumi', 'h_alanya', 'h_sochi', 'h_dubai_apt', 'h_polyana'] },
   { id: 'home_country', cover: 'img/cases/home_country.jpg', credit: 'Peretz Partensky from San Francisco, USA · CC BY-SA 2.0', name: 'Загородная жизнь', icon: '🌲', price: 'auto', tier: 'mid', theme: true,
     desc: 'Дачи, дома в деревне, коттеджи и таунхаусы', w: { common: 50, rare: 0, epic: 50, legendary: 0, mythic: 0 },
-    items: ['h_dacha', 'h_village', 'h_house', 'h_town'] },
+    items: ['h_dacha', 'h_village', 'h_house', 'h_town', 'h_polyana'] },
   { id: 'home_msk', cover: 'img/cases/home_msk.jpg', credit: 'U.S. Department of State · Public domain', name: 'Москва', icon: '🏙️', price: 'auto', tier: 'mid', theme: true,
     desc: 'От коммуналки до квартиры на Патриарших', w: { common: 30, rare: 55, epic: 15, legendary: 0, mythic: 0 },
-    items: ['h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_patriki'] },
+    items: ['h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_patriki', 'h_loft'] },
 
   { id: 'conn_free', cover: 'img/cases/conn_free.jpg', credit: 'US Embassy from New Zealand · CC BY 2.0', name: 'Знакомство дня', icon: '🍀', price: 0, cooldown: 24 * 3600e3, tier: 'free',
     desc: 'Раз в сутки: полезный человек', w: { common: 75, rare: 20, epic: 4, legendary: 0.9, mythic: 0.1 },
@@ -578,26 +628,33 @@ const CAR_HP = {
   c_gtr: 565, c_m5: 600, c_rs6: 600, c_sclass: 367, c_lx: 409, c_911: 385, c_g63: 585, c_bentley: 659,
   c_mclaren: 720, c_ferrari: 830, c_urus: 666, c_aventador: 770, c_phantom: 571, c_cullinan: 571,
   c_huayra: 730, c_jesko: 1600, c_chiron: 1500,
+  c_moskvich: 75, c_lanos: 86, c_focus: 125, c_largus: 106, c_uaz: 150, c_corolla: 122, c_passat: 150, c_a4: 190, c_prado: 249, c_m3: 510, c_tesla: 1020, c_range: 400, c_amggt: 585, c_db11: 630, c_nevera: 1914, c_laferrari: 963,
 };
-// fuel — какой бензин нужен; burn — литров за заезд; fee — взнос (выигрыш = fee × RACE_PRIZE)
+// Ставки растут вместе с игроком: взнос = RACE_FEE_MONTHS месячного дохода × mult класса (не меньше RACE_FEE_MIN),
+// выигрыш = взнос × RACE_PRIZE_RATE (300 тыс → 1 млн, 1 млн → 3,3 млн).
+// Так гонки всегда ощутимы, но на полном лимите дают примерно +50–75% к доходу, а не ломают экономику.
 const RACE_CLASSES = {
-  common:    { name: 'D', fuel: '92',  burn: 4,  fee: 300e3 },
-  rare:      { name: 'C', fuel: '95',  burn: 5,  fee: 2e6 },
-  epic:      { name: 'B', fuel: '95',  burn: 6,  fee: 10e6 },
-  legendary: { name: 'A', fuel: '100', burn: 8,  fee: 50e6 },
-  mythic:    { name: 'S', fuel: '100', burn: 10, fee: 200e6 },
+  common:    { name: 'D', mult: 1 },
+  rare:      { name: 'C', mult: 1.2 },
+  epic:      { name: 'B', mult: 1.4 },
+  legendary: { name: 'A', mult: 1.7 },
+  mythic:    { name: 'S', mult: 2 },
 };
-const FUELS = {                       // цена за литр
-  '92':  { price: 56, octane: 0 },
-  '95':  { price: 62, octane: 1 },
-  '100': { price: 85, octane: 2 },
-};
-const TANK_L = 50;
-const RACE_PRIZE = 1.8;              // победитель забирает 1,8 взноса (остальное — организаторам)
-const RACES_PER_DAY = 8;
-const FUEL_BETTER = 0.03;            // бензин лучше нужного: +3% мощности
-const FUEL_WORSE = 0.06;             // хуже нужного на ступень: −6% мощности
-const FUEL_WORSE_BREAK = 12;         // …и +12% к шансу поломки за заезд
+const RACE_FEE_MONTHS = 0.3;
+const RACE_FEE_MIN = 20e3;
+const RACE_PRIZE_RATE = 10 / 3;
+// Бензин не покупается: у каждой машины свой бак на TANK_RACES заездов, деления восстанавливаются сами.
+// Плюс общий лимит заездов на все машины — RACE_POOL, восстанавливается за час.
+const TANK_RACES = 5;
+const TANK_REGEN_MIN = 12;           // одно деление бака — за столько минут (полный бак за час)
+const RACE_POOL = 10;
+const POOL_REGEN_MIN = 6;            // один заезд в общий лимит — за столько минут (10 за час)
+// Соперник твоего класса: мощность от OPP_HP_MIN до OPP_HP_MAX от твоей. Подобрано расчётом:
+// средний игрок выигрывает ~68%, умелый ~90%.
+const OPP_HP_MIN = 0.85;
+const OPP_HP_MAX = 1.05;
+const SHIFT_PERFECT = -0.15;         // передача в зелёной зоне, с
+const SHIFT_MISS = 0.3;              // промах, с
 const WEAR_PER_RACE = 8;             // износ за заезд, %
 const BREAK_PER_WEAR = 0.25;         // шанс поломки = износ × это (при 100% износа — 25%)
 const SERVICE_COST = 0.015;          // ТО (износ → 0) — доля стоимости машины
@@ -608,10 +665,10 @@ const quarterMile = hp => Math.max(8.8, 23 - 4.3 * Math.log(hp / 50));
 // ---------- бесплатные кейсы растут вместе с игроком ----------
 // Ежедневный кейс: набор вещей зависит от статуса (индекс в RANKS) — от «копейки» до машин бизнес-класса.
 const FREE_TIERS = [
-  { rank: 0, items: ['c_2109', 'c_2107', 'c_matiz', 'h_bed', 'h_garage'] },
-  { rank: 2, items: ['c_2107', 'c_matiz', 'c_logan', 'c_granta', 'c_niva', 'h_bed', 'h_garage', 'h_dacha', 'h_village'] },
-  { rank: 4, items: ['c_granta', 'c_niva', 'c_polo', 'c_vesta', 'c_solaris', 'c_rio', 'c_tiggo', 'c_octavia', 'h_dacha', 'h_village', 'h_room', 'h_studio'] },
-  { rank: 6, items: ['c_solaris', 'c_rio', 'c_jolion', 'c_camry', 'c_k5', 'c_tiguan', 'c_eclass', 'h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_house'] },
+  { rank: 0, items: ['c_2109', 'c_2107', 'c_matiz', 'h_bed', 'h_garage', 'c_moskvich', 'c_lanos'] },
+  { rank: 2, items: ['c_2107', 'c_matiz', 'c_logan', 'c_granta', 'c_niva', 'h_bed', 'h_garage', 'h_dacha', 'h_village', 'c_largus', 'c_focus'] },
+  { rank: 4, items: ['c_granta', 'c_niva', 'c_polo', 'c_vesta', 'c_solaris', 'c_rio', 'c_tiggo', 'c_octavia', 'h_dacha', 'h_village', 'h_room', 'h_studio', 'c_uaz', 'c_corolla', 'h_brezh'] },
+  { rank: 6, items: ['c_solaris', 'c_rio', 'c_jolion', 'c_camry', 'c_k5', 'c_tiguan', 'c_eclass', 'h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_house', 'c_passat', 'c_a4', 'h_kazan'] },
 ];
 // Связи появляются в «Знакомстве дня», когда они игроку уже полезны (минимальный статус)
 const CONN_MIN_RANK = {
