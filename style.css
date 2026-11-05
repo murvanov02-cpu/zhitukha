@@ -391,3 +391,10 @@ details.more-card .card { background: var(--card2); }
   background: var(--gold); color: #1a1407; font-size: 11px; font-weight: 800; display: grid; place-items: center;
   box-shadow: 0 0 0 2px var(--bg); }
 .choice .btn-danger .small, .choice .btn-line .small { opacity: .85; }
+
+/* погоны на службе */
+.pogon { width: 34px; height: 88px; object-fit: contain; flex: none; filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); }
+.pogon-pair { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 6px 0 10px; color: var(--muted); font-size: 22px; }
+.pogon-pair .pogon { width: 46px; height: 120px; }
+.pogon-pair .pogon.old { opacity: .45; transform: scale(.85); }
+.pogon-pair .pogon.new { animation: winpop .6s ease-out; }
