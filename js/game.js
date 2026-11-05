@@ -38,6 +38,8 @@
       event: null, nextEvent: Date.now() + 2 * 3600e3, lastEvent: '',
       deal: null, dealDay: '',    // сделка с олигархом: { amount, ret, until }
       taxFreeUntil: 0,
+      promo: [],                  // хэши уже активированных промокодов
+      badges: [],                 // значки игрока
     };
   }
   const newConn = xp => ({ xp, last: Date.now(), cd: {}, sp: 0 });
@@ -487,6 +489,40 @@
   }
   const specialLeft = id => Math.max(0, (S.conn[id].sp || 0) + SPECIAL_CD_H * 3600e3 - Date.now());
 
+  // ---------- промокоды ----------
+  const normCode = c => c.trim().toUpperCase().replace(/\s+/g, '');
+  async function sha256(text) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  function rewardList(r) {
+    return [r.money ? `+${fmt(r.money)} ₽` : '',
+      ...Object.entries(r.tickets || {}).map(([id, n]) => `${ticketName(id)}${n > 1 ? ' ×' + n : ''}`),
+      r.badge ? `значок «${BADGES[r.badge].name}»` : ''].filter(Boolean).join(', ');
+  }
+  async function redeem(raw) {
+    const code = normCode(raw || '');
+    if (!code) { toast('Введи промокод'); return; }
+    if (!(window.crypto && crypto.subtle)) { toast('Промокоды не работают в этом браузере'); return; }
+    const hash = await sha256(code);
+    const p = PROMO_CODES.find(x => x.hash === hash);
+    if (!p) { toast('Такого промокода нет'); haptic('err'); return; }
+    if (S.promo.includes(hash)) { toast('Этот промокод уже активирован'); haptic('err'); return; }
+    if (p.until && new Date() > new Date(p.until + 'T23:59:59')) { toast('Срок действия промокода истёк'); haptic('err'); return; }
+    S.promo.push(hash);
+    const r = p.reward;
+    if (r.money) earn(r.money);
+    for (const [id, n] of Object.entries(r.tickets || {})) for (let i = 0; i < n; i++) giveTicket(id);
+    if (r.badge && !S.badges.includes(r.badge)) S.badges.push(r.badge);
+    save(); render(); showName();
+    showModal(`<div class="drop"><div class="drop-icon" style="--rbg:var(--gold-bg)">${ic('gift', 'gold')}</div>
+      <div class="drop-name">Промокод активирован</div><div class="small muted">${p.label || ''}</div>
+      <div class="drop-bonus">${rewardList(r)}</div>
+      <button class="btn full" style="margin-top:12px" data-action="close">Отлично</button></div>`);
+    haptic('ok');
+  }
+  const badgeIcons = () => S.badges.filter(b => BADGES[b]).map(b => `<i class="ti ti-${BADGES[b].icon} gold" title="${BADGES[b].name}"></i>`).join(' ');
+
   // ---------- сделка с олигархом ----------
   const dealMax = () => Math.min(S.money, monthsMoney(DEAL_INCOME_H, 50e3));
 
@@ -771,6 +807,7 @@
     showModal(`${sheetHead('Профиль')}
       <div class="card"><div class="row"><div class="ava">${$('#ava').textContent}</div>
         <div class="grow"><div class="big-text">${r.cur.icon} ${r.cur.name}</div>
+          ${S.badges.length ? `<div class="small gold">${S.badges.filter(b => BADGES[b]).map(b => `${ic(BADGES[b].icon)} ${BADGES[b].name}`).join(' · ')}</div>` : ''}
           <div class="bar"><i style="width:${r.pct}%"></i></div>
           <div class="small muted">${r.next ? `До «${r.next.name}»: ${fmt(r.next.min - r.nw)} ₽ состояния` : 'Вершина пищевой цепи'}</div></div></div></div>
       ${lifeCard()}
@@ -778,6 +815,9 @@
       <div class="card quests">${questRows(S.daily, 'daily')}${questBonus(S.daily, 'daily')}</div>
       <div class="section">Задания недели · ещё ${left(nextWeek - now)}</div>
       <div class="card quests">${questRows(S.weekly, 'weekly')}${questBonus(S.weekly, 'weekly')}</div>
+      <div class="section">Промокод</div>
+      <div class="card"><div class="row"><input id="promo-input" class="input grow" placeholder="Введи промокод" autocomplete="off" autocapitalize="characters">
+        <button class="btn btn-sm" data-action="promo">Активировать</button></div></div>
       <div class="section">Статистика</div>
       <div class="card">
         <div class="kv"><span>Состояние</span><b>${fmt(r.nw)} ₽</b></div>
@@ -807,7 +847,12 @@
         <div class="row" style="flex-wrap:wrap;gap:6px">
           ${[1e6, 100e6, 1e9].map(v => `<button class="btn btn-sm btn-ghost" data-action="dbg-money" data-id="${v}">+${fmt(v)}</button>`).join('')}
           <button class="btn btn-sm btn-ghost" data-action="dbg-favor">Просьба связи</button>
-          <button class="btn btn-sm btn-ghost" data-action="dbg-free">Сбросить таймеры</button></div></div>`;
+          <button class="btn btn-sm btn-ghost" data-action="dbg-free">Сбросить таймеры</button></div>
+        <div class="label" style="margin-top:12px">Новый промокод</div>
+        <div class="row"><input id="dbg-code" class="input grow" placeholder="Например, VASYA2025" autocomplete="off">
+          <button class="btn btn-sm btn-ghost" data-action="dbg-hash">Хэш</button></div>
+        <div class="small muted" id="dbg-hash-out" style="margin-top:8px;word-break:break-all;user-select:text;-webkit-user-select:text">
+          Строку отсюда вставь в PROMO_CODES в js/data.js и поменяй награду.</div></div>`;
   }
 
   // ---------- главная ----------
@@ -1417,6 +1462,14 @@
       for (const c of Object.values(S.conn)) { c.cd = {}; c.sp = 0; }
       save(); render(); showProfile(); toast('Таймеры сброшены');
     },
+    promo: () => redeem(($('#promo-input') || {}).value),
+    'dbg-hash': async () => {
+      if (!DEBUG) return;
+      const code = normCode(($('#dbg-code') || {}).value || '');
+      if (!code) { toast('Введи код'); return; }
+      const h = await sha256(code);
+      $('#dbg-hash-out').textContent = `{ hash: '${h}', label: '${code}', reward: { money: 1e6 } },`;
+    },
     credits: () => showModal(`${sheetHead('Авторы фото')}
       <p class="small">Фотографии с Wikimedia Commons: фон удалён, размер уменьшен.</p>
       ${ITEMS.concat(CASES).filter(i => i.credit).map(i => `<div class="kv small"><span>${i.name}</span><b>${i.credit}</b></div>`).join('')}`, true),
@@ -1438,6 +1491,9 @@
     }
     render();
   });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.id === 'promo-input') redeem(e.target.value);
+  });
   document.addEventListener('change', e => {
     const key = e.target.dataset.toggle;
     if (!key) return;
@@ -1458,7 +1514,8 @@
   }
   const user = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
   const name = (user && user.first_name) || 'Игрок';
-  $('#pname').textContent = name;
+  function showName() { $('#pname').innerHTML = `${name.replace(/[<>&]/g, '')} ${badgeIcons()}`; }
+  showName();
   $('#ava').textContent = name[0].toUpperCase();
 
   const away = (Date.now() - S.lastTick) / 1000;
