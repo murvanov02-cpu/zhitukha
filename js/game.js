@@ -631,25 +631,43 @@
   const carTime = id => quarterMile(carHp(id));
   const stageStars = st => `<span class="stars">${'★'.repeat(st)}<span class="off">${'★'.repeat(TUNE_STAGES.length - st)}</span></span>`;
   // Шанс победы на уровне lv (0…4): соперник уровня затюнингован на Stage lv, сравниваем с твоим Stage
-  function raceChance(id, lv, stage) {
+  // roll — «форма» соперника (0…1, см. rivals): чем он сильнее, тем ниже шанс.
+  // Верных побед нет: где по тюнингу было бы 100%, шанс от RACE_TOP_MIN до RACE_TOP_MAX (кроме «Новичка»).
+  function raceChance(id, lv, stage, roll) {
     const s = stage === undefined ? carState(id).stage : stage, d = lv + 1 - s;
-    if (d <= 0) return 100;
+    const r = roll === undefined ? rivals(id)[lv].roll : roll;
+    if (d <= 0) return lv === 0 ? 100 : Math.round(RACE_TOP_MAX - (RACE_TOP_MAX - RACE_TOP_MIN) * r);
     if (d === 1 && s > 0) return RACE_NEAR_WIN;
-    return RACE_LEVELS[d - 1].base;
+    const base = RACE_LEVELS[d - 1].base;
+    return base > 0 && base < 100 ? base + Math.round(RACE_FORM * (1 - 2 * r)) : base;
   }
   // Средний выигрыш за заезд на самом выгодном уровне (без учёта мастерства) — чтобы видеть, что даёт тюнинг
   function bestRaceEV(id, stage) {
     return Math.max(...RACE_LEVELS.map((L, lv) => {
       const st = raceStake(id, lv);
-      return raceChance(id, lv, stage) / 100 * st.prize - st.fee;
+      return raceChance(id, lv, stage, 0.5) / 100 * st.prize - st.fee;
     }));
   }
-  // Соперник уровня: машина того же класса, чем выше уровень — тем мощнее
-  function rivalOf(id, lv) {
+  // Соперники машины меняются после каждого заезда: модель — случайная из своей «пятой» части класса по мощности
+  // (чем выше уровень, тем мощнее), roll — форма соперника: мощность ±4% и шанс победы.
+  function rollRivals(id) {
     const list = ITEMS.filter(x => x.cat === 'car' && x.rarity === ITEM[id].rarity && x.id !== id && CAR_HP[x.id])
       .sort((a, b) => CAR_HP[a.id] - CAR_HP[b.id]);
-    const it = list.length ? list[Math.round(lv / (RACE_LEVELS.length - 1) * (list.length - 1))] : ITEM[id];
-    return { it, stage: lv, hp: stageHp(CAR_HP[it.id], lv) };
+    const n = list.length, k = RACE_LEVELS.length;
+    return RACE_LEVELS.map((L, lv) => {
+      if (!n) return { id, roll: Math.random() };
+      const lo = Math.min(n - 1, Math.floor(lv * n / k)), hi = Math.min(n, Math.max(lo + 1, Math.floor((lv + 1) * n / k)));
+      return { id: list[lo + Math.floor(Math.random() * (hi - lo))].id, roll: Math.random() };
+    });
+  }
+  function rivals(id) {
+    const g = carState(id);
+    if (!g.rivals || g.rivals.length !== RACE_LEVELS.length || g.rivals.some(r => !ITEM[r.id])) g.rivals = rollRivals(id);
+    return g.rivals;
+  }
+  function rivalOf(id, lv) {
+    const r = rivals(id)[lv];
+    return { it: ITEM[r.id], stage: lv, hp: Math.round(stageHp(CAR_HP[r.id], lv) * (0.96 + 0.08 * r.roll)) };
   }
   const breakChance = id => Math.min(90, carState(id).wear * BREAK_PER_WEAR);
   const raceCarId = () => {
@@ -725,7 +743,8 @@
     return 'common';
   }
   const plateInner = p => `<span class="pl-main">${p.a}<b>${p.d}</b>${p.b}</span><span class="pl-reg">${p.r}<i>RUS</i></span>`;
-  const plateHTML = (p, cls = '') => `<span class="plate ${cls}">${plateInner(p)}</span>`;
+  // Рамка и свечение — цвета редкости (у прокручивающегося номера редкости ещё нет — он нейтральный)
+  const plateHTML = (p, cls = '') => `<span class="plate ${p.rar ? 'r-' + p.rar : ''} ${cls}" style="--rc:${p.rar ? RARITIES[p.rar].color : '#8a8f98'}">${plateInner(p)}</span>`;
 
   // ---------- кейсы ----------
   function poolOf(c) {
@@ -1193,7 +1212,7 @@
       haptic(rarIdx(p.rar) >= 2 ? 'ok' : 'light');
     };
     showModal(`<div class="drop" style="${rStyle(p.rar)}">
-        <div class="plate-stage">${plateHTML(p, 'big')}</div>
+        <div class="plate-stage">${plateHTML(Object.assign({}, p, { rar: null }), 'big')}</div>
         <div id="pl-info" style="min-height:64px;margin-top:10px"></div>
         <div class="row hidden" id="pl-actions" style="margin-top:6px">
           <button class="btn btn-ghost grow" data-action="plate-sell" data-id="${p.id}">Продать ${fmt(plateSell(p))}</button>
@@ -1370,7 +1389,7 @@
         <button class="btn btn-sm full" style="margin-top:8px" data-action="race" data-id="${lv}" ${block || poor ? 'disabled' : ''}>${poor && !block ? 'Не хватает на взнос' : 'На старт'}</button>
       </div>`;
     }).join('');
-    return `<p class="hint">Драг на 402 м. Пять соперников — от новичка до легенды. Тюнинг поднимает шанс против сильных:
+    return `<p class="hint">Драг на 402 м. Пять соперников — от новичка до легенды, после каждого заезда приезжают новые. Тюнинг поднимает шанс против сильных:
         соперник уровня N затюнингован на Stage N−1. Стартуй ровно на зелёный и попади передачей в зелёную зону — это ещё ±${RACE_SKILL}% к шансу.</p>
       <div class="card"><div class="kv"><span>${ic('flag')} Заездов доступно</span><b>${pl.n} / ${RACE_POOL}</b></div>
         <div class="small muted">${pl.n < RACE_POOL ? `+1 через <span data-timer="${pl.ts + POOL_REGEN_MIN * 60e3}">${fmtTime(nextIn(pl, POOL_REGEN_MIN))}</span> · ` : ''}общий лимит на все машины, ${RACE_POOL} в час</div></div>
@@ -1463,6 +1482,7 @@
     const r = race, id = r.id, st = carState(id);
     r.phase = 'done';
     race = null;
+    st.rivals = rollRivals(id);
     let title, text, win = false, stop = null;
     if (jump) {
       title = '🚦 Фальстарт';
@@ -1478,8 +1498,9 @@
       const sh = r.shift;
       const shiftQ = sh >= 0.72 && sh <= 0.88 ? 1 : sh >= 0.6 && sh <= 0.94 ? 0 : -1;
       const skill = (r.rt < 0.3 ? 1 : r.rt > 0.6 ? -1 : 0) + shiftQ;
-      const bonus = r.chance > 0 && r.chance < 100 ? Math.sign(skill) * RACE_SKILL : 0;
-      const p = Math.max(0, Math.min(100, r.chance + bonus));
+      const skillBonus = r.chance > 0 && r.chance < 100 ? Math.sign(skill) * RACE_SKILL : 0;
+      const p = Math.max(0, Math.min(r.lv === 0 ? 100 : RACE_TOP_MAX, r.chance + skillBonus));
+      const bonus = p - r.chance;   // сколько реально дало мастерство (выше RACE_TOP_MAX не поднимает)
       win = Math.random() * 100 < p;
       const myTime = carTime(id) + (r.rt - 0.2) + [SHIFT_MISS, 0, SHIFT_PERFECT][shiftQ + 1] + (Math.random() - 0.5) * 0.1;
       const gap = 0.04 + Math.random() * 0.45;
