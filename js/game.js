@@ -7,7 +7,7 @@
   const OLD_SAVE_KEY = 'zhitukha_save_v1';
   const ECO = 2;          // версия экономики: 2 — реальные цены
   const ECO_SCALE = 500;  // во сколько раз выросли деньги при переходе на реальные цены
-  const OFFLINE_CAP_H = 8;       // сколько реальных часов копится доход, пока игрок не в игре
+  const OFFLINE_CAP_H = 6;       // сколько реальных часов копится доход, пока игрок не в игре
   const RL_STEP = 104;           // ширина плитки рулетки + отступ
   const RL_WIN = 50;             // позиция выигрышной плитки в ленте
 
@@ -101,12 +101,55 @@
     return s;
   }
   function save() {
+    S.savedAt = Date.now();
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* хранилище недоступно */ }
+    cloudSaveSoon();
+  }
+
+  // ---------- синхронизация между устройствами (облако Telegram) ----------
+  // CloudStorage привязан к аккаунту Telegram и боту: тот же прогресс на телефоне и компьютере.
+  // Значение ключа — до 4096 символов, поэтому сохранение режется на куски s0, s1, … и мета-ключ meta = { n, at }.
+  const cloud = tg && tg.CloudStorage && inTelegram ? tg.CloudStorage : null;
+  const CHUNK = 4000;
+  let cloudTimer = 0;
+  function cloudSaveSoon(now) {
+    if (!cloud) return;
+    clearTimeout(cloudTimer);
+    cloudTimer = setTimeout(cloudSave, now ? 0 : 15000);
+  }
+  function cloudSave() {
+    const data = JSON.stringify(S), n = Math.ceil(data.length / CHUNK);
+    let left = n;
+    for (let i = 0; i < n; i++) {
+      cloud.setItem('s' + i, data.slice(i * CHUNK, (i + 1) * CHUNK), () => {
+        if (--left === 0) cloud.setItem('meta', JSON.stringify({ n, at: S.savedAt }));
+      });
+    }
+  }
+  // При запуске: если в облаке сохранение новее локального — берём его
+  function cloudLoad() {
+    if (!cloud) return;
+    cloud.getItem('meta', (err, raw) => {
+      if (err || !raw) { cloudSaveSoon(true); return; }
+      let meta; try { meta = JSON.parse(raw); } catch (e) { return; }
+      if (!meta.n || meta.at <= (S.savedAt || 0)) { if (meta.at < (S.savedAt || 0)) cloudSaveSoon(true); return; }
+      cloud.getItems(Array.from({ length: meta.n }, (_, i) => 's' + i), (e2, vals) => {
+        if (e2 || !vals) return;
+        try {
+          const o = JSON.parse(Array.from({ length: meta.n }, (_, i) => vals['s' + i] || '').join(''));
+          S = upgrade(o);
+          catchUp(); ensureQuests();
+          try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* ничего */ }
+          closeModal(); render();
+          toast('Прогресс загружен с другого устройства');
+        } catch (e) { /* битые данные в облаке — оставляем локальное */ }
+      });
+    });
   }
 
   let S = load();
   let tab = 'home';
-  const sub = { cases: 'car', career: 'jobs', inv: 'car' };
+  const sub = { cases: 'car', career: 'jobs', inv: 'car', casino: 'roulette' };
   let spinning = false;
 
   // ---------- форматирование ----------
@@ -231,7 +274,9 @@
     return true;
   }
 
-  // Доход в игровой месяц; в реальный час приходит MONTHS_PER_HOUR таких месяцев
+  // Внутри всё считается в «игровых месяцах» (зарплаты реальные, помесячные), а игроку показываем «в час»:
+  // за реальный час приходит MONTHS_PER_HOUR месяцев. perH — перевод суммы «в месяц» в «в час».
+  const perH = v => v * MONTHS_PER_HOUR;
   const incomeMonth = () => jobPay() + rent() + bizProfit();
   const casePrice = c => Math.round(c.price * (1 - (Math.min(S.skills.cha, 30) + perk('caseCheap')) / 100));
   const batchPrice = (c, n) => Math.round(casePrice(c) * n * (1 - (MULTI_DISCOUNT[n] || 0)));
@@ -767,7 +812,7 @@
   function bonusText(it) {
     if (it.cat === 'conn') return perkText(it);
     if (it.cat === 'car') return `+${it.bonus}% к зарплате`;
-    return `+${fmt(it.bonus)} ₽/мес аренды`;
+    return `+${fmt(perH(it.bonus))} ₽/ч аренды`;
   }
   function resultNote(res) {
     if (res.sold) return `продано +${fmt(sellPrice(res.it))}`;
@@ -783,7 +828,7 @@
       sub = res.isNew ? '<b class="new">Новая связь</b>'
         : res.gift ? `Доверие уже полное · <b class="new">подарок ${fmt(res.gift)} ₽</b>`
         : `Старый знакомый · <b class="new">+${res.xp} доверия${res.lvUp ? ', новый уровень!' : ''}</b>`;
-      actions = `<button class="btn btn-ghost grow" data-action="close" data-goto="conn">К связям</button><button class="btn grow" data-action="close">Отлично</button>`;
+      actions = `<button class="btn btn-ghost grow" data-action="close" data-goto="career" data-sub="career:conn">К связям</button><button class="btn grow" data-action="close">Отлично</button>`;
     } else {
       const n = S.inv[it.id] || 0;
       sub = res.sold ? `Повторка · <b class="new">продано за ${fmt(sellPrice(it))} ₽</b>`
@@ -819,9 +864,8 @@
   }
   function showOffline({ sec, earned }) {
     const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
-    const months = Math.round(sec / 3600 * MONTHS_PER_HOUR);
     showModal(`<h3>С возвращением 👋</h3>
-      <p>Тебя не было ${h ? h + ' ч ' : ''}${m} мин — в игре прошло ${months ? months + ' мес.' : 'несколько недель'}. Работа, аренда и бизнес принесли:</p>
+      <p>Тебя не было ${h ? h + ' ч ' : ''}${m} мин. Работа, аренда и бизнес принесли:</p>
       <div class="big">+${fmt(earned)} ₽</div>
       <p class="small">Доход копится максимум ${OFFLINE_CAP_H} часов — заходи почаще.</p>
       <button class="btn full" data-action="close">Забрать</button>`);
@@ -956,15 +1000,15 @@
           <div class="ph">${homes.length ? `<img class="cover" src="${ITEM[homes[0]].img}" alt="">` : ic('home')}</div>
           <div class="body"><div class="label">Жильё · ${countCat('home')}</div>
             <div class="val ellipsis">${homes.length ? ITEM[homes[0]].name : 'Нет жилья'}</div>
-            <div class="small ${homes.length ? 'good' : 'muted'}">${homes.length ? `+${fmt(rent())} ₽/мес` : 'жильё — в кейсах'}</div></div></button>
+            <div class="small ${homes.length ? 'good' : 'muted'}">${homes.length ? `+${fmt(perH(rent()))} ₽/ч` : 'жильё — в кейсах'}</div></div></button>
       </div>
       ${row('data-goto="career"', 'briefcase', job ? job.name : 'Предприниматель',
-        `${pay ? `<span class="good">${fmt(pay)} ₽/мес</span> · ` : ''}${studyLine}${gigLine}`)}
+        `${pay ? `<span class="good">${fmt(perH(pay))} ₽/ч</span> · ` : ''}${studyLine}${gigLine}`)}
       ${row('data-goto="biz"', 'building-factory-2', nBiz ? `Бизнес · ${nBiz}` : 'Свой бизнес',
-        nBiz ? `${bp >= 0 ? '+' : ''}${fmt(bp)} ₽/мес` : 'от ларька с шаурмой до IT-холдинга', nBiz ? (bp < 0 ? 'bad' : 'good') : 'muted')}
-      ${row('data-goto="conn"', 'users', nConn ? `Связи · ${nConn}` : 'Связи',
+        nBiz ? `${bp >= 0 ? '+' : ''}${fmt(perH(bp))} ₽/ч` : 'от ларька с шаурмой до IT-холдинга', nBiz ? (bp < 0 ? 'bad' : 'good') : 'muted')}
+      ${row('data-goto="career" data-sub="career:conn"', 'users', nConn ? `Связи · ${nConn}` : 'Связи',
         S.favor ? 'Тебя кое о чём просят' : nConn ? 'полезные люди решают проблемы' : 'открой «Знакомство дня»', S.favor ? 'gold' : 'muted')}
-      <p class="small muted" style="text-align:center;margin-top:6px">${ic('clock')} 1 реальный час = ${MONTHS_PER_HOUR} игровых месяцев</p>`;
+      <p class="small muted" style="text-align:center;margin-top:6px">${ic('clock')} Доход идёт и без тебя, но копится максимум ${OFFLINE_CAP_H} ч</p>`;
   }
 
   // ---------- имущество (открывается с главной) ----------
@@ -1052,15 +1096,17 @@
   }
 
   // ---------- карьера ----------
+  const connAlert = () => !cdLeft(CASE.conn_free) || !!S.favor || !!(S.deal && Date.now() >= S.deal.until);
   function renderCareer() {
     const v = sub.career;
     const gigReady = S.gig && Date.now() >= S.gig.until;
-    return `<div class="seg">
+    return `<div class="seg seg-scroll">
         <button class="${v === 'jobs' ? 'active' : ''}" data-sub="career:jobs">Работа</button>
         <button class="${v === 'skills' ? 'active' : ''}" data-sub="career:skills">Учёба</button>
         <button class="${v === 'gigs' ? 'active' : ''}" data-sub="career:gigs">Подработки${gigReady ? ' <span class="dotty">•</span>' : ''}</button>
-        <button class="${v === 'race' ? 'active' : ''}" data-sub="career:race">Гонки</button></div>
-      ${v === 'jobs' ? renderJobs() : v === 'skills' ? renderSkills() : v === 'gigs' ? renderGigs() : renderRace()}`;
+        <button class="${v === 'race' ? 'active' : ''}" data-sub="career:race">Гонки</button>
+        <button class="${v === 'conn' ? 'active' : ''}" data-sub="career:conn">Связи${connAlert() ? ' <span class="dotty">•</span>' : ''}</button></div>
+      ${v === 'jobs' ? renderJobs() : v === 'skills' ? renderSkills() : v === 'gigs' ? renderGigs() : v === 'race' ? renderRace() : renderConn()}`;
   }
   const reqTags = (req, extra = []) => Object.entries(req || {})
     .map(([k, v]) => `<span class="req ${S.skills[k] >= v ? 'ok' : 'no'}">${SKILL[k].name} ${v}</span>`).concat(extra).join('');
@@ -1072,7 +1118,7 @@
       : ok ? `<button class="btn btn-sm" data-action="job" data-id="${j.id}">Устроиться</button>` : `<span class="tag lock">${ic('lock')}</span>`;
     return `<div class="card job ${cur ? 'current' : ''} ${ok || cur ? '' : 'locked'}">
       <div class="job-ico">${j.icon}</div>
-      <div class="grow"><div class="job-name">${j.name}</div><div class="job-pay">${fmt(j.pay)} ₽/мес</div>
+      <div class="grow"><div class="job-name">${j.name}</div><div class="job-pay">${fmt(perH(j.pay))} ₽/ч</div>
         ${bonus ? `<div class="perk">${ic('star')} ${bonus}</div>` : ''}${!ok && !cur && reqs ? `<div class="reqs">${reqs}</div>` : ''}</div>
       ${action}</div>`;
   }
@@ -1278,32 +1324,32 @@
         <div class="biz-head"><div class="ico-box" style="font-size:22px">${d.icon}</div>
           <div class="grow"><div class="job-name">${d.name}</div>
             <div class="small muted">${frozen(d.id) ? '🔒 Опечатан' : b.mgr ? 'С управляющим: 100%' : `Без управляющего: ${Math.round(st.eff * 100)}%`}</div></div>
-          <div class="biz-profit ${st.profit < 0 ? 'bad' : ''}">${plus(st.profit)}<div class="small muted">₽/мес</div></div></div>
+          <div class="biz-profit ${st.profit < 0 ? 'bad' : ''}">${plus(perH(st.profit))}<div class="small muted">₽/ч</div></div></div>
         <div class="biz-grid">
           <div><span class="small muted">Мощность</span><b>${fmt(st.cap)}</b><span class="small muted">${b.slots} мест</span></div>
-          <div><span class="small muted">Клиенты</span><b>${fmt(st.demand)}</b><span class="small muted">${d.unit}/мес</span></div>
+          <div><span class="small muted">Клиенты</span><b>${fmt(st.demand)}</b><span class="small muted">${d.unit}</span></div>
           <div><span class="small muted">Обслужено</span><b>${fmt(st.sold)}</b><span class="small muted">${d.unit}</span></div></div>
         <div class="small ${st.neck ? 'gold' : 'good'}" style="margin-bottom:10px">${ic(st.neck ? 'bulb' : 'check')} ${neck}</div>
         <div class="acts" style="grid-template-columns:1fr 1fr">
           <button class="act" data-action="biz-slot" data-id="${d.id}" ${fullS ? 'disabled' : ''}>${ic('user-plus')}
             <span class="act-name">Рабочее место</span><span class="act-sub">${d.slot} · ${b.slots}/${BIZ_MAX}</span>
-            <span class="act-sub ${dS > 0 ? 'good' : 'bad'}">${fullS ? 'максимум' : plus(dS) + ' ₽/мес'}</span>
+            <span class="act-sub ${dS > 0 ? 'good' : 'bad'}">${fullS ? 'максимум' : plus(perH(dS)) + ' ₽/ч'}</span>
             <span class="act-cost">${fullS ? '' : fmt(slotCost(d.id)) + ' ₽'}</span></button>
           <button class="act" data-action="biz-ad" data-id="${d.id}" ${fullA ? 'disabled' : ''}>${ic('speakerphone')}
             <span class="act-name">Реклама</span><span class="act-sub">+${fmt(d.perSlot)} ${d.unit} · ${b.ads}/${BIZ_MAX - BIZ_START}</span>
-            <span class="act-sub ${dA > 0 ? 'good' : 'muted'}">${fullA ? 'максимум' : plus(dA) + ' ₽/мес'}</span>
+            <span class="act-sub ${dA > 0 ? 'good' : 'muted'}">${fullA ? 'максимум' : plus(perH(dA)) + ' ₽/ч'}</span>
             <span class="act-cost">${fullA ? '' : fmt(adCost(d.id)) + ' ₽'}</span></button></div>
         <details class="more"><summary>${ic('receipt')} Доходы, расходы и управление</summary>
-          <div class="kv small"><span>Выручка</span><b>${fmt(st.revenue)}</b></div>
-          <div class="kv small"><span>Зарплаты (${b.slots} × ${fmt(n.salary)})</span><b>−${fmt(st.wages)}</b></div>
-          <div class="kv small"><span>Аренда помещения</span><b>−${fmt(st.rent)}</b></div>
-          ${b.mgr ? `<div class="kv small"><span>Управляющий</span><b>−${fmt(st.mgr)}</b></div>` : ''}
-          <div class="kv small"><span>Налог ${Math.round(taxRate() * 100)}%</span><b>−${fmt(st.tax)}</b></div>
-          <div class="kv small"><span>Вложено</span><b>${fmt(b.inv)}</b></div>
+          <div class="kv small"><span>Выручка</span><b>${fmt(perH(st.revenue))}</b></div>
+          <div class="kv small"><span>Зарплаты (${b.slots} × ${fmt(perH(n.salary))})</span><b>−${fmt(perH(st.wages))}</b></div>
+          <div class="kv small"><span>Аренда помещения</span><b>−${fmt(perH(st.rent))}</b></div>
+          ${b.mgr ? `<div class="kv small"><span>Управляющий</span><b>−${fmt(perH(st.mgr))}</b></div>` : ''}
+          <div class="kv small"><span>Налог ${Math.round(taxRate() * 100)}%</span><b>−${fmt(perH(st.tax))}</b></div>
+          <div class="small muted" style="margin-top:4px">Все суммы — за час</div><div class="kv small"><span>Вложено</span><b>${fmt(b.inv)}</b></div>
           <div class="row" style="margin-top:10px;flex-wrap:wrap">
             ${b.mgr ? `<button class="btn btn-sm btn-ghost" data-action="biz-mgr" data-id="${d.id}">Уволить управляющего</button>`
-              : `<button class="btn btn-sm btn-line" data-action="biz-mgr" data-id="${d.id}">Нанять управляющего · ${fmt(n.mgr)}/мес · ${plus(bizDelta(d.id, { mgr: true }))}</button>`}
-            <button class="btn btn-sm btn-danger" data-action="biz-sell" data-id="${d.id}">Продать за ${fmt(b.inv * bizSellRate())}</button></div>
+              : `<button class="btn btn-sm btn-line" data-action="biz-mgr" data-id="${d.id}">Нанять управляющего · ${fmt(perH(n.mgr))}/ч · ${plus(perH(bizDelta(d.id, { mgr: true })))}</button>`}
+            <button class="btn btn-sm btn-danger" data-action="biz-sell" data-id="${d.id}">Продать за ${fmt(b.inv * bizSellRate())} (${Math.round(bizSellRate() * 100)}% вложенного)</button></div>
         </details></div>`;
     }).join('');
     const rest = BUSINESSES.filter(d => !S.biz[d.id]);
@@ -1314,12 +1360,12 @@
       return `<div class="card job ${open ? '' : 'locked'}"><div class="ico-box" style="font-size:22px">${d.icon}</div>
         <div class="grow"><div class="job-name">${d.name}</div>
           <div class="small muted">${fmt(d.price)} ₽ + лицензии ${fmt(licenseCost(d))} ₽</div>
-          <div class="small good">≈ ${fmt(start)} ₽/мес на старте с управляющим, до ${BIZ_MAX} мест</div>
+          <div class="small good">≈ ${fmt(perH(start))} ₽/ч на старте с управляющим, до ${BIZ_MAX} мест</div>
           ${open ? '' : `<div class="reqs">${reqs}</div>`}</div>
         ${open ? `<button class="btn btn-sm" data-action="biz-buy" data-id="${d.id}">Открыть</button>` : `<span class="tag lock">${ic('lock')}</span>`}</div>`;
     }).join('');
     return `<div class="title">Бизнес</div>
-      ${owned.length ? `<div class="card"><div class="kv"><span>Прибыль всех бизнесов</span><b class="${total < 0 ? 'bad' : 'good'}">${fmt(total)} ₽/мес</b></div>
+      ${owned.length ? `<div class="card"><div class="kv"><span>Прибыль всех бизнесов</span><b class="${total < 0 ? 'bad' : 'good'}">${fmt(perH(total))} ₽/ч</b></div>
         <div class="small muted" style="margin-top:6px">Без управляющего бизнес работает на ${Math.round(ownerEff() * 100)}% — ${S.job ? 'ты занят на работе' : 'ты занят только бизнесом'}.</div></div>${cards}`
         : `<p class="hint">Рабочие места дают мощность, реклама — клиентов. Заработаешь на меньшем из двух, поэтому развивай их по очереди. На каждой кнопке видно, сколько прибыли она добавит.</p>`}
       ${rest.length ? `<details class="more" ${owned.length ? '' : 'open'}><summary>${ic('plus')} Открыть новый бизнес</summary>${shop}</details>` : ''}`;
@@ -1347,7 +1393,7 @@
     if (perk('deal')) {
       const d = S.deal, used = S.dealDay === dayKey(new Date());
       deal = `<div class="card"><div class="label">${ic('briefcase')} Сделка с олигархом</div>
-        <div class="small muted mb">Вложи до ${DEAL_INCOME_H} мес. своего дохода — через ${DEAL_HOURS} ч вернётся +${perk('deal')}%. Раз в сутки.</div>
+        <div class="small muted mb">Вложи до ${hoursText(DEAL_INCOME_H / MONTHS_PER_HOUR)} своего дохода — через ${DEAL_HOURS} ч вернётся +${perk('deal')}%. Раз в сутки.</div>
         ${d ? (Date.now() >= d.until ? `<button class="btn btn-green full" data-action="deal-claim">Забрать ${fmt(d.ret)} ₽</button>`
             : `<div class="row"><span class="grow small">${fmt(d.amount)} → ${fmt(d.ret)} ₽</span><span class="tag gold" data-timer="${d.until}">${fmtTime(d.until - Date.now())}</span></div>`)
           : used ? '<span class="tag lock">Завтра будет новая сделка</span>'
@@ -1362,8 +1408,7 @@
           <div class="bar thin"><i style="width:${lvPct(id)}%"></i></div>
           <div class="small ${spReady ? 'gold' : 'muted'} ellipsis">${spReady ? 'Особая услуга готова' : perkText(it)}</div></div></div></button>`;
     }).join('');
-    return `<div class="title">Связи</div>
-      ${freeCaseCard(CASE.conn_free)}
+    return `${freeCaseCard(CASE.conn_free)}
       ${favor}${deal}
       ${rows ? `<div class="section">Твои связи · ${ids.length}</div>${rows}`
         : `<div class="empty">${ic('users')}Полезные люди решают проблемы и дают бонусы.<br>Начни со «Знакомства дня».</div>`}
@@ -1396,7 +1441,187 @@
       <div class="section">Встречи</div><div class="acts">${meets}</div>`, true);
   }
 
-  const VIEWS = { home: renderHome, inv: renderInv, cases: renderCases, career: renderCareer, biz: renderBiz, conn: renderConn };
+  // ---------- казино ----------
+  let casBet = 0;          // текущая ставка (в рублях)
+  let bj = null;           // раздача блэкджека
+  let vp = null;           // раздача видеопокера
+  let rlBusy = false;
+  const maxBet = () => Math.floor(S.money * CASINO_MAX_SHARE);
+  function betValue() {
+    const mx = maxBet();
+    if (!casBet) casBet = Math.max(CASINO_MIN_BET, Math.round(mx / 5 / 1000) * 1000);
+    return Math.min(casBet, mx);
+  }
+  function betBar() {
+    const mx = maxBet(), b = betValue();
+    const chips = [[0.02, '2%'], [0.1, '10%'], [0.25, '25%'], [0.5, 'Макс']].map(([f, l]) => {
+      const v = Math.max(CASINO_MIN_BET, Math.floor(S.money * f / 1000) * 1000);
+      return `<button class="chip ${Math.min(v, mx) === b ? 'active' : ''}" data-action="cas-bet" data-id="${v}">${l} · ${fmt(Math.min(v, mx))}</button>`;
+    }).join('');
+    return `<div class="card"><div class="kv"><span>Ставка</span><b class="gold">${fmt(b)} ₽</b></div>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">${chips}</div>
+      <div class="small muted" style="margin-top:6px">Максимум — половина баланса: ${fmt(mx)} ₽</div></div>`;
+  }
+  // ставка списывается сразу; false — если ставить нечего
+  function takeBet() {
+    const b = betValue();
+    if (b < CASINO_MIN_BET || S.money < CASINO_MIN_BET * 2) { toast(`Минимальная ставка ${fmt(CASINO_MIN_BET)} ₽ и не больше половины баланса`); return 0; }
+    S.money -= b;
+    return b;
+  }
+  function casinoWin(v) { if (v > 0) { S.money += v; S.total += v; } }
+
+  // --- рулетка (европейская, 0–36)
+  const RED = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
+  const numColor = n => (n === 0 ? 'green' : RED.includes(n) ? 'red' : 'black');
+  const RL_BETS = {
+    red: { name: 'Красное', pay: 1, win: n => numColor(n) === 'red' },
+    black: { name: 'Чёрное', pay: 1, win: n => numColor(n) === 'black' },
+    even: { name: 'Чёт', pay: 1, win: n => n > 0 && n % 2 === 0 },
+    odd: { name: 'Нечет', pay: 1, win: n => n % 2 === 1 },
+    low: { name: '1–18', pay: 1, win: n => n >= 1 && n <= 18 },
+    high: { name: '19–36', pay: 1, win: n => n >= 19 },
+    d1: { name: '1–12', pay: 2, win: n => n >= 1 && n <= 12 },
+    d2: { name: '13–24', pay: 2, win: n => n >= 13 && n <= 24 },
+    d3: { name: '25–36', pay: 2, win: n => n >= 25 },
+    zero: { name: 'Зеро', pay: 35, win: n => n === 0 },
+  };
+  let rlLast = [];
+  function renderRoulette() {
+    const btn = (id, cls = '') => `<button class="rl-bet ${cls}" data-action="rl-spin" data-id="${id}" ${rlBusy ? 'disabled' : ''}>${RL_BETS[id].name}<span>×${RL_BETS[id].pay + 1}</span></button>`;
+    return `${betBar()}
+      <div class="card"><div class="wheel-window"><div class="wheel-strip" id="wheel-strip">${rlStripHTML([rlLast[0] ?? 0])}</div><div class="rl-marker"></div></div>
+        <div class="row" style="justify-content:center;gap:4px;margin-top:8px">${rlLast.slice(0, 10).map(n => `<span class="num ${numColor(n)}">${n}</span>`).join('') || '<span class="small muted">Сделай первую ставку</span>'}</div></div>
+      <div class="rl-grid">${btn('red', 'red')}${btn('black', 'black')}${btn('even')}${btn('odd')}${btn('low')}${btn('high')}${btn('d1')}${btn('d2')}${btn('d3')}${btn('zero', 'green')}</div>
+      <div class="card row"><span class="grow small muted">Ставка на число (выплата ×36)</span>
+        <input id="rl-num" class="input" type="number" min="0" max="36" placeholder="0–36" style="width:80px">
+        <button class="btn btn-sm" data-action="rl-spin" data-id="num" ${rlBusy ? 'disabled' : ''}>Ставлю</button></div>`;
+  }
+  const rlStripHTML = nums => nums.map(n => `<div class="wheel-num ${numColor(n)}">${n}</div>`).join('');
+  function rlSpin(kind) {
+    if (rlBusy) return;
+    let bet;
+    if (kind === 'num') {
+      const n = parseInt(($('#rl-num') || {}).value, 10);
+      if (!(n >= 0 && n <= 36)) { toast('Выбери число от 0 до 36'); return; }
+      bet = { name: 'Число ' + n, pay: 35, win: x => x === n, even: false };
+    } else bet = Object.assign({ even: RL_BETS[kind].pay === 1 }, RL_BETS[kind]);
+    const stake = takeBet();
+    if (!stake) return;
+    let n = Math.floor(Math.random() * 37);
+    // ставки 1:1 — не больше ROULETTE_STREAK_CAP побед подряд
+    S.rlStreak = S.rlStreak || 0;
+    if (bet.even && S.rlStreak >= ROULETTE_STREAK_CAP && bet.win(n)) {
+      const losing = Array.from({ length: 37 }, (_, i) => i).filter(x => !bet.win(x));
+      n = losing[Math.floor(Math.random() * losing.length)];
+    }
+    const won = bet.win(n);
+    if (bet.even) S.rlStreak = won ? S.rlStreak + 1 : 0;
+    rlBusy = true;
+    save(); render();
+    const strip = $('#wheel-strip'), win = 40;
+    const seq = Array.from({ length: win + 5 }, (_, i) => (i === win ? n : Math.floor(Math.random() * 37)));
+    strip.innerHTML = rlStripHTML(seq);
+    strip.style.transition = 'none'; strip.style.transform = 'translateX(0)';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const box = strip.parentElement.clientWidth;
+      strip.style.transition = 'transform 3.2s cubic-bezier(.1,.7,.15,1)';
+      strip.style.transform = `translateX(${-(win * 52 + 24 - box / 2)}px)`;
+    }));
+    setTimeout(() => {
+      rlBusy = false;
+      rlLast.unshift(n);
+      if (won) casinoWin(stake * (bet.pay + 1));
+      haptic(won ? 'ok' : 'err');
+      toast(won ? `Выпало ${n} · ${bet.name}: +${fmt(stake * bet.pay)} ₽` : `Выпало ${n} · ставка «${bet.name}» проиграла`);
+      save(); render();
+      const st = $('#wheel-strip'); if (st) st.innerHTML = rlStripHTML([n]);
+    }, 3400);
+  }
+
+  // --- карты
+  const SUITS = ['♠', '♥', '♦', '♣'], RANKS_C = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+  const drawCard = () => ({ r: Math.floor(Math.random() * 13), s: Math.floor(Math.random() * 4) });
+  const cardHTML = (c, hidden, extra = '') => hidden ? `<div class="pcard back"></div>`
+    : `<div class="pcard ${c.s === 1 || c.s === 2 ? 'red' : ''} ${extra}"><b>${RANKS_C[c.r]}</b><span>${SUITS[c.s]}</span></div>`;
+
+  // --- блэкджек
+  function bjValue(cards) {
+    let v = 0, aces = 0;
+    for (const c of cards) { const r = RANKS_C[c.r]; if (r === 'A') { aces++; v += 11; } else v += ['J', 'Q', 'K'].includes(r) ? 10 : +r; }
+    while (v > 21 && aces) { v -= 10; aces--; }
+    return v;
+  }
+  function renderBlackjack() {
+    if (!bj) return `${betBar()}<div class="card" style="text-align:center"><p class="small muted">Набери больше дилера, но не больше 21. Блэкджек платит 3:2, дилер берёт до 17.</p>
+      <button class="btn full" data-action="bj-deal">Раздать</button></div>`;
+    const done = bj.done;
+    return `<div class="card">
+      <div class="label">Дилер · ${done ? bjValue(bj.dealer) : '?'}</div><div class="hand">${bj.dealer.map((c, i) => cardHTML(c, i === 1 && !done)).join('')}</div>
+      <div class="label" style="margin-top:12px">Ты · ${bjValue(bj.player)} · ставка ${fmt(bj.bet)} ₽</div><div class="hand">${bj.player.map(c => cardHTML(c)).join('')}</div>
+      ${done ? `<div class="big-text" style="text-align:center;margin:12px 0" class="${bj.win > 0 ? 'good' : ''}">${bj.msg}</div>
+        <button class="btn full" data-action="bj-new">Ещё раз</button>`
+      : `<div class="row" style="margin-top:12px"><button class="btn grow" data-action="bj-hit">Ещё</button>
+          <button class="btn btn-ghost grow" data-action="bj-stand">Хватит</button>
+          ${bj.player.length === 2 && S.money >= bj.bet ? `<button class="btn btn-line grow" data-action="bj-double">Удвоить</button>` : ''}</div>`}</div>`;
+  }
+  function bjFinish() {
+    const p = bjValue(bj.player);
+    if (p <= 21) while (bjValue(bj.dealer) < 17) bj.dealer.push(drawCard());
+    const d = bjValue(bj.dealer), pBJ = p === 21 && bj.player.length === 2, dBJ = d === 21 && bj.dealer.length === 2;
+    let win = 0, msg;
+    if (p > 21) msg = 'Перебор — проигрыш';
+    else if (pBJ && !dBJ) { win = bj.bet * 2.5; msg = `Блэкджек! +${fmt(bj.bet * 1.5)} ₽`; }
+    else if (d > 21 || p > d) { win = bj.bet * 2; msg = `Победа! +${fmt(bj.bet)} ₽`; }
+    else if (p === d) { win = bj.bet; msg = 'Ничья — ставка возвращена'; }
+    else msg = 'Дилер выиграл';
+    casinoWin(win);
+    bj.done = true; bj.win = win; bj.msg = msg;
+    haptic(win > bj.bet ? 'ok' : win ? 'light' : 'err');
+    save(); render();
+  }
+
+  // --- видеопокер «Валеты и выше»
+  function pokerHand(cards) {
+    const ranks = cards.map(c => c.r).sort((a, b) => a - b), suits = cards.map(c => c.s);
+    const cnt = {}; for (const r of ranks) cnt[r] = (cnt[r] || 0) + 1;
+    const groups = Object.values(cnt).sort((a, b) => b - a);
+    const flush = suits.every(x => x === suits[0]);
+    const uniq = [...new Set(ranks)];
+    const straight = uniq.length === 5 && (ranks[4] - ranks[0] === 4 || ranks.join() === '0,1,2,3,12');
+    if (straight && flush) return ranks[0] === 8 ? 'royal' : 'sflush';
+    if (groups[0] === 4) return 'four';
+    if (groups[0] === 3 && groups[1] === 2) return 'full';
+    if (flush) return 'flush';
+    if (straight) return 'straight';
+    if (groups[0] === 3) return 'three';
+    if (groups[0] === 2 && groups[1] === 2) return 'twopair';
+    if (groups[0] === 2 && Object.entries(cnt).some(([r, n]) => n === 2 && +r >= 9)) return 'jacks';
+    return null;
+  }
+  function renderPoker() {
+    const table = POKER_PAYTABLE.map(p => `<div class="kv small ${vp && vp.done && vp.hand === p.id ? 'gold' : ''}"><span>${p.name}</span><b>×${p.pay + 1}</b></div>`).join('');
+    if (!vp) return `${betBar()}<div class="card"><p class="small muted">Тебе раздают 5 карт. Отметь, какие оставить, и замени остальные. Выигрыш — по таблице.</p>
+      <button class="btn full" data-action="vp-deal">Раздать</button></div><div class="card">${table}</div>`;
+    return `<div class="card"><div class="label">Ставка ${fmt(vp.bet)} ₽ · ${vp.done ? 'итог' : 'нажми на карты, которые оставляешь'}</div>
+      <div class="hand five">${vp.cards.map((c, i) => `<button class="hold-btn" data-action="vp-hold" data-id="${i}" ${vp.done ? 'disabled' : ''}>${cardHTML(c, false, vp.hold[i] ? 'held' : '')}<span>${vp.hold[i] ? 'держу' : ''}</span></button>`).join('')}</div>
+      ${vp.done ? `<div class="big-text" style="text-align:center;margin:12px 0">${vp.msg}</div><button class="btn full" data-action="vp-new">Ещё раз</button>`
+        : `<button class="btn full" style="margin-top:12px" data-action="vp-draw">Заменить</button>`}</div>
+      <div class="card">${table}</div>`;
+  }
+
+  function renderCasino() {
+    const v = sub.casino;
+    return `<div class="title">Казино</div>
+      <div class="seg">
+        <button class="${v === 'roulette' ? 'active' : ''}" data-sub="casino:roulette">Рулетка</button>
+        <button class="${v === 'bj' ? 'active' : ''}" data-sub="casino:bj">Блэкджек</button>
+        <button class="${v === 'poker' ? 'active' : ''}" data-sub="casino:poker">Покер</button></div>
+      ${v === 'roulette' ? renderRoulette() : v === 'bj' ? renderBlackjack() : renderPoker()}
+      <p class="small muted" style="text-align:center">Казино всегда немного в плюсе. Играй на то, что не жалко потерять.</p>`;
+  }
+
+  const VIEWS = { home: renderHome, inv: renderInv, cases: renderCases, career: renderCareer, biz: renderBiz, casino: renderCasino };
   function render() {
     $('#view').innerHTML = VIEWS[tab]();
     const navTab = tab === 'inv' ? 'home' : tab;
@@ -1408,7 +1633,7 @@
   function updateLive() {
     $('#money').textContent = fmt(S.money);
     const im = incomeMonth();
-    $('#inc').textContent = (im >= 0 ? '+' : '') + fmt(im);
+    $('#inc').textContent = (im >= 0 ? '+' : '') + fmt(perH(im));
     $('#prank').textContent = rankInfo().cur.icon + ' ' + rankInfo().cur.name;
     const now = Date.now();
     document.querySelectorAll('[data-timer]').forEach(el => { el.textContent = fmtTime(+el.dataset.timer - now); });
@@ -1421,8 +1646,7 @@
     });
     $('#ava').classList.toggle('dot', profileClaimable());
     $('.nav [data-tab="cases"]').classList.toggle('dot', !cdLeft(CASE.free));
-    $('.nav [data-tab="career"]').classList.toggle('dot', !!(S.gig && now >= S.gig.until));
-    $('.nav [data-tab="conn"]').classList.toggle('dot', !cdLeft(CASE.conn_free) || !!S.favor || !!(S.deal && now >= S.deal.until));
+    $('.nav [data-tab="career"]').classList.toggle('dot', !!(S.gig && now >= S.gig.until) || connAlert());
     // закончился перерыв в учёбе или подработка — перерисовать карьеру
     if (tab === 'career' && S.gig && now >= S.gig.until && sub.career === 'gigs' && !$('[data-action="gig-claim"]')) render();
     if (tab === 'career' && sub.career === 'skills') {
@@ -1438,7 +1662,7 @@
     const diff = bizStats(id).profit - before;
     progress('bizup');
     haptic('medium');
-    toast(`Прибыль: ${diff >= 0 ? '+' : ''}${fmt(diff)} ₽/мес`);
+    toast(`Прибыль: ${diff >= 0 ? '+' : ''}${fmt(perH(diff))} ₽/ч`);
     save();
     render();
   }
@@ -1452,6 +1676,7 @@
     peek: id => showPeek(id),
     close: (id, el) => {
       closeModal();
+      if (el.dataset.sub) { const [k, v] = el.dataset.sub.split(':'); sub[k] = v; }
       if (el.dataset.goto) { tab = el.dataset.goto; render(); }
     },
     inv: id => { sub.inv = id; tab = 'inv'; render(); window.scrollTo(0, 0); },
@@ -1563,6 +1788,46 @@
       }
       save(); render();
     },
+    'cas-bet': v => { casBet = +v; render(); },
+    'rl-spin': kind => rlSpin(kind),
+    'bj-deal': () => {
+      const bet = takeBet(); if (!bet) return;
+      bj = { bet, player: [drawCard(), drawCard()], dealer: [drawCard(), drawCard()] };
+      save();
+      if (bjValue(bj.player) === 21 || bjValue(bj.dealer) === 21) bjFinish(); else render();
+    },
+    'bj-hit': () => { if (!bj || bj.done) return; bj.player.push(drawCard()); if (bjValue(bj.player) >= 21) bjFinish(); else render(); },
+    'bj-stand': () => { if (bj && !bj.done) bjFinish(); },
+    'bj-double': () => {
+      if (!bj || bj.done || bj.player.length !== 2 || S.money < bj.bet) return;
+      S.money -= bj.bet; bj.bet *= 2; bj.player.push(drawCard()); bjFinish();
+    },
+    'bj-new': () => { bj = null; render(); },
+    'vp-deal': () => {
+      const bet = takeBet(); if (!bet) return;
+      const cards = [];
+      while (cards.length < 5) { const c = drawCard(); if (!cards.some(x => x.r === c.r && x.s === c.s)) cards.push(c); }
+      vp = { bet, cards, hold: [false, false, false, false, false] };
+      save(); render();
+    },
+    'vp-hold': i => { if (!vp || vp.done) return; vp.hold[+i] = !vp.hold[+i]; render(); },
+    'vp-draw': () => {
+      if (!vp || vp.done) return;
+      vp.cards = vp.cards.map((c, i) => {
+        if (vp.hold[i]) return c;
+        let n; do { n = drawCard(); } while (vp.cards.some(x => x.r === n.r && x.s === n.s));
+        return n;
+      });
+      vp.hand = pokerHand(vp.cards);
+      const p = POKER_PAYTABLE.find(x => x.id === vp.hand);
+      const win = p ? vp.bet * (p.pay + 1) : 0;
+      casinoWin(win);
+      vp.done = true;
+      vp.msg = p ? `${p.name}! +${fmt(win - vp.bet)} ₽` : 'Ничего не собралось';
+      haptic(p ? 'ok' : 'err');
+      save(); render();
+    },
+    'vp-new': () => { vp = null; render(); },
     'race-car': id => { S.raceCar = id; save(); render(); },
     race: id => startRace(id),
     'race-tap': () => raceTap(),
@@ -1748,6 +2013,7 @@
 
   setInterval(tick, 1000);
   setInterval(save, 5000);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); else tick(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { save(); cloudSaveSoon(true); } else tick(); });
+  cloudLoad();
   window.addEventListener('pagehide', save);
 })();

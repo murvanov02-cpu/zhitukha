@@ -247,6 +247,14 @@ const CASES = [
     desc: 'Раз в сутки: недорогая машина или жильё', w: W_CHEAP,
     items: ['c_2107', 'c_2109', 'c_matiz', 'c_logan', 'c_granta', 'c_niva', 'h_bed', 'h_garage', 'h_dacha', 'h_village', 'c_tiggo', 'h_room'] },
 
+  { id: 'car_junk', cover: 'img/cases/car_junk.jpg', credit: 'Sergey Korovkin 84 · CC BY-SA 4.0', name: 'Битые тачки', icon: '🛠️', price: 'auto', tier: 'cheap',
+    desc: 'Старьё на ходу: Москвич, Жигули, Lanos', w: W_CHEAP, items: ['c_moskvich', 'c_2109', 'c_2107', 'c_lanos', 'c_matiz'] },
+  { id: 'car_people', cover: 'img/cases/car_people.jpg', credit: 'Gennady Grachev from Moscow, Russia · CC BY 2.0', name: 'Народные иномарки', icon: '🚗', price: 'auto', tier: 'cheap',
+    desc: 'Logan, Focus, Polo, Solaris, Rio', w: { common: 90, rare: 10, epic: 0, legendary: 0, mythic: 0 },
+    items: ['c_logan', 'c_focus', 'c_polo', 'c_solaris', 'c_rio', 'c_corolla'] },
+  { id: 'car_suv', cover: 'img/cases/car_suv.jpg', credit: 'Dazzuko at English Wikipedia · Public domain', name: 'Кроссоверы и внедорожники', icon: '🚙', price: 'auto', tier: 'cheap',
+    desc: 'Нива, УАЗ, Haval, Chery, X-Trail', w: { common: 70, rare: 30, epic: 0, legendary: 0, mythic: 0 },
+    items: ['c_niva', 'c_uaz', 'c_jolion', 'c_tiggo', 'c_xtrail', 'c_tiguan'] },
   { id: 'car_garage', cover: 'img/cases/car_ru.jpg', credit: 'ShinePhantom · CC BY-SA 3.0', name: 'Гаражный кооператив', icon: '🔧', price: 'auto', tier: 'cheap',
     desc: 'Жигули, Нива, Матиз — дёшево и сердито', w: W_CHEAP,
     items: ['c_2109', 'c_2107', 'c_matiz', 'c_logan', 'c_granta', 'c_niva', 'c_moskvich', 'c_lanos', 'c_largus'] },
@@ -327,7 +335,7 @@ for (const c of CASES) {
   const p = ev * AUTO_PRICE_RATE, mag = Math.pow(10, Math.floor(Math.log10(p)) - 1);
   c.price = Math.round(p / mag) * mag;
 }
-const MULTI_OPEN = [1, 5, 10];      // варианты открытия за раз
+const MULTI_OPEN = [1, 3, 5, 10];   // варианты открытия за раз
 const MULTI_DISCOUNT = { 10: 0.1 }; // ×10 — скидка 10%
 const PITY = 30;                    // не позже чем на 30-м кейсе гарантированно эпик или выше
 // ---------- связи: доверие ----------
@@ -386,7 +394,7 @@ const JOBS = [
   { id: 'holding',  name: 'Владелец холдинга',    icon: '🏦', pay: 25e6,  req: { biz: 40, cha: 30, int: 30 }, perk: 'bizBoost', v: 20 },
 ];
 
-const START_MONEY = 50e3;
+const START_MONEY = 150e3;
 
 const SKILL_MAX = 50;
 const SKILLS = [
@@ -496,7 +504,7 @@ const RANKS = [
 // При покупке мощность и клиенты равны; дальше чередуй: место → реклама → место…
 // Все цифры бизнеса считаются от его цены по единым формулам — так бизнесы одинаково сбалансированы.
 const BIZ_TAX = 0.15;
-const BIZ_SELL_RATE = 0.6;      // бизнес продаётся за 60% вложенного
+const BIZ_SELL_RATE = 0.7;      // бизнес продаётся за 70% вложенного — как и вещи
 const BIZ_LICENSE = 0.1;        // лицензии — доля цены
 const BIZ_START = 2;            // рабочих мест и уровней клиентов на старте
 const BIZ_MAX = 10;             // максимум рабочих мест (и столько же уровней клиентов)
@@ -678,3 +686,21 @@ const CONN_MIN_RANK = {
   k_deputy: 5, k_governor: 5,
   k_oligarch: 6, k_minister: 6,
 };
+
+// ---------- казино ----------
+// Ставка — не больше CASINO_MAX_SHARE от баланса. Все игры с небольшим преимуществом казино, как в жизни.
+const CASINO_MAX_SHARE = 0.5;
+const CASINO_MIN_BET = 1000;
+const ROULETTE_STREAK_CAP = 4;   // ставки 1:1 в рулетке: не больше стольких побед подряд
+// Видеопокер «Валеты и выше»: выплата × ставка
+const POKER_PAYTABLE = [
+  { id: 'royal', name: 'Роял-флэш', pay: 250 },
+  { id: 'sflush', name: 'Стрит-флэш', pay: 50 },
+  { id: 'four', name: 'Каре', pay: 25 },
+  { id: 'full', name: 'Фулл-хаус', pay: 9 },
+  { id: 'flush', name: 'Флэш', pay: 6 },
+  { id: 'straight', name: 'Стрит', pay: 4 },
+  { id: 'three', name: 'Сет', pay: 3 },
+  { id: 'twopair', name: 'Две пары', pay: 2 },
+  { id: 'jacks', name: 'Пара валетов или выше', pay: 1 },
+];
