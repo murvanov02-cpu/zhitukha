@@ -45,6 +45,8 @@
       lvl: 1, xp: 0,              // уровень игрока и опыт внутри уровня
       sil: null,                  // служба: { s: структура, r: звание, xp, since, roofs: [id бизнесов], mission, nextMission, nextCheck, osb }
       jailed: 0,                  // сколько раз сидел
+      rep: 0,                     // репутация (−100 взяточник … +100 честный), не сгорает при увольнении
+      silBan: 0,                  // до какого момента нельзя снова поступить на службу
       promo: [],                  // хэши уже активированных промокодов
       badges: [],                 // значки игрока
     };
@@ -82,6 +84,8 @@
     }
     if (!s.pool) s.pool = { n: RACE_POOL, ts: Date.now() };
     if (s.sil && s.sil.rep === undefined) { s.sil.rep = 0; s.sil.nextCheck = 0; }
+    if (s.sil && s.sil.rep !== undefined && o.rep === undefined) s.rep = s.sil.rep;   // v30: репутация стала общей
+    if (s.sil && !s.sil.rankAt) s.sil.rankAt = s.sil.since;
     if (s.lvl > LEVEL_MAX) { s.lvl = LEVEL_MAX; s.xp = 0; }
     // v25: уровни появились позже — засчитываем прошлые кейсы, победы и курсы (без наград за уровни)
     if (o.lvl === undefined) {
@@ -199,9 +203,9 @@
   // ---------- статус ----------
   function netWorth() {
     let v = S.money;
-    for (const [id, n] of Object.entries(S.inv)) if (ITEM[id]) v += ITEM[id].value * n;
+    for (const [id, n] of Object.entries(S.inv)) if (ITEM[id]) v += ITEM[id].value * (n - (isSvcCar(id) ? 1 : 0));
     for (const [id, g] of Object.entries(S.garage)) if (S.inv[id] && g.tuneInv) v += g.tuneInv * TUNE_SELL_RATE;
-    for (const p of S.plates) v += p.v;
+    for (const p of S.plates) if (!p.svc) v += p.v;
     for (const b of Object.values(S.biz)) v += b.inv;
     return v;
   }
@@ -270,7 +274,7 @@
 
   const frozen = id => !!(S.event && EV[S.event.id].freeze && S.event.biz === id);
   // Без управляющего: занят на работе — мало времени на бизнес, уволился — почти всё под контролем
-  const ownerEff = () => Math.min(1, (S.job ? OWNER_EFF_EMPLOYED : OWNER_EFF_FREE) * (1 + perk('bizEff') / 100));
+  const ownerEff = () => Math.min(1, (S.job || S.sil ? OWNER_EFF_EMPLOYED : OWNER_EFF_FREE) * (1 + perk('bizEff') / 100));
   // Денежные параметры бизнеса — доли его цены (см. data.js)
   const bizNum = d => ({ rev: d.price * BIZ_REV, salary: d.price * BIZ_SALARY, rent: d.price * BIZ_RENT,
     mgr: d.price * BIZ_MGR, license: d.price * BIZ_LICENSE });
@@ -296,6 +300,7 @@
   const bizDelta = (id, change) => bizStats(id, Object.assign({}, S.biz[id], change)).profit - bizStats(id).profit;
   function bizOpen(d) {
     if (rankIdx() < d.rank) return false;
+    if (S.sil && (S.sil.r >= SERVICE_BIZ_UNTIL || !smallBiz(d.id))) return false;
     for (const [k, v] of Object.entries(d.req)) if (S.skills[k] < v) return false;
     return true;
   }
@@ -372,9 +377,10 @@
     d.setDate(d.getDate() - (d.getDay() + 6) % 7);
     return d;
   }
+  const questOk = q => !q.need || ({ conn: Object.keys(S.conn).length > 0, biz: Object.keys(S.biz).length > 0, car: countCat('car') > 0,
+    civil: !S.sil, sil: !!S.sil })[q.need];
   function pickQuests(pool, k) {
-    const has = { conn: Object.keys(S.conn).length > 0, biz: Object.keys(S.biz).length > 0, car: countCat('car') > 0, civil: !S.sil };
-    const avail = pool.filter(q => !q.need || has[q.need]).sort(() => Math.random() - 0.5);
+    const avail = pool.filter(questOk).sort(() => Math.random() - 0.5);
     return avail.slice(0, k).map(q => ({ id: q.id, prog: 0, claimed: false, target: q.hours ? monthsMoney(q.hours) : q.n }));
   }
   function ensureQuests() {
@@ -388,6 +394,14 @@
     if (!S.weekly || S.weekly.key !== wk || S.weekly.list.some(q => !QDEF[q.id])) {
       S.weekly = { key: wk, list: pickQuests(WEEKLY_QUESTS, QUESTS_PER_WEEK), bonus: false };
       changed = true;
+    }
+    // Положение изменилось (служба, бизнес, связи) — невыполнимые задания заменяем другими, с нуля
+    for (const [set, pool] of [[S.daily, DAILY_QUESTS], [S.weekly, WEEKLY_QUESTS]]) {
+      set.list.forEach((q, i) => {
+        if (q.claimed || questOk(QDEF[q.id])) return;
+        const alt = pickQuests(pool.filter(d => !set.list.some(x => x.id === d.id)), 1)[0];
+        if (alt) { set.list[i] = alt; changed = true; }
+      });
     }
     return changed;
   }
@@ -448,6 +462,7 @@
     const has = { car: !!carBonus(), home: countCat('home') > 0, biz: Object.keys(S.biz).length > 0, sil: !!S.sil, civil: !S.sil };
     if (e.need && !has[e.need]) return false;
     if (e.id === 'e_gibdd' && (S.car && isGov(S.car) || S.sil && S.sil.r >= STR().gibdd)) return false;
+    if (e.need === 'car' && !e.good && S.sil && S.sil.r >= SERVICE_NO_RACE && svcCar()) return false;
     if (e.minRank && (e.need === 'sil' ? S.sil.r : rankIdx()) < e.minRank) return false;
     if (e.conn && !S.conn[e.conn]) return false;
     return true;
@@ -726,6 +741,8 @@
   };
   // Что мешает ехать: общее для всех уровней — машина и лимиты; деньги — у каждого уровня свои
   function raceBlock(id) {
+    if (S.sil && S.sil.r >= SERVICE_NO_RACE) return 'С полковника гонки не по статусу';
+    if (S.sil && S.sil.r >= SERVICE_OWN_RACE_UNTIL && !isSvcCar(id)) return 'С капитана — только на служебной машине';
     const st = carState(id);
     if (st.broken) return 'Машина сломана — нужен ремонт';
     if (st.tank < 1) return `Бак пуст — +1 заезд через ${fmtTime(nextIn({ ts: st.ts }, TANK_REGEN_MIN))}`;
@@ -736,7 +753,7 @@
   function gibddStop(id) {
     const lv = connLv('k_gibdd');
     if (Math.random() * 100 >= Math.max(0, GIBDD_CHANCE - GIBDD_CONN_CUT * lv)) return null;
-    if (isGov(id)) return { fine: 0, gov: true };
+    if (isGov(id) || isSvcCar(id)) return { fine: 0, gov: true };
     if (S.sil && S.sil.r >= STR().gibdd) return { fine: 0, sil: true };
     if (lv >= CONN_MAX_LV) return { fine: 0 };
     return { fine: round2(raceUnit(id) * GIBDD_FINE * (1 - perk('fineCut') / 100)) };
@@ -886,6 +903,7 @@
   function sellOne(id) {
     const it = ITEM[id];
     if (!it || !S.inv[id] || it.cat === 'conn') return 0;
+    if (isSvcCar(id) && S.inv[id] <= 1) { toast('Служебную машину продать нельзя — можно «списать на личное»'); return 0; }
     const price = sellPrice(it) + (S.inv[id] === 1 ? carExtra(id) : 0);
     S.inv[id]--;
     earn(price);
@@ -1162,7 +1180,7 @@
         <div class="kv"><span>Состояние</span><b>${fmt(r.nw)} ₽</b></div>
         <div class="kv"><span>Заработано за всё время</span><b>${fmt(S.total)} ₽</b></div>
         <div class="kv"><span>Открыто кейсов</span><b>${S.opened}</b></div>
-        <div class="kv"><span>Коллекция</span><b>${Object.keys(S.inv).filter(id => ITEM[id]).length} из ${ITEMS.filter(i => i.cat !== 'conn').length}</b></div>
+        <div class="kv"><span>Коллекция</span><b>${Object.keys(S.inv).filter(id => ITEM[id] && !ITEM[id].svc).length} из ${ITEMS.filter(i => i.cat !== 'conn' && !i.svc).length}</b></div>
       </div>
       <div class="row"><button class="btn btn-ghost btn-sm grow" data-action="credits">${ic('camera')} Авторы фото</button>
         <button class="btn btn-danger btn-sm grow" data-action="reset">Начать заново</button></div>
@@ -1262,10 +1280,11 @@
           ${cat === 'car' && plateOf(it.id) ? `<div>${plateHTML(plateOf(it.id), 'sm')}</div>` : ''}
           <div class="small" style="color:${RARITIES[it.rarity].color}">${RARITIES[it.rarity].name}</div>
           <div class="small muted">${bonusText(it)}${cat === 'home' && n > 1 ? ' × ' + n : ''} · ${fmt(it.value)} ₽</div></div>
-        <div class="inv-actions">${equip}<button class="btn btn-sm btn-ghost" data-action="sell" data-id="${it.id}">Продать ${fmt(sellPrice(it) + (n === 1 ? carExtra(it.id) : 0))}</button></div></div>`;
+        <div class="inv-actions">${equip}${isSvcCar(it.id) && n <= 1 ? '<span class="tag">Служебная</span>'
+          : `<button class="btn btn-sm btn-ghost" data-action="sell" data-id="${it.id}">Продать ${fmt(sellPrice(it) + (n === 1 ? carExtra(it.id) : 0))}</button>`}</div></div>`;
     }).join('');
     return `${invTabs(cat)}
-      <p class="hint">${cat === 'car' ? 'Машина, на которой ездишь, прибавляет к зарплате.' : 'Всё жильё сдаётся и приносит аренду.'} Собрано ${list.length} из ${ITEMS.filter(i => i.cat === cat).length}.</p>
+      <p class="hint">${cat === 'car' ? 'Машина, на которой ездишь, прибавляет к зарплате.' : 'Всё жильё сдаётся и приносит аренду.'} Собрано ${list.filter(i => !i.svc).length} из ${ITEMS.filter(i => i.cat === cat && !i.svc).length}.</p>
       ${rows || `<div class="empty">${ic(cat === 'car' ? 'car' : 'home')}Пока пусто<br><br><button class="btn btn-sm" data-goto="cases" data-sub="cases:${cat}">К кейсам</button></div>`}`;
   }
 
@@ -1293,6 +1312,9 @@
     }).join('');
     const mine = [...S.plates].sort((x, y) => y.v - x.v).map(p => {
       const car = p.car && ITEM[p.car];
+      if (p.svc) return `<div class="card plate-row" style="${rStyle(p.rar)}"><div class="row">${plateHTML(p)}
+          <div class="grow"><div class="small" style="color:${RARITIES[p.rar].color}"><b>Служебный</b> · ${PLATE_RARITY[p.rar].name}</div>
+            <div class="small muted ellipsis">на ${car ? car.name : 'служебной'} · не продаётся</div></div></div></div>`;
       return `<div class="card plate-row" style="${rStyle(p.rar)}">
         <div class="row">${plateHTML(p)}
           <div class="grow"><div class="small" style="color:${RARITIES[p.rar].color}"><b>${PLATE_RARITY[p.rar].name}</b> · ${fmt(p.v)} ₽</div>
@@ -1453,32 +1475,100 @@
       { ok: S.lvl >= nx.lv, text: `Уровень ${nx.lv}` + (S.lvl < nx.lv ? ` (сейчас ${S.lvl})` : '') },
       ...STR().skills.map(k => ({ ok: S.skills[k] >= nx.sk, text: `${SKILL[k].name} ${nx.sk}` + (S.skills[k] < nx.sk ? ` (сейчас ${S.skills[k]})` : '') })),
       { ok: S.sil.xp >= nx.xp, text: `Служебный опыт ${Math.floor(S.sil.xp)} / ${nx.xp}` },
+      { ok: S.rep >= 0, text: `Репутация не ниже 0` + (S.rep < 0 ? ` (сейчас ${Math.round(S.rep)})` : '') },
+      ...(S.sil.r + 1 >= SERVICE_BIZ_UNTIL && Object.keys(S.biz).length ? [{ ok: false, text: `Продай бизнес — с «${SERVICE_RANKS[SERVICE_BIZ_UNTIL].name}» нельзя` }] : []),
     ];
   }
   const missionOf = () => MISSIONS.find(m => m.id === S.sil.mission);
+  // Служебная машина: лежит в гараже, но не твоя — не продаётся, не тюнингуется, не входит в состояние
+  const svcCar = () => (S.sil && S.sil.car && S.inv[S.sil.car] ? S.sil.car : null);
+  const isSvcCar = id => !!id && svcCar() === id;
+  const svcPlate = () => S.plates.find(p => p.svc);
+  function dropSvcCar() {
+    const id = S.sil && S.sil.car;
+    S.plates = S.plates.filter(p => !p.svc);
+    if (!id || !S.inv[id]) { if (S.sil) S.sil.car = null; return; }
+    if (--S.inv[id] <= 0) { delete S.inv[id]; delete S.garage[id]; }
+    if (S.car === id && !S.inv[id]) S.car = bestCar();
+    if (S.raceCar === id && !S.inv[id]) S.raceCar = null;
+    S.sil.car = null;
+  }
+  function issueSvcCar() {
+    const spec = SERVICE_CARS[S.sil.r];
+    if (!spec) return null;
+    dropSvcCar();
+    const id = spec.car;
+    S.inv[id] = (S.inv[id] || 0) + 1;
+    S.sil.car = id;
+    S.sil.carAt = Date.now();
+    const p = typeof spec.plate === 'string' ? makePlate(spec.plate, PLATE_REGIONS[0])
+      : Object.assign({ id: ++S.plateSeq, car: null }, spec.plate, { v: PLATE_RARITY[spec.plate.rar].value });
+    for (const x of S.plates) if (x.car === id) x.car = null;
+    p.car = id; p.svc = true;
+    S.plates.push(p);
+    S.raceCar = id;
+    return id;
+  }
+  const writeoffCost = () => Math.round((ITEM[S.sil.car].value + (svcPlate() ? svcPlate().v : 0)) * SVC_WRITEOFF_RATE / 1000) * 1000;
+  const writeoffBlock = () => (S.rep < 0 ? 'нужна репутация не ниже 0'
+    : Date.now() - (S.sil.carAt || 0) < SVC_WRITEOFF_H * 3600e3 ? `через ${fmtTime(S.sil.carAt + SVC_WRITEOFF_H * 3600e3 - Date.now())}` : '');
   // Риск сесть на службе: базовый × структура × защита (связи и звания, но не больше SVC_SAFE_MAX)
   const svcRisk = base => Math.round(base * STR().riskMult * (1 - Math.min(SVC_SAFE_MAX, perk('safe')) / 100));
-  function repAdd(n) { if (S.sil) S.sil.rep = Math.max(-REP_MAX, Math.min(REP_MAX, (S.sil.rep || 0) + n)); }
-  const checksPerDay = () => CHECKS_PER_DAY * Math.pow(2, -S.sil.rep / 50) * (1 - perk('osbCut') / 100);
-  const badRep = () => Math.max(0, -S.sil.rep);
+  function repAdd(n) { S.rep = Math.max(-REP_MAX, Math.min(REP_MAX, (S.rep || 0) + n)); }
+  const checksPerDay = () => CHECKS_PER_DAY * Math.pow(2, -S.rep / 50) * (1 - perk('osbCut') / 100);
+  const badRep = () => Math.max(0, -S.rep);
   const findChance = () => Math.min(90, svcRisk(S.sil.roofs.length * OSB_PER_ROOF + badRep() * OSB_PER_REP));
+  const repBar = () => `<div class="rep-bar"><i style="left:${(S.rep + REP_MAX) / (2 * REP_MAX) * 100}%"></i></div>
+        <div class="kv small"><span class="bad">Взяточник</span><b class="${S.rep < -20 ? 'bad' : S.rep > 20 ? 'good' : 'muted'}">${S.rep > 0 ? '+' : ''}${Math.round(S.rep)}</b><span class="good">Честный</span></div>`;
   function scheduleCheck() { S.sil.nextCheck = Date.now() + 24 / checksPerDay() * (0.6 + Math.random() * 0.8) * 3600e3; }
+  const smallBiz = id => BUSINESSES.findIndex(d => d.id === id) <= SERVICE_BIZ_TIER;
+  function joinBlock() {
+    if (Date.now() < S.silBan) return `Вернуться на службу можно через ${fmtTime(S.silBan - Date.now())}.`;
+    if (Object.keys(S.biz).some(id => !smallBiz(id))) return `Госслужащему можно держать только мелкий бизнес (до «${BUSINESSES[SERVICE_BIZ_TIER].name}») — остальное продай.`;
+    if (S.gig) return 'Сначала закончи подработку.';
+    return '';
+  }
   function nextMission() {
     const pool = MISSIONS.filter(m => m.who.includes(S.sil.s) && m.id !== S.sil.last);
     S.sil.mission = pick(pool).id;
   }
   // Попался: суд, конфискация, навыки проседают, со службы — уволен
+  // Попался: дело можно попробовать «замять» звонком сильной связи (один звонок), иначе — суд
+  const rescuers = () => Object.keys(S.conn).filter(id => ITEM[id] && RESCUE_BASE[ITEM[id].rarity]);
+  const rescueChance = id => Math.min(95, RESCUE_BASE[ITEM[id].rarity] + RESCUE_PER_LV * (connLv(id) - 1));
+  const rescueFee = () => Math.round(Math.max(S.money * RESCUE_FEE, rankMonth()) / 1000) * 1000;
+  function caught(why) {
+    S.sil.caught = why;
+    haptic('err'); save(); render();
+    showCaught();
+  }
+  function showCaught() {
+    const why = S.sil.caught, list = rescuers();
+    showModal(`<div class="drop"><div class="drop-name bad">🚨 Взяли с поличным</div>
+      <p style="margin-top:8px">${why}</p>
+      <p class="small">Впереди суд: конфискация ${Math.round(JAIL_MONEY * 100)}% денег, навыки −${Math.round(JAIL_SKILLS * 100)}%, увольнение.
+        ${list.length ? 'Можно один раз позвонить влиятельной связи — вдруг замнёт.' : 'Влиятельных связей (прокурор, судья, депутат и выше) нет — помочь некому.'}</p>
+      <div class="choice">
+        ${list.map(id => `<button class="btn btn-line" data-action="rescue" data-id="${id}">Позвонить: ${ITEM[id].name}
+          <span class="small">шанс ${rescueChance(id)}% · «благодарность» ${fmt(rescueFee())} ₽</span></button>`).join('')}
+        <button class="btn btn-danger" data-action="rescue" data-id="">Принять приговор</button>
+      </div></div>`);
+  }
   function goToJail(why) {
     const lost = Math.round(S.money * JAIL_MONEY);
     S.money -= lost;
     for (const k of Object.keys(S.skills)) S.skills[k] = Math.floor(S.skills[k] * (1 - JAIL_SKILLS));
     const was = `${svcRank().name} ${STR().name}`;
+    dropSvcCar();
     S.sil = null;
+    S.silBan = Date.now() + SERVICE_JAIL_COOLDOWN_H * 3600e3;
+    repAdd(-20);
     S.jailed++;
     haptic('err'); save(); render();
     showModal(`<div class="drop"><div class="drop-name">⛓️ Попался</div>
       <p style="margin-top:8px">${why}</p>
-      <p class="small">Суд: условный срок, ${was} — уволен со службы. Конфискация <b>${fmt(lost)} ₽</b>, навыки просели на ${Math.round(JAIL_SKILLS * 100)}%.</p>
+      <p class="small">Суд: условный срок, ${was} — уволен со службы. Конфискация <b>${fmt(lost)} ₽</b>, навыки просели на ${Math.round(JAIL_SKILLS * 100)}%.
+        Вернуться на службу — не раньше чем через ${SERVICE_JAIL_COOLDOWN_H / 24} сут.</p>
       <button class="btn full" data-action="close">Начать с чистого листа</button></div>`);
   }
   // Служебные проверки: чем хуже репутация и больше «крыш», тем чаще приходят и тем чаще что-то находят
@@ -1492,7 +1582,8 @@
       save();
     }
     if (!$('#modal').classList.contains('hidden')) return;
-    if (S.sil.osb) showOsb();
+    if (S.sil.caught) showCaught();
+    else if (S.sil.osb) showOsb();
     else if (S.sil.clean) {
       S.sil.clean = false;
       save(); render();
@@ -1545,6 +1636,22 @@
         ${bonus ? `<div class="perk">${ic('star')} ${bonus}</div>` : ''}${!ok && !cur && reqs ? `<div class="reqs">${reqs}</div>` : ''}</div>
       ${action}</div>`;
   }
+  function svcCarCard() {
+    const id = svcCar(), r = S.sil.r;
+    const race = r >= SERVICE_NO_RACE ? 'гонки не по статусу, зато мигалка: проблемы с машиной обходят стороной'
+      : r >= SERVICE_OWN_RACE_UNTIL ? 'гонки — только на ней, ГИБДД не трогает' : 'пока гоняешь на своих (подпольные гонки — до лейтенанта)';
+    if (!id) {
+      const next = Object.keys(SERVICE_CARS).map(Number).find(k => k > r);
+      return `<div class="card small muted">${ic('car')} ${next !== undefined ? `Служебная машина — со звания «${SERVICE_RANKS[next].name}»: ${ITEM[SERVICE_CARS[next].car].name}.` : 'Служебной машины сейчас нет.'}
+        <br>${race}.</div>`;
+    }
+    const block = writeoffBlock();
+    return `<div class="card"><div class="row"><div class="inv-icon">${visual(ITEM[id])}</div>
+        <div class="grow"><div class="val">${ITEM[id].name}</div><div>${svcPlate() ? plateHTML(svcPlate(), 'sm') : ''}</div>
+          <div class="small muted">${race}</div></div></div>
+      <button class="btn btn-sm btn-ghost full" style="margin-top:8px" data-action="svc-writeoff" ${block ? 'disabled' : ''}>
+        Списать на личное · ${fmt(writeoffCost())} ₽${block ? ` <span class="small">(${block})</span>` : ''}</button></div>`;
+  }
   function renderService() {
     const sv = S.sil, st = STR(), rk = svcRank(), reqs = promoReqs();
     if (!sv.mission) nextMission();
@@ -1581,11 +1688,12 @@
       </div>
       <div class="section">Репутация</div>
       <div class="card">
-        <div class="rep-bar"><i style="left:${(sv.rep + REP_MAX) / (2 * REP_MAX) * 100}%"></i></div>
-        <div class="kv small"><span class="bad">Взяточник</span><b class="${sv.rep < -20 ? 'bad' : sv.rep > 20 ? 'good' : 'muted'}">${sv.rep > 0 ? '+' : ''}${Math.round(sv.rep)}</b><span class="good">Честный</span></div>
+        ${repBar()}
         <div class="small muted">Проверок: ${checksPerDay() >= 1 ? `≈ ${String(+checksPerDay().toFixed(1)).replace('.', ',')} в сутки` : `≈ раз в ${String(+(1 / checksPerDay()).toFixed(1)).replace('.', ',')} сут.`} ·
           найдут что-то с шансом ${findChance()}%. Честные решения поднимают репутацию, деньги и «крыши» — роняют.</div>
       </div>
+      <div class="section">Служебная машина</div>
+      ${svcCarCard()}
       <div class="section">Задание</div>
       ${mission}
       <div class="section">«Крыша» · ${sv.roofs.length} из ${rk.roofs}</div>
@@ -1601,7 +1709,7 @@
       <div class="section">Что даёт ${st.name}</div>
       <div class="card small">${st.perks.map(t => `<div>${ic('star', 'gold')} ${t}</div>`).join('')}
         <div class="muted" style="margin-top:6px">Для званий качай в «Учёбе»: ${st.skills.map(k => SKILL[k].name).join(' и ')}.</div>
-        <div class="muted">Обычная работа, подработки и свой бизнес — запрещены.</div></div>
+        <div class="muted">Обычная работа и подработки — запрещены. Мелкий бизнес (до «${BUSINESSES[SERVICE_BIZ_TIER].name}») — можно до майора.</div></div>
       <button class="btn btn-ghost btn-sm full" data-action="sil-quit">Уволиться со службы</button>`;
   }
   function renderJobs() {
@@ -1614,7 +1722,9 @@
     // Ближайшая закрытая профессия: меньше всего не хватает уровней навыков
     const miss = j => Object.entries(j.req).reduce((a, [k, v]) => a + Math.max(0, v - S.skills[k]), 0);
     const near = locked.slice().sort((x, y) => miss(x) - miss(y))[0];
-    const service = S.lvl >= SERVICE_MIN_LEVEL
+    const service = S.lvl >= SERVICE_MIN_LEVEL && Date.now() < S.silBan
+      ? `<div class="card small muted">${ic('clock')} На службу снова можно через <span data-timer="${S.silBan}">${fmtTime(S.silBan - Date.now())}</span></div>`
+      : S.lvl >= SERVICE_MIN_LEVEL
       ? `<button class="card tap accent" data-action="sil-join"><div class="list-row"><div class="ico-box">${ic('shield')}</div>
           <div class="grow"><div class="val">Пойти на службу</div><div class="small muted">МВД, ФСБ или спецназ: звания, «крыша», задания — и риск сесть</div></div>
           <span class="chev">${ic('chevron-right')}</span></div></button>`
@@ -1648,7 +1758,7 @@
       <button class="btn btn-sm" data-goto="cases" data-sub="cases:car">К кейсам</button></div>`;
     const it = ITEM[id], st = carState(id), rc = rclass(id), block = raceBlock(id), pl = pool();
     const cars = Object.keys(S.inv).filter(x => ITEM[x] && ITEM[x].cat === 'car').sort((a, b) => carHp(b) - carHp(a));
-    const chips = cars.map(x => `<button class="chip ${x === id ? 'active' : ''}" data-action="race-car" data-id="${x}">${rclass(x).name} · ${ITEM[x].name}${carState(x).stage ? ' · S' + carState(x).stage : ''} · ⛽${carState(x).tank}</button>`).join('');
+    const chips = cars.map(x => `<button class="chip ${x === id ? 'active' : ''}" data-action="race-car" data-id="${x}">${isSvcCar(x) ? '🚨 ' : ''}${rclass(x).name} · ${ITEM[x].name}${carState(x).stage ? ' · S' + carState(x).stage : ''} · ⛽${carState(x).tank}</button>`).join('');
     const tank = Array.from({ length: TANK_RACES }, (_, i) => `<i class="${i < st.tank ? 'on' : ''}"></i>`).join('');
     const next = TUNE_STAGES[st.stage];
     const tune = next
@@ -1845,7 +1955,7 @@
 
   // ---------- бизнес ----------
   function renderBiz() {
-    if (S.sil) return `<div class="empty">${ic('shield')}Госслужащему нельзя владеть бизнесом.<br>Зато бизнес можно взять под «крышу».<br><br>
+    if (S.sil && S.sil.r >= SERVICE_BIZ_UNTIL && !Object.keys(S.biz).length) return `<div class="empty">${ic('shield')}С «${SERVICE_RANKS[SERVICE_BIZ_UNTIL].name}» владеть бизнесом нельзя.<br>Зато бизнес можно взять под «крышу».<br><br>
       <button class="btn btn-sm" data-goto="career" data-sub="career:jobs">К службе</button></div>`;
     const owned = BUSINESSES.filter(d => S.biz[d.id]);
     const total = bizProfit();
@@ -2317,7 +2427,8 @@
     },
     'biz-buy': id => {
       const d = BIZ[id];
-      if (S.sil || S.biz[id] || !bizOpen(d)) return;
+      if (S.biz[id] || !bizOpen(d)) return;
+      if (S.sil && (S.sil.r >= SERVICE_BIZ_UNTIL || !smallBiz(id))) return toast(S.sil.r >= SERVICE_BIZ_UNTIL ? 'С майора бизнес — нельзя' : 'На службе — только мелкий бизнес');
       const lic = licenseCost(d), bribe = Math.round(lic / BRIBE_DIVISOR), risk = bribeRisk('license');
       showModal(`<h3>${d.icon} ${d.name}</h3>
         <p>Помещение и запуск: <b>${fmt(d.price)} ₽</b>. Осталось оформить лицензии и разрешения.</p>
@@ -2386,11 +2497,11 @@
     'race-car': id => { S.raceCar = id; save(); render(); },
     'sil-join': () => {
       if (S.sil || S.lvl < SERVICE_MIN_LEVEL) return;
-      const nBiz = Object.keys(S.biz).length;
-      const block = nBiz ? 'Госслужащему нельзя владеть бизнесом — сначала продай его.' : S.gig ? 'Сначала закончи подработку.' : '';
+      const block = joinBlock();
       showModal(`${sheetHead('Служба')}
-        <p class="small">Вместо работы — служба: звания по выслуге и опыту, довольствие, «крыша» над бизнесами, задания.
-          Подработки и свой бизнес — нельзя. Уволишься или сядешь — звание сгорит.</p>
+        <p class="small">Вместо работы — служба: звания по выслуге, опыту и учёбе, довольствие, «крыша» над бизнесами, задания, служебная машина с капитана.
+          Подработки нельзя, бизнес — только мелкий и до майора. Уволишься или сядешь — звание сгорит, вернуться можно не сразу.</p>
+        <div class="card"><div class="small muted">Твоя репутация</div>${repBar()}</div>
         ${block ? `<div class="card danger small">${block}</div>` : ''}
         ${STRUCTURES.map(x => `<div class="card"><div class="row"><div class="job-ico">${x.icon}</div><div class="grow"><div class="job-name">${x.name}</div>
           ${x.perks.map(t => `<div class="small">${ic('star', 'gold')} ${t}</div>`).join('')}
@@ -2398,27 +2509,32 @@
           <button class="btn full" style="margin-top:8px" data-action="sil-pick" data-id="${x.id}" ${block ? 'disabled' : ''}>Поступить в ${x.name}</button></div>`).join('')}`, true);
     },
     'sil-pick': id => {
-      if (S.sil || S.lvl < SERVICE_MIN_LEVEL || Object.keys(S.biz).length || S.gig || !STRUCTURES.some(x => x.id === id)) return;
-      S.sil = { s: id, r: 0, xp: 0, rep: 0, since: Date.now(), roofs: [], mission: null, last: '', nextMission: Date.now(), nextCheck: 0, osb: false, clean: false };
+      if (S.sil || S.lvl < SERVICE_MIN_LEVEL || joinBlock() || !STRUCTURES.some(x => x.id === id)) return;
+      S.sil = { s: id, r: 0, xp: 0, since: Date.now(), rankAt: Date.now(), roofs: [], mission: null, last: '', nextMission: Date.now(), nextCheck: 0, osb: false, clean: false, car: null };
       S.job = null;
       sub.career = 'jobs';
       closeModal(); haptic('ok'); toast(`${STR().icon} Ты на службе: ${svcRank().name} ${STR().name}`); save(); render();
     },
-    'sil-quit': () => askConfirm('Уволиться со службы? Звание, выслуга и «крыша» сгорят — вернуться можно только с нуля.', () => {
+    'sil-quit': () => askConfirm(`Уволиться со службы? Звание, выслуга, «крыша» и служебная машина сгорят. Вернуться можно через ${SERVICE_COOLDOWN_H} ч и только с нуля.`, () => {
+      dropSvcCar();
       S.sil = null;
+      S.silBan = Date.now() + SERVICE_COOLDOWN_H * 3600e3;
       haptic('medium'); toast('Ты снова гражданский'); save(); render();
     }),
     'sil-promote': () => {
       const reqs = promoReqs();
       if (!reqs || !reqs.every(x => x.ok)) return;
       S.sil.r++;
-      const rk = svcRank();
+      S.sil.rankAt = Date.now();
+      const rk = svcRank(), car = issueSvcCar();
       haptic('ok'); save(); render();
       showModal(`<div class="drop"><div class="pogon-pair">${boardImg(S.sil.r - 1, 'old')}${ic('arrow-right')}${boardImg(S.sil.r, 'new')}</div>
         <div class="drop-name">🎖️ ${rk.name}</div>
         <p style="margin-top:8px">Присвоено новое звание. Довольствие: <b>${fmt(servicePay())} ₽/мес</b>.</p>
         ${rk.bonus ? `<div class="card small" style="text-align:left">${ic('star', 'gold')} ${rk.bonus}</div>` : ''}
         ${rk.roofs ? `<p class="small">«Крыша»: ${rk.roofs === 1 ? 'один бизнес' : `до ${rk.roofs} бизнесов`}, вплоть до «${BUSINESSES[rk.tier].name}».</p>` : ''}
+        ${car ? `<div class="card small" style="text-align:left"><div class="row"><div class="inv-icon">${visual(ITEM[car])}</div>
+          <div class="grow">Служебная машина: <b>${ITEM[car].name}</b><br>${plateHTML(svcPlate(), 'sm')}</div></div></div>` : ''}
         <button class="btn full" data-action="close">Служу Отечеству!</button></div>`);
     },
     mission: i => {
@@ -2430,18 +2546,47 @@
       nextMission();
       const failed = c.need && !st.force && Object.entries(c.need).some(([k, v]) => S.skills[k] < v);
       if (!failed && c.risk && Math.random() * 100 < svcRisk(c.risk))
-        return goToJail(`«${m.title}»: деньги оказались мечеными — это была проверка.`);
+        return caught(`«${m.title}»: деньги оказались мечеными — это была проверка.`);
       const xp = failed ? c.fail.xp : c.xp || 0;
       const money = !failed && c.money ? round2(rankMonth() * st.bribeMult * c.money) : 0;
       sv.xp += xp;
       if (money) earn(money);
       repAdd(failed ? 3 : c.risk ? -(REP_BRIBE + 4 * c.money) : c.money ? 4 : REP_HONEST);
+      progress('mission');
       gainXP(3 + Math.round(xp / 5));
       haptic(failed ? 'err' : 'ok'); save(); render();
       showModal(`<div class="drop"><div class="drop-name">${failed ? '😬 Не вышло' : '✅ ' + m.title}</div>
         <p style="margin-top:8px">${failed ? c.fail.text : c.risk ? 'Деньги у тебя. Никто ничего не видел… пока.' : 'Сделано чисто — начальство заметило.'}</p>
         <div class="big">${money ? '+' + fmt(money) + ' ₽ · ' : ''}+${xp} опыта</div>
         <button class="btn full" data-action="close">Дальше</button></div>`);
+    },
+    rescue: id => {
+      const sv = S.sil;
+      if (!sv || !sv.caught) return;
+      const why = sv.caught;
+      sv.caught = null;
+      if (!id || !S.conn[id] || !rescuers().includes(id)) return goToJail(why);
+      if (Math.random() * 100 < rescueChance(id)) {
+        const fee = Math.min(S.money, rescueFee());
+        S.money -= fee;
+        repAdd(-10);
+        haptic('ok'); save(); render();
+        showModal(`<div class="drop"><div class="drop-name good">📞 Замяли</div>
+          <p style="margin-top:8px">${ITEM[id].name} сделал пару звонков — дело «потерялось». «Благодарность»: <b>${fmt(fee)} ₽</b>.</p>
+          <p class="small muted">Репутация пострадала. В следующий раз может и не повезти.</p>
+          <button class="btn full" data-action="close">Фух</button></div>`);
+      } else goToJail(`${why} ${ITEM[id].name} не смог помочь.`);
+    },
+    'svc-writeoff': () => {
+      if (!svcCar() || writeoffBlock()) return;
+      const cost = writeoffCost(), id = S.sil.car;
+      askConfirm(`Списать «${ITEM[id].name}» со служебным номером на себя за ${fmt(cost)} ₽? Новая служебная будет только со следующим званием.`, () => {
+        if (!pay(cost)) return;
+        const p = svcPlate();
+        if (p) p.svc = false;
+        S.sil.car = null;
+        haptic('ok'); toast(`${ITEM[id].name} теперь твоя`); save(); render();
+      });
     },
     'roof-take': id => {
       const sv = S.sil, rk = sv && svcRank(), i = BUSINESSES.findIndex(d => d.id === id);
@@ -2475,7 +2620,7 @@
         sv.xp = Math.max(0, sv.xp - 100);
         toast('Выговор в личное дело');
       } else if (Math.random() * 100 < denyRisk()) {
-        return goToJail('Проверка нашла переводы от бизнесменов. Отказ не помог.');
+        return caught('Проверка нашла переводы от бизнесменов. Отказ не помог.');
       } else { repAdd(-5); toast('Доказательств не нашли. Пронесло'); }
       haptic('medium'); save(); render();
     },
@@ -2489,21 +2634,23 @@
     'plate-on': id => plateChooseCar(+id),
     'plate-set': v => {
       const [pid, car] = v.split(':'), p = S.plates.find(x => x.id === +pid);
-      if (!p || !S.inv[car]) return;
+      if (!p || p.svc || !S.inv[car]) return;
+      if (isSvcCar(car)) return toast('На служебной — служебный номер');
       for (const x of S.plates) if (x.car === car) x.car = null;
       p.car = car;
       closeModal(); haptic('light'); toast(`Номер на ${ITEM[car].name}`); save(); render();
     },
-    'plate-off': id => { const p = S.plates.find(x => x.id === +id); if (p) p.car = null; save(); render(); },
+    'plate-off': id => { const p = S.plates.find(x => x.id === +id); if (p && !p.svc) p.car = null; save(); render(); },
     'plate-sell': id => {
       const p = S.plates.find(x => x.id === +id);
-      if (!p) return;
+      if (!p || p.svc) return;
       S.plates = S.plates.filter(x => x !== p);
       earn(plateSell(p));
       closeModal(); haptic('light'); toast(`Номер продан +${fmt(plateSell(p))} ₽`); save(); render();
     },
     race: lv => startRace(raceCarId(), +lv),
     tune: id => {
+      if (isSvcCar(id)) return toast('Служебную машину тюнинговать нельзя');
       const g = carState(id);
       if (g.stage >= TUNE_STAGES.length) return;
       const c = tuneCost(id, g.stage);
@@ -2724,6 +2871,8 @@
   showName();
   $('#ava').textContent = name[0].toUpperCase();
 
+  // v30: служебные машины появились позже — выдаём тем, кто уже на звании
+  if (S.sil && S.sil.car === undefined) { S.sil.car = null; if (SERVICE_CARS[S.sil.r]) issueSvcCar(); save(); }
   const away = (Date.now() - S.lastTick) / 1000;
   const first = catchUp();
   ensureQuests();

@@ -95,6 +95,9 @@ const ITEMS = [
     img: 'img/cars/c_gtr.png', credit: 'OSX · Public domain' },
   { id: 'c_sclass', cat: 'car', name: 'Mercedes-Benz S-класс', icon: '🚘', rarity: 'epic', bonus: 18, t: ['de'], value: 20e6,
     img: 'img/cars/c_sclass.png', credit: 'Alexander Migl · CC BY-SA 4.0' },
+  // Только служебная — генералу (svc: true — не выпадает из кейсов и не считается в коллекции)
+  { id: 'c_aurus', cat: 'car', name: 'Aurus Senat', icon: '🚘', rarity: 'mythic', bonus: 40, t: ['ru'], value: 60e6, svc: true,
+    img: 'img/cars/c_aurus.png', credit: 'Alexander Migl · CC BY-SA 4.0' },
   { id: 'c_lx', cat: 'car', name: 'Lexus LX 600', icon: '🚙', rarity: 'epic', bonus: 18, t: ['jp'], value: 22e6,
     img: 'img/cars/c_lx.png', credit: 'Kevauto · CC BY-SA 4.0' },
   { id: 'c_bentley', cat: 'car', name: 'Bentley Continental GT', icon: '🏎️', rarity: 'legendary', bonus: 32, value: 33e6,
@@ -425,7 +428,8 @@ const GIGS = [
 // ev — какое действие засчитывается: open (кейс), free (ежедневный кейс), gig, date, gift, skill (курс),
 //      earn (заработок с работы, аренды и подработок), daily_all (выполнены все ежедневные)
 // n — сколько нужно; hours — для earn: цель = столько месяцев текущего дохода;
-// need: 'conn' — только если есть связи, 'biz' — только если есть бизнес
+// need: 'conn' — только если есть связи, 'biz' — только если есть бизнес, 'sil' — на службе, 'civil' — не на службе.
+// Если положение изменилось (поступил на службу, продал бизнес), невыполнимое задание заменяется другим — с нуля.
 const DAILY_QUESTS = [
   { id: 'd_open',  ev: 'open',  n: 2, text: 'Открой 2 любых кейса' },
   { id: 'd_free',  ev: 'free',  n: 1, text: 'Открой ежедневный кейс' },
@@ -436,6 +440,7 @@ const DAILY_QUESTS = [
   { id: 'd_biz',   ev: 'bizup', n: 1, text: 'Улучши бизнес: станок, сотрудник или реклама', need: 'biz' },
   { id: 'd_conn',  ev: 'conn_free', n: 1, text: 'Открой «Знакомство дня»' },
   { id: 'd_race',  ev: 'race_win', n: 1, text: 'Выиграй гонку', need: 'car' },
+  { id: 'd_mission', ev: 'mission', n: 2, text: 'Выполни 2 задания службы', need: 'sil' },
 ];
 const WEEKLY_QUESTS = [
   { id: 'w_open',  ev: 'open',      n: 15, text: 'Открой 15 кейсов' },
@@ -447,6 +452,7 @@ const WEEKLY_QUESTS = [
   { id: 'w_daily', ev: 'daily_all', n: 4,  text: 'Выполни все ежедневные задания 4 дня' },
   { id: 'w_biz',   ev: 'bizup',     n: 5,  text: 'Сделай 5 улучшений бизнеса', need: 'biz' },
   { id: 'w_race',  ev: 'race_win',  n: 8,  text: 'Выиграй 8 гонок', need: 'car' },
+  { id: 'w_mission', ev: 'mission',  n: 10, text: 'Выполни 10 заданий службы', need: 'sil' },
 ];
 const QUESTS_PER_DAY = 3;
 const QUESTS_PER_WEEK = 3;
@@ -662,7 +668,7 @@ const CAR_HP = {
   c_camry: 200, c_rav4: 199, c_tiguan: 180, c_monjaro: 238, c_eclass: 245, c_lc300: 409, c_x5: 340, c_cayenne: 353,
   c_gtr: 565, c_m5: 600, c_rs6: 600, c_sclass: 367, c_lx: 409, c_911: 385, c_g63: 585, c_bentley: 659,
   c_mclaren: 720, c_ferrari: 830, c_urus: 666, c_aventador: 770, c_phantom: 571, c_cullinan: 571,
-  c_huayra: 730, c_jesko: 1600, c_chiron: 1500,
+  c_huayra: 730, c_jesko: 1600, c_chiron: 1500, c_aurus: 598,
   c_moskvich: 75, c_lanos: 86, c_focus: 125, c_largus: 106, c_uaz: 150, c_corolla: 122, c_passat: 150, c_a4: 190, c_prado: 249, c_m3: 510, c_tesla: 1020, c_range: 400, c_amggt: 585, c_db11: 630, c_nevera: 1914, c_laferrari: 963,
 };
 // Ставки зависят от цены машины: единица ставки U = RACE_CAR_SHARE её стоимости (не меньше RACE_UNIT_MIN).
@@ -838,7 +844,7 @@ const SERVICE_RANKS = [
 // «Крыша»: бизнес платит долю цены в месяц. Это четверть того, что он даёт владельцу на старте, —
 // зато без вложений. Чем больше «крыш», тем чаще интересуется собственная безопасность (ОСБ).
 const ROOF_RATE = 0.0085;
-// Репутация на службе: от −100 (взяточник) до +100 (честный). Чем хуже, тем чаще служебные проверки:
+// Репутация — постоянная (не сгорает при увольнении): от −100 (взяточник) до +100 (честный). Для нового звания нужна ≥ 0. Чем хуже, тем чаще служебные проверки:
 // в сутки их CHECKS_PER_DAY × 2^(−репутация/50): у взяточника 4 в сутки, у нейтрального 1, у честного одна за 4 дня.
 const REP_MAX = 100;
 const REP_HONEST = 8;                // честный выбор в задании
@@ -855,6 +861,34 @@ const OSB_CLEAN_XP = 20;
 const OSB_PAYOFF_MONTHS = 24;
 const OSB_DENY_JAIL = 30;            // пойти в отказ: шанс сесть, % (+ |плохая репутация| × OSB_PER_REP)
 const SVC_SAFE_MAX = 50;             // связи и звания снижают риск сесть на службе не больше чем вдвое
+// Уволился — вернуться на службу можно через SERVICE_COOLDOWN_H часов, после суда — через SERVICE_JAIL_COOLDOWN_H.
+const SERVICE_COOLDOWN_H = 24;
+const SERVICE_JAIL_COOLDOWN_H = 72;
+// Мелкий бизнес (до BUSINESSES[SERVICE_BIZ_TIER] включительно) можно держать до звания SERVICE_BIZ_UNTIL (майор — уже нельзя).
+const SERVICE_BIZ_TIER = 2;
+const SERVICE_BIZ_UNTIL = 4;
+// Гонки: до лейтенанта — на своих машинах («подпольные»), с капитана — только на служебной (ГИБДД не трогает),
+// с полковника (SERVICE_NO_RACE) — никаких гонок: слишком много внимания. Зато мигалка: события с машиной обходят стороной.
+const SERVICE_OWN_RACE_UNTIL = 3;
+const SERVICE_NO_RACE = 6;
+// Служебная машина и номер — со звания капитана, растут со званием. Продать нельзя; «списать на личное» —
+// после SVC_WRITEOFF_H часов на звании и с репутацией не ниже 0, за SVC_WRITEOFF_RATE стоимости машины и номера.
+const SERVICE_CARS = {
+  3: { car: 'c_vesta',  plate: 'rare' },
+  4: { car: 'c_camry',  plate: 'rare' },
+  5: { car: 'c_eclass', plate: 'epic' },
+  6: { car: 'c_lc300',  plate: 'epic' },
+  7: { car: 'c_sclass', plate: 'legendary' },
+  8: { car: 'c_g63',    plate: 'legendary' },
+  9: { car: 'c_aurus',  plate: { a: 'А', d: '003', b: 'МР', r: '97', rar: 'mythic' } },
+};
+const SVC_WRITEOFF_H = 24;
+const SVC_WRITEOFF_RATE = 0.5;
+// Попался — можно позвонить связи: шанс «замять» = RESCUE_BASE по редкости связи + RESCUE_PER_LV за каждый уровень доверия выше первого.
+// Получилось — «благодарность» RESCUE_FEE денег и минус репутация, но звание и свобода при тебе. Нет — суд.
+const RESCUE_BASE = { epic: 30, legendary: 40, mythic: 50 };
+const RESCUE_PER_LV = 8;
+const RESCUE_FEE = 0.1;
 // Попался — суд: конфискация части денег, навыки проседают, со службы — уволен.
 const JAIL_MONEY = 0.5;
 const JAIL_SKILLS = 0.25;
