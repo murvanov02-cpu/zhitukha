@@ -283,3 +283,5 @@ details.more-card > summary { list-style: none; cursor: pointer; }
 details.more-card > summary::-webkit-details-marker { display: none; }
 details.more-card[open] .chev .ti { transform: rotate(180deg); }
 details.more-card .card { background: var(--card2); }
+.input { background: var(--card2); border: 1px solid var(--line); border-radius: 10px; color: var(--text); font: inherit; font-size: 15px; padding: 9px 12px; min-width: 0; outline: none; user-select: text; -webkit-user-select: text; }
+.input:focus { border-color: var(--gold-line); }
