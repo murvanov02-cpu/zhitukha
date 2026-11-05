@@ -366,9 +366,9 @@ const SPECIAL_CD_H = 24;          // особая услуга — раз в с�
 // Особые услуги на максимальном доверии
 const SPECIALS = {
   closeEvent: 'Закрыть любую текущую проблему бесплатно',
-  cash:       'Выгодная сделка: +{h} ч твоего дохода',
+  cash:       'Выгодная сделка: +{h} мес. твоего дохода',
   taxHoliday: 'Налоговые каникулы: {h} ч без налога на бизнес',
-  tender:     'Госзаказ: {h} ч прибыли бизнеса сразу',
+  tender:     'Госзаказ: {h} мес. прибыли бизнеса сразу',
 };
 
 
@@ -380,7 +380,7 @@ const JOBS = [
   { id: 'courier',  name: 'Курьер',               icon: '📦', pay: 60e3,  req: { fit: 2 },  perk: 'gigUp', v: 20 },
   { id: 'barista',  name: 'Бариста',              icon: '☕', pay: 65e3,  req: { cha: 3 },  perk: 'meetCheap', v: 20 },
   { id: 'seller',   name: 'Продавец-консультант', icon: '🛍️', pay: 80e3,  req: { cha: 5, int: 2 }, perk: 'caseCheap', v: 5 },
-  { id: 'taxi',     name: 'Таксист',              icon: '🚕', pay: 120e3, req: { fit: 4 }, needCar: true, perk: 'gibdd', v: 1, solves: ['e_gibdd'] },
+  { id: 'taxi',     name: 'Таксист',              icon: '🚕', pay: 120e3, req: { fit: 4 }, needCar: true, perk: 'fineCut', v: 30 },
   { id: 'junior',   name: 'Junior-программист',   icon: '💻', pay: 150e3, req: { int: 8 },  perk: 'skillCheap', v: 15 },
   { id: 'trainer',  name: 'Фитнес-тренер',        icon: '🏋️', pay: 180e3, req: { fit: 12, cha: 5 }, perk: 'trustUp', v: 25 },
   { id: 'sales',    name: 'Менеджер по продажам', icon: '📞', pay: 220e3, req: { cha: 10, biz: 5 }, perk: 'demandUp', v: 10 },
@@ -638,29 +638,53 @@ const CAR_HP = {
   c_huayra: 730, c_jesko: 1600, c_chiron: 1500,
   c_moskvich: 75, c_lanos: 86, c_focus: 125, c_largus: 106, c_uaz: 150, c_corolla: 122, c_passat: 150, c_a4: 190, c_prado: 249, c_m3: 510, c_tesla: 1020, c_range: 400, c_amggt: 585, c_db11: 630, c_nevera: 1914, c_laferrari: 963,
 };
-// Ставки растут вместе с игроком: взнос = RACE_FEE_MONTHS месячного дохода × mult класса (не меньше RACE_FEE_MIN),
-// выигрыш = взнос × RACE_PRIZE_RATE (300 тыс → 1 млн, 1 млн → 3,3 млн).
-// Так гонки всегда ощутимы, но на полном лимите дают примерно +50–75% к доходу, а не ломают экономику.
+// Ставки растут вместе с игроком. Единица ставки U = RACE_FEE_MONTHS месячного дохода × mult класса
+// (не меньше RACE_FEE_MIN). Взнос и выплата уровня — в U: fee — платишь на старте, prize — получаешь при победе.
 const RACE_CLASSES = {
   common:    { name: 'D', mult: 1 },
-  rare:      { name: 'C', mult: 1.2 },
-  epic:      { name: 'B', mult: 1.4 },
-  legendary: { name: 'A', mult: 1.7 },
-  mythic:    { name: 'S', mult: 2 },
+  rare:      { name: 'C', mult: 1.1 },
+  epic:      { name: 'B', mult: 1.2 },
+  legendary: { name: 'A', mult: 1.35 },
+  mythic:    { name: 'S', mult: 1.5 },
 };
-const RACE_FEE_MONTHS = 0.3;
+const RACE_FEE_MONTHS = 0.15;
 const RACE_FEE_MIN = 20e3;
-const RACE_PRIZE_RATE = 10 / 3;
+// Пять уровней соперников. base — шанс победы на стоковой машине (Stage 0).
+// Соперник уровня N сам затюнингован на Stage N−1, поэтому тюнинг двигает тебя вверх по лестнице:
+// разница d = уровень − твой Stage; d ≤ 0 — 100%, d = 1 — 90% (если машина хоть немного затюнингована), d ≥ 2 — base[d].
+// Ожидаемый выигрыш на заезд (в U): сток — лучше всего «Любитель» +0,5; Stage 5 на «Легенде» +2,4.
+// На полном лимите (10 заездов в час) это +10–15% к доходу на стоке и до +45% (класс D) … +68% (класс S) на Stage 5.
+const RACE_LEVELS = [
+  { name: 'Новичок',  color: '#7bc68a', base: 100, fee: 0,   prize: 0.4 },
+  { name: 'Любитель', color: '#b5d36b', base: 85,  fee: 0.5, prize: 1.2 },
+  { name: 'Профи',    color: '#e6c372', base: 50,  fee: 1,   prize: 2.2 },
+  { name: 'Мастер',   color: '#f0a35b', base: 30,  fee: 1.5, prize: 3.2 },
+  { name: 'Легенда',  color: '#e5484d', base: 0,   fee: 2,   prize: 4.4 },
+];
+const RACE_NEAR_WIN = 90;            // шанс, когда соперник ровно на ступень сильнее твоей затюнингованной машины
+const RACE_SKILL = 5;                // ±% к шансу за мастерство (только если шанс не 0 и не 100)
+const RACE_SLEEP = 1.5;              // проспал старт дольше этого (с) — поражение
+// Тюнинг: цена ступени — в U машины на момент покупки. При продаже машины вложенное в тюнинг
+// возвращается на TUNE_SELL_RATE. hp — прибавка мощности (для красоты и времени заезда).
+const TUNE_STAGES = [
+  { name: 'Чип-тюнинг',          cost: 8,   hp: 0.08 },
+  { name: 'Впуск и выхлоп',      cost: 15,  hp: 0.16 },
+  { name: 'Турбина',             cost: 30,  hp: 0.30 },
+  { name: 'Подвеска и коробка',  cost: 60,  hp: 0.42 },
+  { name: 'Гоночная сборка',     cost: 120, hp: 0.60 },
+];
+const TUNE_SELL_RATE = 0.9;
+// ГИБДД после заезда: шанс остановки и штраф (в U; штраф уменьшают перки «штрафы дешевле»).
+// Связь «Инспектор ГИБДД» снижает шанс на GIBDD_CONN_CUT за уровень доверия, на максимуме — отпускает без штрафа.
+const GIBDD_CHANCE = 8;
+const GIBDD_FINE = 0.3;            // меньше выигрыша даже у «Новичка» (0,4 U)
+const GIBDD_CONN_CUT = 1.5;
 // Бензин не покупается: у каждой машины свой бак на TANK_RACES заездов, деления восстанавливаются сами.
 // Плюс общий лимит заездов на все машины — RACE_POOL, восстанавливается за час.
 const TANK_RACES = 5;
 const TANK_REGEN_MIN = 12;           // одно деление бака — за столько минут (полный бак за час)
 const RACE_POOL = 10;
 const POOL_REGEN_MIN = 6;            // один заезд в общий лимит — за столько минут (10 за час)
-// Соперник твоего класса: мощность от OPP_HP_MIN до OPP_HP_MAX от твоей. Подобрано расчётом:
-// средний игрок выигрывает ~68%, умелый ~90%.
-const OPP_HP_MIN = 0.85;
-const OPP_HP_MAX = 1.05;
 const SHIFT_PERFECT = -0.15;         // передача в зелёной зоне, с
 const SHIFT_MISS = 0.3;              // промах, с
 const WEAR_PER_RACE = 8;             // износ за заезд, %

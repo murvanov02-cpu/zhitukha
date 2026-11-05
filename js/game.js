@@ -179,6 +179,7 @@
   function netWorth() {
     let v = S.money;
     for (const [id, n] of Object.entries(S.inv)) if (ITEM[id]) v += ITEM[id].value * n;
+    for (const [id, g] of Object.entries(S.garage)) if (S.inv[id] && g.tuneInv) v += g.tuneInv * TUNE_SELL_RATE;
     for (const b of Object.values(S.biz)) v += b.inv;
     return v;
   }
@@ -274,9 +275,8 @@
     return true;
   }
 
-  // Внутри всё считается в «игровых месяцах» (зарплаты реальные, помесячные), а игроку показываем «в час»:
-  // за реальный час приходит MONTHS_PER_HOUR месяцев. perH — перевод суммы «в месяц» в «в час».
-  const perH = v => v * MONTHS_PER_HOUR;
+  // Всё считается и показывается в «игровых месяцах»: зарплаты реальные, помесячные,
+  // а за реальный час проходит MONTHS_PER_HOUR месяцев (месяц = 60 / MONTHS_PER_HOUR минут).
   const incomeMonth = () => jobPay() + rent() + bizProfit();
   const casePrice = c => Math.round(c.price * (1 - (Math.min(S.skills.cha, 30) + perk('caseCheap')) / 100));
   const batchPrice = (c, n) => Math.round(casePrice(c) * n * (1 - (MULTI_DISCOUNT[n] || 0)));
@@ -596,33 +596,62 @@
   function carState(id) {
     if (!S.garage[id]) S.garage[id] = { tank: TANK_RACES, ts: Date.now(), wear: 0, broken: false };
     const g = S.garage[id];
+    if (!g.stage) { g.stage = 0; g.tuneInv = 0; }
     const t = { n: g.tank, ts: g.ts };
     regen(t, TANK_RACES, TANK_REGEN_MIN);
     g.tank = t.n; g.ts = t.ts;
     return g;
   }
   function pool() { regen(S.pool, RACE_POOL, POOL_REGEN_MIN); return S.pool; }
-  // Ставка заезда: доля месячного дохода × множитель класса, округлённо до двух значащих цифр
-  function raceStake(id) {
-    const raw = Math.max(RACE_FEE_MIN, incomeMonth() * RACE_FEE_MONTHS) * rclass(id).mult;
-    const mag = Math.pow(10, Math.floor(Math.log10(raw)) - 1);
-    const fee = Math.round(raw / mag) * mag;
-    return { fee, prize: Math.round(fee * RACE_PRIZE_RATE / mag) * mag };
+  // до двух значащих цифр: 23 456 → 23 000
+  const round2 = v => { if (v <= 0) return 0; const mag = Math.pow(10, Math.floor(Math.log10(v)) - 1); return Math.round(v / mag) * mag; };
+  // Единица ставки U: доля месячного дохода × множитель класса
+  const raceUnit = id => Math.max(RACE_FEE_MIN, incomeMonth() * RACE_FEE_MONTHS) * rclass(id).mult;
+  function raceStake(id, lv) {
+    const u = raceUnit(id), L = RACE_LEVELS[lv];
+    return { fee: round2(u * L.fee), prize: round2(u * L.prize) };
+  }
+  const tuneCost = (id, st) => round2(raceUnit(id) * TUNE_STAGES[st].cost);
+  // сколько тюнинг добавит к цене машины при продаже (только последнего экземпляра)
+  const tuneValue = id => (S.garage[id] ? Math.round((S.garage[id].tuneInv || 0) * TUNE_SELL_RATE) : 0);
+  const stageHp = (hp, st) => Math.round(hp * (1 + (st ? TUNE_STAGES[st - 1].hp : 0)));
+  const carHp = id => stageHp(CAR_HP[id], carState(id).stage);
+  const carTime = id => quarterMile(carHp(id));
+  const stageStars = st => `<span class="stars">${'★'.repeat(st)}<span class="off">${'★'.repeat(TUNE_STAGES.length - st)}</span></span>`;
+  // Шанс победы на уровне lv (0…4): соперник уровня затюнингован на Stage lv, сравниваем с твоим Stage
+  function raceChance(id, lv) {
+    const s = carState(id).stage, d = lv + 1 - s;
+    if (d <= 0) return 100;
+    if (d === 1 && s > 0) return RACE_NEAR_WIN;
+    return RACE_LEVELS[d - 1].base;
+  }
+  // Соперник уровня: машина того же класса, чем выше уровень — тем мощнее
+  function rivalOf(id, lv) {
+    const list = ITEMS.filter(x => x.cat === 'car' && x.rarity === ITEM[id].rarity && x.id !== id && CAR_HP[x.id])
+      .sort((a, b) => CAR_HP[a.id] - CAR_HP[b.id]);
+    const it = list.length ? list[Math.round(lv / (RACE_LEVELS.length - 1) * (list.length - 1))] : ITEM[id];
+    return { it, stage: lv, hp: stageHp(CAR_HP[it.id], lv) };
   }
   const breakChance = id => Math.min(90, carState(id).wear * BREAK_PER_WEAR);
-  const carTime = id => quarterMile(CAR_HP[id]);
   const raceCarId = () => {
     const owned = Object.keys(S.inv).filter(id => ITEM[id] && ITEM[id].cat === 'car');
     if (S.raceCar && S.inv[S.raceCar]) return S.raceCar;
     return S.car && S.inv[S.car] ? S.car : owned[0] || null;
   };
+  // Что мешает ехать: общее для всех уровней — машина и лимиты; деньги — у каждого уровня свои
   function raceBlock(id) {
-    const st = carState(id), rc = rclass(id);
+    const st = carState(id);
     if (st.broken) return 'Машина сломана — нужен ремонт';
     if (st.tank < 1) return `Бак пуст — +1 заезд через ${fmtTime(nextIn({ ts: st.ts }, TANK_REGEN_MIN))}`;
     if (pool().n < 1) return `Лимит заездов — +1 через ${fmtTime(nextIn(S.pool, POOL_REGEN_MIN))}`;
-    if (S.money < raceStake(id).fee) return `Взнос ${fmt(raceStake(id).fee)} ₽ — не хватает денег`;
     return '';
+  }
+  // После заезда может остановить ГИБДД. Связь «Инспектор ГИБДД» снижает шанс, на максимуме — отпускает.
+  function gibddStop(id) {
+    const lv = connLv('k_gibdd');
+    if (Math.random() * 100 >= Math.max(0, GIBDD_CHANCE - GIBDD_CONN_CUT * lv)) return null;
+    if (lv >= CONN_MAX_LV) return { fine: 0 };
+    return { fine: round2(raceUnit(id) * GIBDD_FINE * (1 - perk('fineCut') / 100)) };
   }
 
   // ---------- кейсы ----------
@@ -713,14 +742,16 @@
   function sell(id) {
     const it = ITEM[id];
     if (!it || !S.inv[id]) return;
+    const price = sellPrice(it) + (S.inv[id] === 1 ? tuneValue(id) : 0);
     S.inv[id]--;
-    earn(sellPrice(it));
+    earn(price);
     if (!S.inv[id]) {
       delete S.inv[id];
+      delete S.garage[id];
       if (S.car === id) S.car = bestCar();
     }
     haptic('light');
-    toast(`Продано: ${it.name} +${fmt(sellPrice(it))} ₽`);
+    toast(`Продано: ${it.name} +${fmt(price)} ₽`);
     save();
     render();
   }
@@ -812,7 +843,7 @@
   function bonusText(it) {
     if (it.cat === 'conn') return perkText(it);
     if (it.cat === 'car') return `+${it.bonus}% к зарплате`;
-    return `+${fmt(perH(it.bonus))} ₽/ч аренды`;
+    return `+${fmt(it.bonus)} ₽/мес аренды`;
   }
   function resultNote(res) {
     if (res.sold) return `продано +${fmt(sellPrice(res.it))}`;
@@ -1000,15 +1031,15 @@
           <div class="ph">${homes.length ? `<img class="cover" src="${ITEM[homes[0]].img}" alt="">` : ic('home')}</div>
           <div class="body"><div class="label">Жильё · ${countCat('home')}</div>
             <div class="val ellipsis">${homes.length ? ITEM[homes[0]].name : 'Нет жилья'}</div>
-            <div class="small ${homes.length ? 'good' : 'muted'}">${homes.length ? `+${fmt(perH(rent()))} ₽/ч` : 'жильё — в кейсах'}</div></div></button>
+            <div class="small ${homes.length ? 'good' : 'muted'}">${homes.length ? `+${fmt(rent())} ₽/мес` : 'жильё — в кейсах'}</div></div></button>
       </div>
       ${row('data-goto="career"', 'briefcase', job ? job.name : 'Предприниматель',
-        `${pay ? `<span class="good">${fmt(perH(pay))} ₽/ч</span> · ` : ''}${studyLine}${gigLine}`)}
+        `${pay ? `<span class="good">${fmt(pay)} ₽/мес</span> · ` : ''}${studyLine}${gigLine}`)}
       ${row('data-goto="biz"', 'building-factory-2', nBiz ? `Бизнес · ${nBiz}` : 'Свой бизнес',
-        nBiz ? `${bp >= 0 ? '+' : ''}${fmt(perH(bp))} ₽/ч` : 'от ларька с шаурмой до IT-холдинга', nBiz ? (bp < 0 ? 'bad' : 'good') : 'muted')}
+        nBiz ? `${bp >= 0 ? '+' : ''}${fmt(bp)} ₽/мес` : 'от ларька с шаурмой до IT-холдинга', nBiz ? (bp < 0 ? 'bad' : 'good') : 'muted')}
       ${row('data-goto="career" data-sub="career:conn"', 'users', nConn ? `Связи · ${nConn}` : 'Связи',
         S.favor ? 'Тебя кое о чём просят' : nConn ? 'полезные люди решают проблемы' : 'открой «Знакомство дня»', S.favor ? 'gold' : 'muted')}
-      <p class="small muted" style="text-align:center;margin-top:6px">${ic('clock')} Доход идёт и без тебя, но копится максимум ${OFFLINE_CAP_H} ч</p>`;
+      <p class="small muted" style="text-align:center;margin-top:6px">${ic('clock')} Игровой месяц длится ${String(60 / MONTHS_PER_HOUR).replace('.', ',')} мин — деньги капают непрерывно.<br>Без тебя доход копится максимум ${OFFLINE_CAP_H} ч</p>`;
   }
 
   // ---------- имущество (открывается с главной) ----------
@@ -1025,7 +1056,7 @@
         <div class="grow"><div class="inv-name">${it.name}</div>
           <div class="small" style="color:${RARITIES[it.rarity].color}">${RARITIES[it.rarity].name}</div>
           <div class="small muted">${bonusText(it)}${cat === 'home' && n > 1 ? ' × ' + n : ''} · ${fmt(it.value)} ₽</div></div>
-        <div class="inv-actions">${equip}<button class="btn btn-sm btn-ghost" data-action="sell" data-id="${it.id}">Продать ${fmt(sellPrice(it))}</button></div></div>`;
+        <div class="inv-actions">${equip}<button class="btn btn-sm btn-ghost" data-action="sell" data-id="${it.id}">Продать ${fmt(sellPrice(it) + (n === 1 ? tuneValue(it.id) : 0))}</button></div></div>`;
     }).join('');
     return `<button class="back" data-goto="home">${ic('chevron-left')} Главная</button>
       <div class="seg">
@@ -1118,7 +1149,7 @@
       : ok ? `<button class="btn btn-sm" data-action="job" data-id="${j.id}">Устроиться</button>` : `<span class="tag lock">${ic('lock')}</span>`;
     return `<div class="card job ${cur ? 'current' : ''} ${ok || cur ? '' : 'locked'}">
       <div class="job-ico">${j.icon}</div>
-      <div class="grow"><div class="job-name">${j.name}</div><div class="job-pay">${fmt(perH(j.pay))} ₽/ч</div>
+      <div class="grow"><div class="job-name">${j.name}</div><div class="job-pay">${fmt(j.pay)} ₽/мес</div>
         ${bonus ? `<div class="perk">${ic('star')} ${bonus}</div>` : ''}${!ok && !cur && reqs ? `<div class="reqs">${reqs}</div>` : ''}</div>
       ${action}</div>`;
   }
@@ -1159,18 +1190,36 @@
     if (!id) return `<div class="empty">${ic('steering-wheel')}Для гонок нужна своя машина.<br>Машины выпадают из кейсов.<br><br>
       <button class="btn btn-sm" data-goto="cases" data-sub="cases:car">К кейсам</button></div>`;
     const it = ITEM[id], st = carState(id), rc = rclass(id), block = raceBlock(id), pl = pool();
-    const cars = Object.keys(S.inv).filter(x => ITEM[x] && ITEM[x].cat === 'car').sort((a, b) => CAR_HP[b] - CAR_HP[a]);
-    const chips = cars.map(x => `<button class="chip ${x === id ? 'active' : ''}" data-action="race-car" data-id="${x}">${rclass(x).name} · ${ITEM[x].name} · ⛽${carState(x).tank}</button>`).join('');
+    const cars = Object.keys(S.inv).filter(x => ITEM[x] && ITEM[x].cat === 'car').sort((a, b) => carHp(b) - carHp(a));
+    const chips = cars.map(x => `<button class="chip ${x === id ? 'active' : ''}" data-action="race-car" data-id="${x}">${rclass(x).name} · ${ITEM[x].name}${carState(x).stage ? ' · S' + carState(x).stage : ''} · ⛽${carState(x).tank}</button>`).join('');
     const tank = Array.from({ length: TANK_RACES }, (_, i) => `<i class="${i < st.tank ? 'on' : ''}"></i>`).join('');
-    return `<p class="hint">Драг на 402 м против соперника твоего класса. Стартуй ровно на зелёный и переключи передачу, когда стрелка в зелёной зоне.
-        Соперники сильные: побеждает реакция, а не везение.</p>
+    const next = TUNE_STAGES[st.stage];
+    const tune = next
+      ? `<div class="row"><div class="grow"><div class="small">Stage ${st.stage + 1} · <b>${next.name}</b></div>
+          <div class="small muted">${carHp(id)} → ${stageHp(CAR_HP[id], st.stage + 1)} л.с. · соперники посильнее станут по зубам</div></div>
+          <button class="btn btn-sm btn-col" data-action="tune" data-id="${id}" ${S.money < tuneCost(id, st.stage) ? 'disabled' : ''}>Тюнинг<span class="btn-top">${fmt(tuneCost(id, st.stage))} ₽</span></button></div>`
+      : `<div class="small good">${ic('check')} Гоночная сборка — максимальный тюнинг</div>`;
+    const levels = RACE_LEVELS.map((L, lv) => {
+      const rv = rivalOf(id, lv), ch = raceChance(id, lv), stake = raceStake(id, lv);
+      const poor = S.money < stake.fee;
+      return `<div class="card race-lv" style="--lc:${L.color}">
+        <div class="list-row"><div class="inv-icon">${visual(rv.it)}</div>
+          <div class="grow"><div class="row"><span class="lv-name grow">${lv + 1}. ${L.name}</span><b class="lv-chance">${ch}%</b></div>
+            <div class="small ellipsis">${rv.it.name} · ${rv.hp} л.с.</div>
+            <div class="small muted">${stageStars(rv.stage)} · ${stake.fee ? `взнос ${fmt(stake.fee)} ₽` : 'без взноса'} · <span class="good">победа +${fmt(stake.prize)} ₽</span></div></div></div>
+        <button class="btn btn-sm full" style="margin-top:8px" data-action="race" data-id="${lv}" ${block || poor ? 'disabled' : ''}>${poor && !block ? 'Не хватает на взнос' : 'На старт'}</button>
+      </div>`;
+    }).join('');
+    return `<p class="hint">Драг на 402 м. Пять соперников — от новичка до легенды. Тюнинг поднимает шанс против сильных:
+        соперник уровня N затюнингован на Stage N−1. Стартуй ровно на зелёный и попади передачей в зелёную зону — это ещё ±${RACE_SKILL}% к шансу.</p>
       <div class="card"><div class="kv"><span>${ic('flag')} Заездов доступно</span><b>${pl.n} / ${RACE_POOL}</b></div>
         <div class="small muted">${pl.n < RACE_POOL ? `+1 через <span data-timer="${pl.ts + POOL_REGEN_MIN * 60e3}">${fmtTime(nextIn(pl, POOL_REGEN_MIN))}</span> · ` : ''}общий лимит на все машины, ${RACE_POOL} в час</div></div>
       <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px">${chips}</div>
       <div class="card">
         <div class="list-row"><div class="inv-icon">${visual(it)}</div>
           <div class="grow"><div class="job-name">${it.name}</div>
-            <div class="small muted">Класс <b class="gold">${rc.name}</b> · ${CAR_HP[id]} л.с. · 402 м за ${carTime(id).toFixed(2)} с</div></div></div>
+            <div class="small muted">Класс <b class="gold">${rc.name}</b> · ${carHp(id)} л.с. · 402 м за ${carTime(id).toFixed(2)} с</div>
+            <div class="small">${stageStars(st.stage)} <span class="muted">Stage ${st.stage}</span></div></div></div>
         <div class="kv small" style="margin-top:8px"><span>Бак: ${st.tank} / ${TANK_RACES} заездов</span>
           <b class="muted">${st.tank < TANK_RACES ? `+1 через <span data-timer="${st.ts + TANK_REGEN_MIN * 60e3}">${fmtTime(nextIn({ ts: st.ts }, TANK_REGEN_MIN))}</span>` : 'полный'}</b></div>
         <div class="tank">${tank}</div>
@@ -1179,34 +1228,33 @@
           ${st.broken ? `<button class="btn btn-sm grow" data-action="repair" data-id="${id}">Ремонт · ${fmt(it.value * REPAIR_COST)} ₽</button>`
             : `<button class="btn btn-sm btn-ghost grow" data-action="service" data-id="${id}" ${st.wear <= 0 ? 'disabled' : ''}>ТО: износ → 0 · ${fmt(it.value * SERVICE_COST)} ₽</button>`}</div>
       </div>
-      <div class="card accent">
-        <div class="big-text">Заезд класса ${rc.name}</div>
-        <div class="small muted">Взнос ${fmt(raceStake(id).fee)} ₽ · победа +${fmt(raceStake(id).prize)} ₽ · всего побед: ${S.raceWins}</div>
-        <div class="small muted">Ставки растут вместе с твоим доходом; у машин классом выше — крупнее (×${rc.mult}).</div>
-        <button class="btn full" style="margin-top:10px" data-action="race" data-id="${id}" ${block ? 'disabled' : ''}>${block || 'На старт'}</button>
-      </div>`;
+      <div class="card">${tune}
+        <div class="small muted" style="margin-top:6px">Тюнинг остаётся в машине: при продаже вернётся ${Math.round(TUNE_SELL_RATE * 100)}% вложенного${st.tuneInv ? ` (+${fmt(tuneValue(id))} ₽)` : ''}.</div></div>
+      ${block ? `<p class="small bad" style="text-align:center">${block}</p>` : ''}
+      ${levels}
+      <p class="small muted" style="text-align:center">Всего побед: ${S.raceWins} · ставки растут с твоим доходом, у классов выше — ×${rc.mult}</p>`;
   }
 
   // Заезд: светофор → старт (реакция) → переключение передачи → результат
   let race = null;
-  function startRace(id) {
-    if (race || raceBlock(id)) return;
-    const st = carState(id), stake = raceStake(id);
-    pay(stake.fee);
+  function startRace(id, lv) {
+    if (race || !id || !RACE_LEVELS[lv] || raceBlock(id)) return;
+    const st = carState(id), stake = raceStake(id, lv);
+    if (stake.fee && !pay(stake.fee)) return;
     st.tank--;
     if (st.tank === TANK_RACES - 1) st.ts = Date.now();
     if (S.pool.n === RACE_POOL) S.pool.ts = Date.now();
     S.pool.n--;
-    const rivals = ITEMS.filter(x => x.cat === 'car' && x.rarity === ITEM[id].rarity && x.id !== id);
-    const rival = rivals[Math.floor(Math.random() * rivals.length)] || ITEM[id];
-    const oppHp = CAR_HP[id] * (OPP_HP_MIN + Math.random() * (OPP_HP_MAX - OPP_HP_MIN));
-    const oppShift = [SHIFT_PERFECT, 0, 0, SHIFT_MISS][Math.floor(Math.random() * 4)];
-    race = { id, rival, stake, oppTime: quarterMile(oppHp) + (0.15 + Math.random() * 0.15) - 0.2 + oppShift, phase: 'lights' };
-    const willBreak = Math.random() * 100 < breakChance(id);
+    const rival = rivalOf(id, lv);
+    race = { id, lv, rival, stake, chance: raceChance(id, lv), phase: 'lights', willBreak: Math.random() * 100 < breakChance(id) };
     st.wear = Math.min(100, st.wear + WEAR_PER_RACE);
-    race.willBreak = willBreak;
     save(); render();
-    showModal(`<h3>${ITEM[id].name} <span class="muted">vs</span> ${rival.name}</h3>
+    const L = RACE_LEVELS[lv];
+    showModal(`<div class="race-vs" style="--lc:${L.color}">
+        <div><div class="inv-icon">${visual(ITEM[id])}</div><div class="small ellipsis">${ITEM[id].name}</div><div class="small muted">${carHp(id)} л.с.</div></div>
+        <b class="vs">VS</b>
+        <div><div class="inv-icon">${visual(rival.it)}</div><div class="small ellipsis">${rival.it.name}</div><div class="small muted">${rival.hp} л.с.</div></div></div>
+      <div class="small" style="text-align:center"><b style="color:${L.color}">${L.name}</b> · шанс ${race.chance}%</div>
       <div class="race-lights"><i></i><i></i><i></i><i class="go"></i></div>
       <div class="race-tacho hidden" id="tacho"><div class="zone ok"></div><div class="zone perfect"></div><div class="needle" id="needle"></div></div>
       <p class="small" id="race-hint" style="text-align:center">Жми «Газ», когда загорится зелёный. Раньше — фальстарт.</p>
@@ -1228,6 +1276,7 @@
     if (race.phase === 'lights') { clearTimeout(race.greenTimer); return finishRace({ jump: true }); }
     if (race.phase === 'green') {
       race.rt = (now - race.green) / 1000;
+      if (race.rt > RACE_SLEEP) return finishRace({ sleep: true });
       race.phase = 'shift';
       $('#tacho').classList.remove('hidden');
       $('#race-hint').textContent = 'Переключи передачу, когда стрелка в зелёной зоне!';
@@ -1249,37 +1298,57 @@
       finishRace({});
     }
   }
-  function finishRace({ jump }) {
+  // Исход решает шанс уровня (± мастерство), а время на табло подстраивается под исход
+  function finishRace({ jump, sleep }) {
     const r = race, id = r.id, st = carState(id);
     r.phase = 'done';
     race = null;
-    let title, text, win = false, myTime = null;
+    let title, text, win = false, stop = null;
     if (jump) {
       title = '🚦 Фальстарт';
       text = 'Ты сорвался раньше зелёного — заезд засчитан как поражение.';
+    } else if (sleep) {
+      title = '😴 Проспал старт';
+      text = `Соперник ушёл вперёд, пока ты стоял на месте. Жми «Газ» сразу на зелёный — быстрее ${RACE_SLEEP} с.`;
     } else if (r.willBreak) {
       st.broken = true;
       title = '💥 Поломка';
       text = `Машина сломалась прямо на трассе. Ремонт — ${fmt(ITEM[id].value * REPAIR_COST)} ₽. Делай ТО, пока износ небольшой.`;
     } else {
       const sh = r.shift;
-      const shiftPen = sh >= 0.72 && sh <= 0.88 ? SHIFT_PERFECT : sh >= 0.6 && sh <= 0.94 ? 0 : SHIFT_MISS;
-      myTime = carTime(id) + (r.rt - 0.2) + shiftPen + (Math.random() - 0.5) * 0.1;
-      win = myTime < r.oppTime;
+      const shiftQ = sh >= 0.72 && sh <= 0.88 ? 1 : sh >= 0.6 && sh <= 0.94 ? 0 : -1;
+      const skill = (r.rt < 0.3 ? 1 : r.rt > 0.6 ? -1 : 0) + shiftQ;
+      const bonus = r.chance > 0 && r.chance < 100 ? Math.sign(skill) * RACE_SKILL : 0;
+      const p = Math.max(0, Math.min(100, r.chance + bonus));
+      win = Math.random() * 100 < p;
+      const myTime = carTime(id) + (r.rt - 0.2) + [SHIFT_MISS, 0, SHIFT_PERFECT][shiftQ + 1] + (Math.random() - 0.5) * 0.1;
+      const gap = 0.04 + Math.random() * 0.45;
+      const oppTime = win ? myTime + gap : myTime - gap;
       title = win ? '🏆 Победа!' : '😤 Поражение';
-      text = `Реакция ${r.rt.toFixed(3)} с · передача ${shiftPen < 0 ? 'идеально' : shiftPen === 0 ? 'нормально' : 'мимо'}<br>
-        Ты: <b>${myTime.toFixed(2)} с</b> · ${r.rival.name}: <b>${r.oppTime.toFixed(2)} с</b>`;
+      text = `Реакция ${r.rt.toFixed(3)} с · передача ${shiftQ > 0 ? 'идеально' : shiftQ === 0 ? 'нормально' : 'мимо'}<br>
+        Шанс ${p}%${bonus ? ` (${bonus > 0 ? '+' : ''}${bonus}% за мастерство)` : ''}<br>
+        Ты: <b>${myTime.toFixed(2)} с</b> · ${r.rival.it.name}: <b>${oppTime.toFixed(2)} с</b>`;
+      stop = gibddStop(id);
     }
     if (win) {
       earn(r.stake.prize);
       S.raceWins++;
       progress('race_win');
     }
+    let gibdd = '';
+    if (stop) {
+      const fine = Math.min(stop.fine, S.money);
+      S.money -= fine;
+      gibdd = fine
+        ? `<div class="card danger small" style="margin-top:10px;text-align:left">🚓 После финиша тормознула ГИБДД: превышение на дороге общего пользования. Штраф <b>${fmt(fine)} ₽</b>.</div>`
+        : `<div class="card small" style="margin-top:10px;text-align:left">🚓 Тормознула ГИБДД. Знакомый инспектор: «Опять ты? Ну езжай».</div>`;
+    }
     save(); render();
     showModal(`<div class="drop"><div class="drop-name">${title}</div>
       <p style="margin-top:8px">${text}</p>
-      <div class="big ${win ? '' : 'bad'}">${win ? '+' + fmt(r.stake.prize) : '−' + fmt(r.stake.fee)} ₽</div>
-      <button class="btn full" data-action="close">Дальше</button></div>`);
+      <div class="big ${win ? '' : 'bad'}">${win ? '+' + fmt(r.stake.prize) : r.stake.fee ? '−' + fmt(r.stake.fee) : '0'} ₽</div>
+      ${gibdd}
+      <button class="btn full" data-action="close" style="margin-top:10px">Дальше</button></div>`);
     haptic(win ? 'ok' : 'err');
   }
 
@@ -1324,7 +1393,7 @@
         <div class="biz-head"><div class="ico-box" style="font-size:22px">${d.icon}</div>
           <div class="grow"><div class="job-name">${d.name}</div>
             <div class="small muted">${frozen(d.id) ? '🔒 Опечатан' : b.mgr ? 'С управляющим: 100%' : `Без управляющего: ${Math.round(st.eff * 100)}%`}</div></div>
-          <div class="biz-profit ${st.profit < 0 ? 'bad' : ''}">${plus(perH(st.profit))}<div class="small muted">₽/ч</div></div></div>
+          <div class="biz-profit ${st.profit < 0 ? 'bad' : ''}">${plus(st.profit)}<div class="small muted">₽/мес</div></div></div>
         <div class="biz-grid">
           <div><span class="small muted">Мощность</span><b>${fmt(st.cap)}</b><span class="small muted">${b.slots} мест</span></div>
           <div><span class="small muted">Клиенты</span><b>${fmt(st.demand)}</b><span class="small muted">${d.unit}</span></div>
@@ -1333,22 +1402,22 @@
         <div class="acts" style="grid-template-columns:1fr 1fr">
           <button class="act" data-action="biz-slot" data-id="${d.id}" ${fullS ? 'disabled' : ''}>${ic('user-plus')}
             <span class="act-name">Рабочее место</span><span class="act-sub">${d.slot} · ${b.slots}/${BIZ_MAX}</span>
-            <span class="act-sub ${dS > 0 ? 'good' : 'bad'}">${fullS ? 'максимум' : plus(perH(dS)) + ' ₽/ч'}</span>
+            <span class="act-sub ${dS > 0 ? 'good' : 'bad'}">${fullS ? 'максимум' : plus(dS) + ' ₽/мес'}</span>
             <span class="act-cost">${fullS ? '' : fmt(slotCost(d.id)) + ' ₽'}</span></button>
           <button class="act" data-action="biz-ad" data-id="${d.id}" ${fullA ? 'disabled' : ''}>${ic('speakerphone')}
             <span class="act-name">Реклама</span><span class="act-sub">+${fmt(d.perSlot)} ${d.unit} · ${b.ads}/${BIZ_MAX - BIZ_START}</span>
-            <span class="act-sub ${dA > 0 ? 'good' : 'muted'}">${fullA ? 'максимум' : plus(perH(dA)) + ' ₽/ч'}</span>
+            <span class="act-sub ${dA > 0 ? 'good' : 'muted'}">${fullA ? 'максимум' : plus(dA) + ' ₽/мес'}</span>
             <span class="act-cost">${fullA ? '' : fmt(adCost(d.id)) + ' ₽'}</span></button></div>
         <details class="more"><summary>${ic('receipt')} Доходы, расходы и управление</summary>
-          <div class="kv small"><span>Выручка</span><b>${fmt(perH(st.revenue))}</b></div>
-          <div class="kv small"><span>Зарплаты (${b.slots} × ${fmt(perH(n.salary))})</span><b>−${fmt(perH(st.wages))}</b></div>
-          <div class="kv small"><span>Аренда помещения</span><b>−${fmt(perH(st.rent))}</b></div>
-          ${b.mgr ? `<div class="kv small"><span>Управляющий</span><b>−${fmt(perH(st.mgr))}</b></div>` : ''}
-          <div class="kv small"><span>Налог ${Math.round(taxRate() * 100)}%</span><b>−${fmt(perH(st.tax))}</b></div>
+          <div class="kv small"><span>Выручка</span><b>${fmt(st.revenue)}</b></div>
+          <div class="kv small"><span>Зарплаты (${b.slots} × ${fmt(n.salary)})</span><b>−${fmt(st.wages)}</b></div>
+          <div class="kv small"><span>Аренда помещения</span><b>−${fmt(st.rent)}</b></div>
+          ${b.mgr ? `<div class="kv small"><span>Управляющий</span><b>−${fmt(st.mgr)}</b></div>` : ''}
+          <div class="kv small"><span>Налог ${Math.round(taxRate() * 100)}%</span><b>−${fmt(st.tax)}</b></div>
           <div class="small muted" style="margin-top:4px">Все суммы — за час</div><div class="kv small"><span>Вложено</span><b>${fmt(b.inv)}</b></div>
           <div class="row" style="margin-top:10px;flex-wrap:wrap">
             ${b.mgr ? `<button class="btn btn-sm btn-ghost" data-action="biz-mgr" data-id="${d.id}">Уволить управляющего</button>`
-              : `<button class="btn btn-sm btn-line" data-action="biz-mgr" data-id="${d.id}">Нанять управляющего · ${fmt(perH(n.mgr))}/ч · ${plus(perH(bizDelta(d.id, { mgr: true })))}</button>`}
+              : `<button class="btn btn-sm btn-line" data-action="biz-mgr" data-id="${d.id}">Нанять управляющего · ${fmt(n.mgr)}/мес · ${plus(bizDelta(d.id, { mgr: true }))}</button>`}
             <button class="btn btn-sm btn-danger" data-action="biz-sell" data-id="${d.id}">Продать за ${fmt(b.inv * bizSellRate())} (${Math.round(bizSellRate() * 100)}% вложенного)</button></div>
         </details></div>`;
     }).join('');
@@ -1360,12 +1429,12 @@
       return `<div class="card job ${open ? '' : 'locked'}"><div class="ico-box" style="font-size:22px">${d.icon}</div>
         <div class="grow"><div class="job-name">${d.name}</div>
           <div class="small muted">${fmt(d.price)} ₽ + лицензии ${fmt(licenseCost(d))} ₽</div>
-          <div class="small good">≈ ${fmt(perH(start))} ₽/ч на старте с управляющим, до ${BIZ_MAX} мест</div>
+          <div class="small good">≈ ${fmt(start)} ₽/мес на старте с управляющим, до ${BIZ_MAX} мест</div>
           ${open ? '' : `<div class="reqs">${reqs}</div>`}</div>
         ${open ? `<button class="btn btn-sm" data-action="biz-buy" data-id="${d.id}">Открыть</button>` : `<span class="tag lock">${ic('lock')}</span>`}</div>`;
     }).join('');
     return `<div class="title">Бизнес</div>
-      ${owned.length ? `<div class="card"><div class="kv"><span>Прибыль всех бизнесов</span><b class="${total < 0 ? 'bad' : 'good'}">${fmt(perH(total))} ₽/ч</b></div>
+      ${owned.length ? `<div class="card"><div class="kv"><span>Прибыль всех бизнесов</span><b class="${total < 0 ? 'bad' : 'good'}">${fmt(total)} ₽/мес</b></div>
         <div class="small muted" style="margin-top:6px">Без управляющего бизнес работает на ${Math.round(ownerEff() * 100)}% — ${S.job ? 'ты занят на работе' : 'ты занят только бизнесом'}.</div></div>${cards}`
         : `<p class="hint">Рабочие места дают мощность, реклама — клиентов. Заработаешь на меньшем из двух, поэтому развивай их по очереди. На каждой кнопке видно, сколько прибыли она добавит.</p>`}
       ${rest.length ? `<details class="more" ${owned.length ? '' : 'open'}><summary>${ic('plus')} Открыть новый бизнес</summary>${shop}</details>` : ''}`;
@@ -1393,7 +1462,7 @@
     if (perk('deal')) {
       const d = S.deal, used = S.dealDay === dayKey(new Date());
       deal = `<div class="card"><div class="label">${ic('briefcase')} Сделка с олигархом</div>
-        <div class="small muted mb">Вложи до ${hoursText(DEAL_INCOME_H / MONTHS_PER_HOUR)} своего дохода — через ${DEAL_HOURS} ч вернётся +${perk('deal')}%. Раз в сутки.</div>
+        <div class="small muted mb">Вложи до ${DEAL_INCOME_H} мес. своего дохода — через ${DEAL_HOURS} ч вернётся +${perk('deal')}%. Раз в сутки.</div>
         ${d ? (Date.now() >= d.until ? `<button class="btn btn-green full" data-action="deal-claim">Забрать ${fmt(d.ret)} ₽</button>`
             : `<div class="row"><span class="grow small">${fmt(d.amount)} → ${fmt(d.ret)} ₽</span><span class="tag gold" data-timer="${d.until}">${fmtTime(d.until - Date.now())}</span></div>`)
           : used ? '<span class="tag lock">Завтра будет новая сделка</span>'
@@ -1633,7 +1702,7 @@
   function updateLive() {
     $('#money').textContent = fmt(S.money);
     const im = incomeMonth();
-    $('#inc').textContent = (im >= 0 ? '+' : '') + fmt(perH(im));
+    $('#inc').textContent = (im >= 0 ? '+' : '') + fmt(im);
     $('#prank').textContent = rankInfo().cur.icon + ' ' + rankInfo().cur.name;
     const now = Date.now();
     document.querySelectorAll('[data-timer]').forEach(el => { el.textContent = fmtTime(+el.dataset.timer - now); });
@@ -1662,7 +1731,7 @@
     const diff = bizStats(id).profit - before;
     progress('bizup');
     haptic('medium');
-    toast(`Прибыль: ${diff >= 0 ? '+' : ''}${fmt(perH(diff))} ₽/ч`);
+    toast(`Прибыль: ${diff >= 0 ? '+' : ''}${fmt(diff)} ₽/мес`);
     save();
     render();
   }
@@ -1829,7 +1898,16 @@
     },
     'vp-new': () => { vp = null; render(); },
     'race-car': id => { S.raceCar = id; save(); render(); },
-    race: id => startRace(id),
+    race: lv => startRace(raceCarId(), +lv),
+    tune: id => {
+      const g = carState(id);
+      if (g.stage >= TUNE_STAGES.length) return;
+      const c = tuneCost(id, g.stage);
+      if (!pay(c)) return;
+      g.stage++;
+      g.tuneInv = (g.tuneInv || 0) + c;
+      haptic('ok'); toast(`🔧 ${TUNE_STAGES[g.stage - 1].name} — Stage ${g.stage}`); save(); render();
+    },
     'race-tap': () => raceTap(),
     service: id => {
       const st = carState(id), c = ITEM[id].value * SERVICE_COST;
