@@ -42,6 +42,9 @@
       plates: [], plateSeq: 0,    // номера: { id, a, d, b, r: регион, rar, v: стоимость, car: на какой машине }
       plateReg: 'msk',            // выбранный регион в наборах номеров
       conn2: true,                // доверие уже по новым порогам
+      coll: {},                   // полученные награды коллекций: id → true
+      tut: 0,                     // шаг обучения (-1 — пройдено или пропущено)
+      incHour: false,             // доход в шапке: false — в игровой месяц, true — в реальный час
       tune2: true,                // тюнинг уже по новым ценам (см. upgrade)
       lvl: 1, xp: 0,              // уровень игрока и опыт внутри уровня
       sil: null,                  // служба: { s: структура, r: звание, xp, since, roofs: [id бизнесов], mission, nextMission, nextCheck, osb }
@@ -102,6 +105,7 @@
     }
     // v31: управляющий стал выбором из пяти; старый «просто управляющий» — это «Управляющий»
     for (const b of Object.values(s.biz)) if (b.mgr === true) b.mgr = 3; else if (!b.mgr) b.mgr = 0;
+    if (o.tut === undefined) s.tut = -1;   // старые игроки обучение не проходят
     // v25: уровни появились позже — засчитываем прошлые кейсы, победы и курсы (без наград за уровни)
     if (o.lvl === undefined) {
       let xp = (o.opened || 0) * XP_CASE.cheap + (o.raceWins || 0) * RACE_LEVELS[1].xp * 2
@@ -502,7 +506,7 @@
     const biz = e.need === 'biz' ? owned[Math.floor(Math.random() * owned.length)] : null;
     S.lastEvent = e.id;
     S.event = e.good
-      ? { id: e.id, biz, reward: Math.round(Math.max(30e3, (biz ? Math.max(bizStats(biz).profit, incomeMonth() / 3) : incomeMonth()) * e.reward) / 1000) * 1000 }
+      ? { id: e.id, biz, reward: Math.round(Math.max(EVENT_REWARD_MIN, (biz ? Math.max(bizStats(biz).profit, incomeMonth() / 3) : incomeMonth()) * e.reward) / 1000) * 1000 }
       : { id: e.id, biz, cost: eventCost(e, biz) };
     save();
     render();
@@ -1183,9 +1187,32 @@
       <div class="row"><div class="grow"><div class="big-text">${lifeText(step)}</div><div class="reward">${rewardText(step.reward)}</div></div>
       ${done ? '<button class="btn btn-green btn-sm" data-action="claim-life">Забрать</button>' : '<span class="tag lock">в процессе</span>'}</div></div>`;
   }
+  // ---------- коллекции ----------
+  const ownedCars = () => Object.keys(S.inv).filter(id => ITEM[id] && ITEM[id].cat === 'car' && !ITEM[id].svc);
+  function collState(c) {
+    const own = new Set(ownedCars());
+    const pool = c.t ? ITEMS.filter(i => i.cat === 'car' && !i.svc && (i.t || []).includes(c.t)) : null;
+    const need = c.t ? pool.length : c.n === 'all' ? ITEMS.filter(i => i.cat === 'car' && !i.svc).length : c.n;
+    const have = c.t ? pool.filter(i => own.has(i.id)).length : own.size;
+    return { have: Math.min(have, need), need, done: have >= need, claimed: !!S.coll[c.id] };
+  }
+  const collReady = () => COLLECTIONS.some(c => { const st = collState(c); return st.done && !st.claimed; });
+  const collReward = c => [c.money ? `+${fmt(monthsMoney(c.money, 20e3))} ₽` : '', c.ticket ? ticketName(c.ticket) : '', c.badge ? `значок «${BADGES[c.badge].name}»` : ''].filter(Boolean).join(' · ');
+  function collRows() {
+    return COLLECTIONS.map(c => {
+      const st = collState(c);
+      const right = st.claimed ? `<span class="tag">${ic('check')}</span>`
+        : st.done ? `<button class="btn btn-green btn-sm" data-action="coll-claim" data-id="${c.id}">Забрать</button>`
+        : `<span class="small muted">${st.have}/${st.need}</span>`;
+      return `<div class="quest ${st.claimed ? 'claimed' : ''}"><div class="grow"><div class="q-text">${c.name}</div>
+        <div class="bar"><i style="width:${st.have / st.need * 100}%"></i></div><div class="reward">${collReward(c)}</div></div>${right}</div>`;
+    }).join('');
+  }
+
   let profTab = 'quests';
   function showProfile(t) {
     if (t) profTab = t;
+    if (S.tut > 0) { tutProfile = true; setTimeout(tutTick, 0); }
     ensureQuests();
     const r = rankInfo();
     const now = new Date();
@@ -1193,13 +1220,15 @@
     const nextWeek = weekStart(now); nextWeek.setDate(nextWeek.getDate() + 7);
     const left = ms => { const h = Math.floor(ms / 3600e3); return h >= 24 ? `${Math.floor(h / 24)} дн ${h % 24} ч` : `${h} ч ${Math.floor(ms % 3600e3 / 60e3)} мин`; };
     const lc = lvlColor(S.lvl), xpPct = S.lvl >= LEVEL_MAX ? 100 : S.xp / levelNeed(S.lvl) * 100;
-    const tabs = [['quests', 'Задания'], ['path', 'Цели'], ['more', 'Ещё']];
+    const tabs = [['quests', 'Задания'], ['path', 'Цели'], ['coll', `Коллекции${collReady() ? ' <span class="dotty">•</span>' : ''}`], ['more', 'Ещё']];
     let body = '';
     if (profTab === 'quests') body = `
       <div class="section">Дня · обновятся через ${left(tomorrow - now)}</div>
       <div class="card quests">${questRows(S.daily, 'daily')}${questBonus(S.daily, 'daily')}</div>
       <div class="section">Недели · ещё ${left(nextWeek - now)}</div>
       <div class="card quests">${questRows(S.weekly, 'weekly')}${questBonus(S.weekly, 'weekly')}</div>`;
+    else if (profTab === 'coll') body = `<p class="small muted">Собирай машины — за серии и количество положены награды (один раз).</p>
+      <div class="card quests">${collRows()}</div>`;
     else if (profTab === 'path') body = `${lifeCard()}
       <p class="small muted">Опыт — за кейсы, гонки, подработки, учёбу, связи, задания и службу. За уровень — месяц дохода, на каждом 5-м — ещё и билет.
         Цвет уровня: серый → синий (5) → фиолетовый (10) → золотой (20) → красный (35) → бирюзовый (45).</p>`;
@@ -2299,18 +2328,71 @@
   }
 
   const VIEWS = { home: renderHome, inv: renderInv, cases: renderCases, career: renderCareer, biz: renderBiz, casino: renderCasino };
+  // ---------- обучение: подсказка внизу, подсветка нужной кнопки; шаг засчитывается, когда игрок сделал действие ----------
+  let tutBase = null, tutProfile = false;
+  const TUT_DONE = {
+    cases: () => tab === 'cases',
+    free: () => cdLeft(CASE.free) > 0,
+    career: () => tab === 'career',
+    study: () => tab === 'career' && sub.career === 'skills',
+    skill: () => Object.values(S.skills).reduce((a, b) => a + b, 0) > tutBase,
+    jobs: () => tab === 'career' && sub.career === 'jobs',
+    profile: () => tutProfile,
+  };
+  function tutTick() {
+    document.querySelectorAll('.tut-glow').forEach(el => el.classList.remove('tut-glow'));
+    const bubble = $('#tut');
+    if (S.tut < 1 || S.tut > TUTORIAL.length) { if (bubble) bubble.remove(); return; }
+    const step = TUTORIAL[S.tut - 1];
+    if (step.id === 'skill' && tutBase === null) tutBase = Object.values(S.skills).reduce((a, b) => a + b, 0);
+    if (TUT_DONE[step.id]()) {
+      S.tut++;
+      save();
+      if (S.tut > TUTORIAL.length) return finishTutorial();
+      return tutTick();
+    }
+    const el = document.querySelector(step.sel);
+    if (el) el.classList.add('tut-glow');
+    const html = `<div class="tut-step">${S.tut} / ${TUTORIAL.length}</div><div class="grow">${step.text}</div>
+      <button class="tut-skip" data-action="tut-skip">Пропустить</button>`;
+    if (!bubble) { const b = document.createElement('div'); b.id = 'tut'; b.innerHTML = html; document.body.appendChild(b); }
+    else if (bubble.dataset.step !== step.id) bubble.innerHTML = html;
+    $('#tut').dataset.step = step.id;
+  }
+  function startTutorial() {
+    showModal(`<div class="drop"><div class="drop-name">👋 Добро пожаловать в «Житуху»</div>
+      <p style="margin-top:8px">Это игра про жизнь: начинаешь раздатчиком листовок, а дальше — бизнес, связи, гонки или служба в погонах. Доход капает даже без тебя.</p>
+      <p class="small muted">Короткое обучение — 7 шагов, в конце подарок.</p>
+      <button class="btn full" data-action="tut-go">Поехали</button>
+      <button class="btn btn-ghost full" style="margin-top:8px" data-action="tut-skip">Я сам разберусь</button></div>`);
+  }
+  function finishTutorial() {
+    S.tut = -1;
+    earn(TUTORIAL_REWARD.money);
+    giveTicket(TUTORIAL_REWARD.ticket);
+    $('#tut') && $('#tut').remove();
+    save(); render();
+    showModal(`<div class="drop"><div class="drop-name">🎓 Обучение пройдено</div>
+      <p style="margin-top:8px">Подарок: <b>+${fmt(TUTORIAL_REWARD.money)} ₽</b> и ${ticketName(TUTORIAL_REWARD.ticket)}.</p>
+      <p class="small muted">Дальше — сам: следи за «Следующей целью» на главной, выполняй задания дня, копи на бизнес. Удачи!</p>
+      <button class="btn full" data-action="close">Спасибо</button></div>`);
+  }
+
   function render() {
     $('#view').innerHTML = VIEWS[tab]();
     const navTab = tab === 'inv' ? 'home' : tab;
     document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === navTab));
     updateLive();
+    tutTick();
   }
 
   // То, что меняется каждую секунду, обновляем точечно
   function updateLive() {
     $('#money').textContent = fmt(S.money);
     const im = incomeMonth();
-    $('#inc').textContent = (im >= 0 ? '+' : '') + fmt(im);
+    // По нажатию — сколько это в реальный час (за реальный час проходит MONTHS_PER_HOUR игровых месяцев)
+    $('#inc').textContent = (im >= 0 ? '+' : '') + fmt(S.incHour ? im * MONTHS_PER_HOUR : im);
+    $('#inc-unit').textContent = S.incHour ? '₽/ч реальн.' : '₽/мес';
     $('#prank').textContent = rankInfo().cur.icon + ' ' + rankInfo().cur.name;
     $('#plvl').textContent = S.lvl;
     $('.hdr').style.setProperty('--lc', lvlColor(S.lvl));
@@ -2748,6 +2830,18 @@
     },
     'event-show': () => showEvent(),
     'prof-tab': k => showProfile(k),
+    'inc-toggle': () => { S.incHour = !S.incHour; haptic('light'); save(); updateLive(); },
+    'tut-go': () => { S.tut = 1; closeModal(); save(); tab = 'home'; render(); },
+    'tut-skip': () => { S.tut = -1; closeModal(); $('#tut') && $('#tut').remove(); document.querySelectorAll('.tut-glow').forEach(el => el.classList.remove('tut-glow')); save(); },
+    'coll-claim': id => {
+      const c = COLLECTIONS.find(x => x.id === id);
+      if (!c || S.coll[id] || !collState(c).done) return;
+      S.coll[id] = true;
+      if (c.money) earn(monthsMoney(c.money, 20e3));
+      if (c.ticket) giveTicket(c.ticket);
+      if (c.badge && !S.badges.includes(c.badge)) { S.badges.push(c.badge); showName(); }
+      haptic('ok'); toast(`🏆 ${c.name}: ${collReward(c)}`); save(); render(); showProfile();
+    },
     'item-info': v => { const [c, id] = v.split(':'); showItemInfo(c, id); },
     'multi-pick': (i, el) => {
       if (!multi) return;
@@ -2928,7 +3022,8 @@
   const first = catchUp();
   ensureQuests();
   render();
-  if (S.event) showEvent();
+  if (S.tut === 0) startTutorial();
+  else if (S.event) showEvent();
   else maybeEvent();
   if (away > 60 && first.earned >= 1 && !S.event) showOffline(first);
 
