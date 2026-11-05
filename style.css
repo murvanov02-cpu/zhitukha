@@ -314,3 +314,6 @@ details.more-card .card { background: var(--card2); }
 .rl-marker::before, .rl-marker::after { content: ''; position: absolute; left: 50%; transform: translateX(-50%); border: 8px solid transparent; }
 .rl-marker::before { top: -2px; border-top-color: var(--gold); }
 .rl-marker::after { bottom: -2px; border-bottom-color: var(--gold); }
+.tank { display: flex; gap: 4px; margin: 6px 0 8px; }
+.tank i { flex: 1; height: 8px; border-radius: 4px; background: var(--card3); }
+.tank i.on { background: var(--gold); }
