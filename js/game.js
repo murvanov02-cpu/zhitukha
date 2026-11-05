@@ -37,6 +37,8 @@
       event: null, nextEvent: Date.now() + 2 * 3600e3, lastEvent: '',
       deal: null, dealDay: '',    // сделка с олигархом: { amount, ret, until }
       taxFreeUntil: 0,
+      garage: {},                 // гонки: id машины → { fuel: литры, ft: бензин, wear: износ %, broken }
+      raceCar: null, raceDay: '', races: 0, raceWins: 0,
       promo: [],                  // хэши уже активированных промокодов
       badges: [],                 // значки игрока
     };
@@ -298,7 +300,7 @@
     return d;
   }
   function pickQuests(pool, k) {
-    const has = { conn: Object.keys(S.conn).length > 0, biz: Object.keys(S.biz).length > 0 };
+    const has = { conn: Object.keys(S.conn).length > 0, biz: Object.keys(S.biz).length > 0, car: countCat('car') > 0 };
     const avail = pool.filter(q => !q.need || has[q.need]).sort(() => Math.random() - 0.5);
     return avail.slice(0, k).map(q => ({ id: q.id, prog: 0, claimed: false, target: q.hours ? monthsMoney(q.hours) : q.n }));
   }
@@ -338,6 +340,7 @@
       case 'biz': return Object.keys(S.biz).length >= step.v;
       case 'bizProfit': return bizProfit() >= step.v;
       case 'conn': return Object.keys(S.conn).length >= step.v;
+      case 'raceWins': return S.raceWins >= step.v;
       case 'connLv': return Object.keys(S.conn).some(id => connLv(id) >= step.v);
     }
     return false;
@@ -530,6 +533,41 @@
 
   // ---------- сделка с олигархом ----------
   const dealMax = () => Math.min(S.money, monthsMoney(DEAL_INCOME_H, 50e3));
+
+  // ---------- гонки ----------
+  const rclass = id => RACE_CLASSES[ITEM[id].rarity];
+  function carState(id) {
+    if (!S.garage[id]) S.garage[id] = { fuel: TANK_L, ft: rclass(id).fuel, wear: 0, broken: false };
+    return S.garage[id];
+  }
+  // Влияние бензина: лучше нужного — чуть мощнее, хуже — слабее и риск поломки
+  function fuelEffect(id) {
+    const st = carState(id), diff = FUELS[st.ft].octane - FUELS[rclass(id).fuel].octane;
+    if (diff > 0) return { power: 1 + FUEL_BETTER, risk: 0, text: `+${FUEL_BETTER * 100}% мощности`, cls: 'good' };
+    if (diff < 0) return { power: 1 - FUEL_WORSE * -diff, risk: FUEL_WORSE_BREAK * -diff, text: `−${FUEL_WORSE * 100 * -diff}% мощности и риск поломки`, cls: 'bad' };
+    return { power: 1, risk: 0, text: 'подходит', cls: 'muted' };
+  }
+  const breakChance = id => Math.min(90, carState(id).wear * BREAK_PER_WEAR + fuelEffect(id).risk);
+  const carTime = id => quarterMile(CAR_HP[id] * fuelEffect(id).power);
+  const raceCarId = () => {
+    const owned = Object.keys(S.inv).filter(id => ITEM[id] && ITEM[id].cat === 'car');
+    if (S.raceCar && S.inv[S.raceCar]) return S.raceCar;
+    return S.car && S.inv[S.car] ? S.car : owned[0] || null;
+  };
+  function racesLeft() {
+    const dk = dayKey(new Date());
+    if (S.raceDay !== dk) { S.raceDay = dk; S.races = 0; }
+    return RACES_PER_DAY - S.races;
+  }
+  const refuelCost = (id, ft) => Math.round((TANK_L - carState(id).fuel) * FUELS[ft].price);
+  function raceBlock(id) {
+    const st = carState(id), rc = rclass(id);
+    if (st.broken) return 'Машина сломана — нужен ремонт';
+    if (st.fuel < rc.burn) return `Мало топлива: нужно ${rc.burn} л`;
+    if (racesLeft() <= 0) return 'Заезды на сегодня закончились';
+    if (S.money < rc.fee) return `Взнос ${fmt(rc.fee)} ₽ — не хватает денег`;
+    return '';
+  }
 
   // ---------- кейсы ----------
   function poolOf(c) {
@@ -990,8 +1028,9 @@
     return `<div class="seg">
         <button class="${v === 'jobs' ? 'active' : ''}" data-sub="career:jobs">Работа</button>
         <button class="${v === 'skills' ? 'active' : ''}" data-sub="career:skills">Учёба</button>
-        <button class="${v === 'gigs' ? 'active' : ''}" data-sub="career:gigs">Подработки${gigReady ? ' <span class="dotty">•</span>' : ''}</button></div>
-      ${v === 'jobs' ? renderJobs() : v === 'skills' ? renderSkills() : renderGigs()}`;
+        <button class="${v === 'gigs' ? 'active' : ''}" data-sub="career:gigs">Подработки${gigReady ? ' <span class="dotty">•</span>' : ''}</button>
+        <button class="${v === 'race' ? 'active' : ''}" data-sub="career:race">Гонки</button></div>
+      ${v === 'jobs' ? renderJobs() : v === 'skills' ? renderSkills() : v === 'gigs' ? renderGigs() : renderRace()}`;
   }
   const reqTags = (req, extra = []) => Object.entries(req || {})
     .map(([k, v]) => `<span class="req ${S.skills[k] >= v ? 'ok' : 'no'}">${SKILL[k].name} ${v}</span>`).concat(extra).join('');
@@ -1039,6 +1078,139 @@
         </div>`;
       }).join('')}`;
   }
+  function renderRace() {
+    const id = raceCarId();
+    if (!id) return `<div class="empty">${ic('steering-wheel')}Для гонок нужна своя машина.<br>Машины выпадают из кейсов.<br><br>
+      <button class="btn btn-sm" data-goto="cases" data-sub="cases:car">К кейсам</button></div>`;
+    const it = ITEM[id], st = carState(id), rc = rclass(id), fe = fuelEffect(id), block = raceBlock(id);
+    const cars = Object.keys(S.inv).filter(x => ITEM[x] && ITEM[x].cat === 'car')
+      .sort((a, b) => CAR_HP[b] - CAR_HP[a]);
+    const chips = cars.map(x => `<button class="chip ${x === id ? 'active' : ''}" data-action="race-car" data-id="${x}">${rclass(x).name} · ${ITEM[x].name}</button>`).join('');
+    const fuelBtns = Object.keys(FUELS).map(ft => {
+      const cost = refuelCost(id, ft), need = ft === rc.fuel;
+      return `<button class="act" data-action="refuel" data-id="${id}:${ft}" ${st.fuel >= TANK_L ? 'disabled' : ''}>${ic('gas-station')}
+        <span class="act-name">АИ-${ft}${need ? ' ✓' : ''}</span><span class="act-sub">${FUELS[ft].price} ₽/л</span>
+        <span class="act-cost">${st.fuel >= TANK_L ? 'полный' : fmt(cost) + ' ₽'}</span></button>`;
+    }).join('');
+    return `<p class="hint">Драг на 402 м против соперника твоего класса. Стартуй ровно на зелёный и переключи передачу, когда стрелка в зелёной зоне.
+        Победа — ${RACE_PRIZE} взноса. Заездов в день: ${RACES_PER_DAY}.</p>
+      <div class="chips" style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px">${chips}</div>
+      <div class="card">
+        <div class="list-row"><div class="inv-icon">${visual(it)}</div>
+          <div class="grow"><div class="job-name">${it.name}</div>
+            <div class="small muted">Класс <b class="gold">${rc.name}</b> · ${CAR_HP[id]} л.с. · 402 м за ${carTime(id).toFixed(2)} с</div></div></div>
+        <div class="kv small" style="margin-top:8px"><span>Бак: ${Math.round(st.fuel)} / ${TANK_L} л · АИ-${st.ft}</span><b class="${fe.cls}">${fe.text}</b></div>
+        <div class="bar"><i style="width:${st.fuel / TANK_L * 100}%"></i></div>
+        <div class="kv small"><span>Износ ${Math.round(st.wear)}% · шанс поломки ${Math.round(breakChance(id))}%</span>
+          <b>${st.broken ? '<span class="bad">сломана</span>' : ''}</b></div>
+        <div class="small muted" style="margin:6px 0 8px">Нужен АИ-${rc.fuel}. Дешевле — риск поломки, лучше — чуть мощнее. Смешал бензин — считается худший.</div>
+        <div class="acts">${fuelBtns}</div>
+        <div class="row" style="margin-top:8px">
+          ${st.broken ? `<button class="btn btn-sm grow" data-action="repair" data-id="${id}">Ремонт · ${fmt(it.value * REPAIR_COST)} ₽</button>`
+            : `<button class="btn btn-sm btn-ghost grow" data-action="service" data-id="${id}" ${st.wear <= 0 ? 'disabled' : ''}>ТО: износ → 0 · ${fmt(it.value * SERVICE_COST)} ₽</button>`}</div>
+      </div>
+      <div class="card accent">
+        <div class="row"><div class="grow"><div class="big-text">Заезд класса ${rc.name}</div>
+          <div class="small muted">Взнос ${fmt(rc.fee)} ₽ · победа +${fmt(rc.fee * RACE_PRIZE)} ₽ · расход ${rc.burn} л</div>
+          <div class="small muted">Сегодня осталось заездов: ${racesLeft()} · всего побед: ${S.raceWins}</div></div></div>
+        <button class="btn full" style="margin-top:10px" data-action="race" data-id="${id}" ${block ? 'disabled' : ''}>${block || 'На старт'}</button>
+      </div>`;
+  }
+
+  // Заезд: светофор → старт (реакция) → переключение передачи → результат
+  let race = null;
+  function startRace(id) {
+    if (race || raceBlock(id)) return;
+    const rc = rclass(id), st = carState(id);
+    pay(rc.fee);
+    st.fuel -= rc.burn;
+    S.races++;
+    const rivals = ITEMS.filter(x => x.cat === 'car' && x.rarity === ITEM[id].rarity && x.id !== id);
+    const rival = rivals[Math.floor(Math.random() * rivals.length)] || ITEM[id];
+    const oppHp = CAR_HP[id] * (0.88 + Math.random() * 0.24);
+    const oppShift = Math.random() < 0.3 ? -0.25 : Math.random() < 0.75 ? 0 : 0.4;
+    race = { id, rival, oppTime: quarterMile(oppHp) + (0.15 + Math.random() * 0.2) - 0.2 + oppShift, phase: 'lights' };
+    const willBreak = Math.random() * 100 < breakChance(id);
+    st.wear = Math.min(100, st.wear + WEAR_PER_RACE);
+    race.willBreak = willBreak;
+    save(); render();
+    showModal(`<h3>${ITEM[id].name} <span class="muted">vs</span> ${rival.name}</h3>
+      <div class="race-lights"><i></i><i></i><i></i><i class="go"></i></div>
+      <div class="race-tacho hidden" id="tacho"><div class="zone ok"></div><div class="zone perfect"></div><div class="needle" id="needle"></div></div>
+      <p class="small" id="race-hint" style="text-align:center">Жми «Газ», когда загорится зелёный. Раньше — фальстарт.</p>
+      <button class="btn full race-btn" id="race-btn" data-action="race-tap">Газ!</button>`);
+    const lights = [...document.querySelectorAll('.race-lights i')];
+    lights.forEach((l, i) => i < 3 && setTimeout(() => race && race.phase === 'lights' && l.classList.add('on'), 500 + i * 550));
+    race.greenTimer = setTimeout(() => {
+      if (!race || race.phase !== 'lights') return;
+      lights.forEach(l => l.classList.remove('on'));
+      lights[3].classList.add('on');
+      race.phase = 'green';
+      race.green = performance.now();
+      haptic('medium');
+    }, 2150 + Math.random() * 1400);
+  }
+  function raceTap() {
+    if (!race) return;
+    const now = performance.now();
+    if (race.phase === 'lights') { clearTimeout(race.greenTimer); return finishRace({ jump: true }); }
+    if (race.phase === 'green') {
+      race.rt = (now - race.green) / 1000;
+      race.phase = 'shift';
+      $('#tacho').classList.remove('hidden');
+      $('#race-hint').textContent = 'Переключи передачу, когда стрелка в зелёной зоне!';
+      $('#race-btn').textContent = 'Передача!';
+      race.shiftStart = now;
+      const needle = $('#needle');
+      const step = () => {
+        if (!race || race.phase !== 'shift') return;
+        const p = Math.min(1, (performance.now() - race.shiftStart) / 1100);
+        needle.style.left = (p * 100) + '%';
+        if (p >= 1) { race.shift = 1; return finishRace({}); }
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+      return;
+    }
+    if (race.phase === 'shift') {
+      race.shift = Math.min(1, (now - race.shiftStart) / 1100);
+      finishRace({});
+    }
+  }
+  function finishRace({ jump }) {
+    const r = race, id = r.id, st = carState(id), rc = rclass(id);
+    r.phase = 'done';
+    race = null;
+    let title, text, win = false, myTime = null;
+    if (jump) {
+      title = '🚦 Фальстарт';
+      text = 'Ты сорвался раньше зелёного — заезд засчитан как поражение.';
+    } else if (r.willBreak) {
+      st.broken = true;
+      title = '💥 Поломка';
+      text = `Машина сломалась прямо на трассе. Ремонт — ${fmt(ITEM[id].value * REPAIR_COST)} ₽. Следи за износом и бензином.`;
+    } else {
+      const sh = r.shift;
+      const shiftPen = sh >= 0.72 && sh <= 0.88 ? -0.25 : sh >= 0.6 && sh <= 0.94 ? 0 : 0.4;
+      myTime = carTime(id) + (r.rt - 0.2) + shiftPen + (Math.random() - 0.5) * 0.1;
+      win = myTime < r.oppTime;
+      title = win ? '🏆 Победа!' : '😤 Поражение';
+      text = `Реакция ${r.rt.toFixed(3)} с · передача ${shiftPen < 0 ? 'идеально' : shiftPen === 0 ? 'нормально' : 'мимо'}<br>
+        Ты: <b>${myTime.toFixed(2)} с</b> · ${r.rival.name}: <b>${r.oppTime.toFixed(2)} с</b>`;
+    }
+    if (win) {
+      earn(rc.fee * RACE_PRIZE);
+      S.raceWins++;
+      progress('race_win');
+    }
+    save(); render();
+    showModal(`<div class="drop"><div class="drop-name">${title}</div>
+      <p style="margin-top:8px">${text}</p>
+      <div class="big ${win ? '' : 'bad'}">${win ? '+' + fmt(rc.fee * RACE_PRIZE) : '−' + fmt(rc.fee)} ₽</div>
+      <button class="btn full" data-action="close">Дальше</button></div>`);
+    haptic(win ? 'ok' : 'err');
+  }
+
   function renderGigs() {
     const g = S.gig;
     let active = '';
@@ -1365,6 +1537,29 @@
       }
       save(); render();
     },
+    'race-car': id => { S.raceCar = id; save(); render(); },
+    race: id => startRace(id),
+    'race-tap': () => raceTap(),
+    refuel: key => {
+      const [id, ft] = key.split(':'), st = carState(id), cost = refuelCost(id, ft);
+      if (st.fuel >= TANK_L || !pay(cost)) return;
+      // смешал бензин — в баке считается худший
+      st.ft = st.fuel > 0.5 && FUELS[st.ft].octane < FUELS[ft].octane ? st.ft : ft;
+      st.fuel = TANK_L;
+      haptic('light'); toast(`Заправлено АИ-${ft}: ${fmt(cost)} ₽`); save(); render();
+    },
+    service: id => {
+      const st = carState(id), c = ITEM[id].value * SERVICE_COST;
+      if (st.wear <= 0 || !pay(c)) return;
+      st.wear = 0;
+      haptic('light'); toast('ТО пройдено: износ 0%'); save(); render();
+    },
+    repair: id => {
+      const st = carState(id), c = ITEM[id].value * REPAIR_COST;
+      if (!st.broken || !pay(c)) return;
+      st.broken = false; st.wear = 0;
+      haptic('ok'); toast('Машина отремонтирована'); save(); render();
+    },
     'biz-slot': id => bizUp(id, () => {
       const b = S.biz[id], c = slotCost(id);
       if (b.slots >= BIZ_MAX || !pay(c)) return false;
@@ -1486,7 +1681,7 @@
   };
 
   document.addEventListener('click', e => {
-    if (e.target.id === 'modal') { closeModal(); return; }
+    if (e.target.id === 'modal') { if (race) return; closeModal(); return; }
     const t = e.target.closest('[data-tab],[data-goto],[data-action],[data-sub]');
     if (!t || t.disabled) return;
     if (t.dataset.action) { ACTIONS[t.dataset.action](t.dataset.id, t); return; }

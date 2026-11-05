@@ -377,6 +377,7 @@ const DAILY_QUESTS = [
   { id: 'd_earn',  ev: 'earn',  hours: 6, text: 'Заработай {X}' },
   { id: 'd_biz',   ev: 'bizup', n: 1, text: 'Улучши бизнес: станок, сотрудник или реклама', need: 'biz' },
   { id: 'd_conn',  ev: 'conn_free', n: 1, text: 'Открой «Знакомство дня»' },
+  { id: 'd_race',  ev: 'race_win', n: 1, text: 'Выиграй гонку', need: 'car' },
 ];
 const WEEKLY_QUESTS = [
   { id: 'w_open',  ev: 'open',      n: 15, text: 'Открой 15 кейсов' },
@@ -387,6 +388,7 @@ const WEEKLY_QUESTS = [
   { id: 'w_earn',  ev: 'earn',      hours: 60, text: 'Заработай {X}' },
   { id: 'w_daily', ev: 'daily_all', n: 4,  text: 'Выполни все ежедневные задания 4 дня' },
   { id: 'w_biz',   ev: 'bizup',     n: 5,  text: 'Сделай 5 улучшений бизнеса', need: 'biz' },
+  { id: 'w_race',  ev: 'race_win',  n: 8,  text: 'Выиграй 8 гонок', need: 'car' },
 ];
 const QUESTS_PER_DAY = 3;
 const QUESTS_PER_WEEK = 3;
@@ -398,7 +400,7 @@ const WEEKLY_BONUS = { ticket: 'car_cn' };                           // за в�
 
 // «Жизненный путь» — цепочка целей по порядку. type: job (зарплата от v), car, skills (сумма уровней),
 // home (объектов от v), rank (статус от v), carRarity (редкость машины от v),
-// biz (бизнесов от v), bizProfit (прибыль всех бизнесов от v ₽/мес), conn (связей от v), connLv (доверие любой связи от v)
+// raceWins (побед в гонках от v), biz (бизнесов от v), bizProfit (прибыль всех бизнесов от v ₽/мес), conn (связей от v), connLv (доверие любой связи от v)
 // reward: money или ticket (id кейса)
 const LIFE_PATH = [
   { type: 'job',       v: 60e3,  text: 'Устройся на работу получше', reward: { money: 50000 } },
@@ -408,6 +410,7 @@ const LIFE_PATH = [
   { type: 'rank',      v: 2,     text: 'Стань «Работягой»',          reward: { ticket: 'car_used' } },
   { type: 'biz',       v: 1,     text: 'Открой свой бизнес',         reward: { money: 250000 } },
   { type: 'conn',      v: 3,     text: 'Заведи 3 полезные связи',     reward: { ticket: 'conn_district' } },
+  { type: 'raceWins',  v: 5,     text: 'Выиграй 5 гонок',            reward: { money: 300e3 } },
   { type: 'job',       v: 150e3, text: 'Зарплата от 150 тыс ₽/мес',  reward: { money: 500000 } },
   { type: 'connLv',    v: 3,     text: 'Подними доверие любой связи до 3', reward: { ticket: 'home_dorm' } },
   { type: 'rank',      v: 3,     text: 'Стань «Средним классом»',    reward: { money: 1e06 } },
@@ -560,3 +563,41 @@ const PROMO_CODES = [
 const BADGES = {
   first: { name: 'Первый игрок', icon: 'crown' },
 };
+
+// ---------- гонки (драг на четверть мили) ----------
+// Класс машины — по её редкости. Время заезда считается от мощности, а два нажатия игрока
+// (старт по зелёному и переключение передачи в зелёной зоне) решают остальное.
+// Не фарм: заездов в день ограничено, есть взнос, расход топлива, износ и поломки.
+const CAR_HP = {
+  c_2109: 70, c_2107: 75, c_matiz: 52, c_logan: 102, c_granta: 90, c_niva: 83, c_polo: 110, c_vesta: 106,
+  c_solaris: 123, c_rio: 123, c_jolion: 143, c_tiggo: 147, c_octavia: 150, c_k5: 194, c_mazda6: 194, c_xtrail: 163,
+  c_camry: 200, c_rav4: 199, c_tiguan: 180, c_monjaro: 238, c_eclass: 245, c_lc300: 409, c_x5: 340, c_cayenne: 353,
+  c_gtr: 565, c_m5: 600, c_rs6: 600, c_sclass: 367, c_lx: 409, c_911: 385, c_g63: 585, c_bentley: 659,
+  c_mclaren: 720, c_ferrari: 830, c_urus: 666, c_aventador: 770, c_phantom: 571, c_cullinan: 571,
+  c_huayra: 730, c_jesko: 1600, c_chiron: 1500,
+};
+// fuel — какой бензин нужен; burn — литров за заезд; fee — взнос (выигрыш = fee × RACE_PRIZE)
+const RACE_CLASSES = {
+  common:    { name: 'D', fuel: '92',  burn: 4,  fee: 300e3 },
+  rare:      { name: 'C', fuel: '95',  burn: 5,  fee: 2e6 },
+  epic:      { name: 'B', fuel: '95',  burn: 6,  fee: 10e6 },
+  legendary: { name: 'A', fuel: '100', burn: 8,  fee: 50e6 },
+  mythic:    { name: 'S', fuel: '100', burn: 10, fee: 200e6 },
+};
+const FUELS = {                       // цена за литр
+  '92':  { price: 56, octane: 0 },
+  '95':  { price: 62, octane: 1 },
+  '100': { price: 85, octane: 2 },
+};
+const TANK_L = 50;
+const RACE_PRIZE = 1.8;              // победитель забирает 1,8 взноса (остальное — организаторам)
+const RACES_PER_DAY = 8;
+const FUEL_BETTER = 0.03;            // бензин лучше нужного: +3% мощности
+const FUEL_WORSE = 0.06;             // хуже нужного на ступень: −6% мощности
+const FUEL_WORSE_BREAK = 12;         // …и +12% к шансу поломки за заезд
+const WEAR_PER_RACE = 8;             // износ за заезд, %
+const BREAK_PER_WEAR = 0.25;         // шанс поломки = износ × это (при 100% износа — 25%)
+const SERVICE_COST = 0.015;          // ТО (износ → 0) — доля стоимости машины
+const REPAIR_COST = 0.05;            // ремонт после поломки — доля стоимости машины
+// Время на 402 м по мощности (сек): 23 − 4,3·ln(л.с./50), не быстрее 8,8 с
+const quarterMile = hp => Math.max(8.8, 23 - 4.3 * Math.log(hp / 50));
