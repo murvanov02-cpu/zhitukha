@@ -451,8 +451,9 @@ const WEEKLY_QUESTS = [
 const QUESTS_PER_DAY = 3;
 const QUESTS_PER_WEEK = 3;
 // Награды: деньги — в месяцах текущего дохода (не меньше min), билеты — бесплатное открытие кейса
-const DAILY_REWARD = { hours: 0.75, min: 10e3 };
-const DAILY_BONUS = { hours: 1.5, min: 20e3, ticket: 'car_garage' };          // за все ежедневные
+// Награды заданий — небольшой бонус к прогрессу: доля месяца текущего дохода (не меньше min)
+const DAILY_REWARD = { hours: 0.3, min: 5e3 };
+const DAILY_BONUS = { hours: 0.75, min: 10e3, ticket: 'car_garage' };          // за все ежедневные
 const WEEKLY_TICKETS = ['car_used', 'home_dorm', 'conn_district'];         // по одному за каждое недельное
 const WEEKLY_BONUS = { ticket: 'car_cn' };                           // за все недельные
 
@@ -751,14 +752,26 @@ const PLATE_GOV = ['АМР', 'ЕКХ'];
 const PLATE_GOV_CODES = ['77', '97', '99', '177', '199', '799'];
 // Регион выбирает игрок: в Москве номера дороже — и набор стоит дороже (mult)
 const PLATE_REGIONS = [
-  { id: 'msk',  name: 'Москва',        mult: 3,   codes: ['77', '97', '99', '177', '197', '199', '777', '797', '799'] },
-  { id: 'spb',  name: 'Петербург',     mult: 2,   codes: ['78', '98', '178', '198'] },
-  { id: 'mo',   name: 'Подмосковье',   mult: 1.6, codes: ['50', '90', '150', '190', '750'] },
-  { id: 'kzn',  name: 'Казань',        mult: 1.2, codes: ['16', '116', '716'] },
-  { id: 'krd',  name: 'Краснодар',     mult: 1.2, codes: ['23', '93', '123', '193'] },
-  { id: 'ekb',  name: 'Екатеринбург',  mult: 1.1, codes: ['66', '96', '196'] },
-  { id: 'nsk',  name: 'Новосибирск',   mult: 1,   codes: ['54', '154'] },
-  { id: 'vl',   name: 'Владивосток',   mult: 1,   codes: ['25', '125'] },
+  { id: 'msk',  name: 'Москва',                  mult: 3,   codes: ['77', '97', '99', '177', '197', '199', '777', '797', '799'] },
+  { id: 'spb',  name: 'Санкт-Петербург',         mult: 2,   codes: ['78', '98', '178', '198'] },
+  { id: 'mo',   name: 'Московская область',      mult: 1.6, codes: ['50', '90', '150', '190', '750'] },
+  { id: 'chr',  name: 'Чечня',                   mult: 1.5, codes: ['95'] },
+  { id: 'krd',  name: 'Краснодарский край',      mult: 1.3, codes: ['23', '93', '123', '193'] },
+  { id: 'lo',   name: 'Ленинградская область',   mult: 1.3, codes: ['47', '147'] },
+  { id: 'kzn',  name: 'Татарстан',               mult: 1.2, codes: ['16', '116', '716'] },
+  { id: 'dag',  name: 'Дагестан',                mult: 1.2, codes: ['05'] },
+  { id: 'ekb',  name: 'Свердловская область',    mult: 1.1, codes: ['66', '96', '196'] },
+  { id: 'nn',   name: 'Нижегородская область',   mult: 1.1, codes: ['52', '152'] },
+  { id: 'smr',  name: 'Самарская область',       mult: 1.1, codes: ['63', '163', '763'] },
+  { id: 'rnd',  name: 'Ростовская область',      mult: 1.1, codes: ['61', '161', '761'] },
+  { id: 'kgd',  name: 'Калининградская область', mult: 1.1, codes: ['39', '91'] },
+  { id: 'crm',  name: 'Крым',                    mult: 1.1, codes: ['82'] },
+  { id: 'nsk',  name: 'Новосибирская область',   mult: 1,   codes: ['54', '154'] },
+  { id: 'ufa',  name: 'Башкортостан',            mult: 1,   codes: ['02', '102', '702'] },
+  { id: 'chl',  name: 'Челябинская область',     mult: 1,   codes: ['74', '174', '774'] },
+  { id: 'prm',  name: 'Пермский край',           mult: 1,   codes: ['59', '159'] },
+  { id: 'krs',  name: 'Красноярский край',       mult: 1,   codes: ['24', '124'] },
+  { id: 'vl',   name: 'Приморский край',         mult: 1,   codes: ['25', '125'] },
 ];
 // Наборы номеров: w — шансы редкостей (%). Цена считается сама — PLATE_PRICE_RATE от ожидаемой стоимости
 // для выбранного региона, как у кейсов. rank — с какого статуса доступен.
@@ -778,9 +791,12 @@ const PLATE_SELL_RATE = 0.85;        // номера держат цену лу�
 const XP_FOR = { gig: 10, skill: 3, meet: 6, favor: 15, bizup: 8, daily_all: 25 };
 const XP_CASE = { free: 3, cheap: 2, mid: 4, elite: 8 };
 const XP_QUEST = { daily: 10, weekly: 30 };
-// Опыта до следующего уровня: 25 + 5 × уровень. Активный игрок берёт ~30-й уровень примерно за неделю.
-const levelNeed = lv => 25 + 5 * lv;
-const LEVEL_MAX = 60;
+// Опыта до следующего уровня растёт с каждым уровнем: 25 + 5·L + 0,1·L². ~30-й уровень — за неделю активной игры,
+// 50-й (максимум) — для самых упорных.
+const levelNeed = lv => Math.round(25 + 5 * lv + 0.1 * lv * lv);
+const LEVEL_MAX = 50;
+// Цвет уровня (значок и имя): с какого уровня какой
+const LEVEL_COLORS = [[45, '#2ed3c6'], [35, '#e5484d'], [20, '#d4a84b'], [10, '#a970ff'], [5, '#4d9fff'], [1, '#9aa0a6']];
 // Награда за уровень: месяц текущего дохода (не меньше LEVEL_MONEY_MIN); на круглых уровнях — ещё и билет
 const LEVEL_MONEY_MONTHS = 1;
 const LEVEL_MONEY_MIN = 20e3;

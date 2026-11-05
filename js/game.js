@@ -82,6 +82,7 @@
     }
     if (!s.pool) s.pool = { n: RACE_POOL, ts: Date.now() };
     if (s.sil && s.sil.rep === undefined) { s.sil.rep = 0; s.sil.nextCheck = 0; }
+    if (s.lvl > LEVEL_MAX) { s.lvl = LEVEL_MAX; s.xp = 0; }
     // v25: уровни появились позже — засчитываем прошлые кейсы, победы и курсы (без наград за уровни)
     if (o.lvl === undefined) {
       let xp = (o.opened || 0) * XP_CASE.cheap + (o.raceWins || 0) * RACE_LEVELS[1].xp * 2
@@ -881,9 +882,10 @@
     }
     return best ? best.id : null;
   }
-  function sell(id) {
+  // Продать один экземпляр; тюнинг и номер уходят вместе с последним. Возвращает выручку.
+  function sellOne(id) {
     const it = ITEM[id];
-    if (!it || !S.inv[id]) return;
+    if (!it || !S.inv[id] || it.cat === 'conn') return 0;
     const price = sellPrice(it) + (S.inv[id] === 1 ? carExtra(id) : 0);
     S.inv[id]--;
     earn(price);
@@ -893,6 +895,12 @@
       S.plates = S.plates.filter(p => p.car !== id);
       if (S.car === id) S.car = bestCar();
     }
+    return price;
+  }
+  function sell(id) {
+    const it = ITEM[id];
+    const price = sellOne(id);
+    if (!price) return;
     haptic('light');
     toast(`Продано: ${it.name} +${fmt(price)} ₽`);
     save();
@@ -978,9 +986,14 @@
     else if (kind === 'err') h.notificationOccurred('error');
     else h.impactOccurred(kind);
   }
+  // Подтверждение: в Telegram — его родное окно, иначе — своё (системный confirm некоторые браузеры молча блокируют)
+  let confirmCb = null;
   function askConfirm(text, cb) {
-    if (inTelegram && tg.showConfirm) tg.showConfirm(text, ok => ok && cb());
-    else if (confirm(text)) cb();
+    if (inTelegram && tg.showConfirm) return tg.showConfirm(text, ok => ok && cb());
+    confirmCb = cb;
+    showModal(`<p style="margin-top:4px">${text}</p>
+      <div class="row" style="margin-top:12px"><button class="btn btn-ghost grow" data-action="close">Отмена</button>
+        <button class="btn btn-danger grow" data-action="confirm-yes">Да</button></div>`);
   }
 
   function bonusText(it) {
@@ -1020,22 +1033,30 @@
       <div class="row">${actions}</div></div>`);
     haptic(rarIdx(it.rarity) >= 2 ? 'ok' : 'medium');
   }
+  // Итоги открытия пачки: вещи можно отметить и продать выборочно или все разом
+  let multi = null;
   function showMulti(c, results) {
     const sorted = results.slice().sort((a, b) => rarIdx(a.it.rarity) - rarIdx(b.it.rarity));
     const step = S.fast ? 0 : 0.12;
+    multi = { list: sorted, picked: new Set() };
     const tiles = sorted.map((res, i) => {
-      const note = resultNote(res);
-      return tileHTML(res.it, note ? `<div class="tile-note">${note}</div>` : '',
-        'reveal' + (rarIdx(res.it.rarity) >= 3 ? ' shine' : ''), `--d:${(i * step).toFixed(2)}s`);
+      const note = resultNote(res), can = !res.sold && res.it.cat !== 'conn';
+      return `<div class="pick-wrap" ${can ? `data-action="multi-pick" data-id="${i}"` : ''}>${tileHTML(res.it, note ? `<div class="tile-note">${note}</div>` : '',
+        'reveal' + (rarIdx(res.it.rarity) >= 3 ? ' shine' : ''), `--d:${(i * step).toFixed(2)}s`)}${can ? `<i class="pick-mark">${ic('check')}</i>` : ''}</div>`;
     }).join('');
     const best = sorted[sorted.length - 1].it;
     const soldSum = results.filter(r => r.sold).reduce((a, r) => a + sellPrice(r.it), 0);
+    const sellable = sorted.some(r => !r.sold && r.it.cat !== 'conn');
     showModal(`<h3>${c.name} ×${results.length}</h3>
       <div class="tiles mb">${tiles}</div>
       <p class="small">Лучшее: <b style="color:${RARITIES[best.rarity].color}">${best.name}</b>${soldSum ? ` · автопродажа +${fmt(soldSum)} ₽` : ''}</p>
+      ${sellable ? `<p class="small muted">Нажми на вещи, чтобы выбрать, что продать.</p>
+        <div class="row" style="margin-bottom:8px"><button class="btn btn-ghost grow" data-action="multi-sell" data-id="all">Продать всё · ${fmt(multiSum(true))} ₽</button>
+          <button class="btn btn-line grow" id="multi-sel" data-action="multi-sell" data-id="sel" disabled>Продать выбранное</button></div>` : ''}
       <button class="btn full" data-action="close">Забрать всё</button>`);
     setTimeout(() => haptic(rarIdx(best.rarity) >= 2 ? 'ok' : 'medium'), sorted.length * step * 1000);
   }
+  const multiSum = all => multi.list.reduce((a, r, i) => a + (!r.sold && r.it.cat !== 'conn' && (all || multi.picked.has(i)) ? sellPrice(r.it) : 0), 0);
   function showOffline({ sec, earned }) {
     const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
     showModal(`<h3>С возвращением 👋</h3>
@@ -1050,10 +1071,36 @@
     const tw = rars.reduce((a, x) => a + c.w[x], 0);
     const tiles = rars.slice().reverse().flatMap(r => {
       const list = pool.filter(i => i.rarity === r);
-      return list.map(i => tileHTML(i, `<div class="tile-note muted">${+(c.w[r] / tw * 100 / list.length).toFixed(2)}%${i.value ? ` · ${fmt(i.value)}` : ''}</div>`));
+      return list.map(i => `<div data-action="item-info" data-id="${id}:${i.id}">${tileHTML(i, `<div class="tile-note muted">${+(c.w[r] / tw * 100 / list.length).toFixed(2)}%${i.value ? ` · ${fmt(i.value)}` : ''}</div>`)}</div>`);
     });
-    showModal(`${sheetHead(c.name + ': что внутри')}<div class="tiles">${tiles.join('')}</div>
+    showModal(`${sheetHead(c.name + ': что внутри')}<p class="small muted">Нажми на вещь — покажу, что она даёт.</p><div class="tiles">${tiles.join('')}</div>
       <button class="btn btn-ghost full" style="margin-top:12px" data-action="case" data-id="${id}">${ic('arrow-left')} Назад</button>`, true);
+  }
+
+  // Подробно о вещи из кейса: что даёт связь по уровням доверия, машина и жильё — цифрами
+  function showItemInfo(caseId, id) {
+    const it = ITEM[id];
+    if (!it) return;
+    let body = '';
+    if (it.cat === 'conn') {
+      body = `<div class="label">${PERKS[it.perk].replace('{v}', '…')}</div>
+        ${it.lv.map((v, i) => `<div class="kv small"><span>${stars(i + 1)}</span><b>${PERKS[it.perk].replace('{v}', v)}</b></div>`).join('')}
+        <div class="small" style="margin-top:8px">${ic('star', 'gold')} На полном доверии: ${specialText(it)}</div>
+        ${EVENTS.some(e => e.via === id) ? `<div class="small muted" style="margin-top:6px">Помогает звонком: ${EVENTS.filter(e => e.via === id).map(e => e.title.toLowerCase()).join(', ')}</div>` : ''}`;
+    } else if (it.cat === 'car') {
+      body = `<div class="kv small"><span>Цена</span><b>${fmt(it.value)} ₽</b></div>
+        <div class="kv small"><span>К зарплате</span><b>+${it.bonus}%</b></div>
+        <div class="kv small"><span>Мощность · класс</span><b>${CAR_HP[id] || '—'} л.с. · ${RACE_CLASSES[it.rarity].name}</b></div>
+        <div class="kv small"><span>Ставки в гонках</span><b>от ${fmt(round2(Math.max(RACE_UNIT_MIN, it.value * RACE_CAR_SHARE) * RACE_LEVELS[4].prize))} ₽ за победу</b></div>`;
+    } else {
+      body = `<div class="kv small"><span>Цена</span><b>${fmt(it.value)} ₽</b></div>
+        <div class="kv small"><span>Аренда</span><b>+${fmt(it.bonus)} ₽/мес</b></div>`;
+    }
+    showModal(`${sheetHead(it.name)}
+      <div class="row" style="margin-bottom:10px"><div class="inv-icon" style="width:96px;height:64px">${visual(it)}</div>
+        <div class="grow small" style="color:${RARITIES[it.rarity].color}">${RARITIES[it.rarity].name}</div></div>
+      <div class="card">${body}</div>
+      <button class="btn btn-ghost full" style="margin-top:8px" data-action="peek" data-id="${caseId}">${ic('arrow-left')} Назад</button>`, true);
   }
 
   // ---------- профиль: статус, задания, путь, настройки ----------
@@ -1088,32 +1135,29 @@
       <div class="row"><div class="grow"><div class="big-text">${lifeText(step)}</div><div class="reward">${rewardText(step.reward)}</div></div>
       ${done ? '<button class="btn btn-green btn-sm" data-action="claim-life">Забрать</button>' : '<span class="tag lock">в процессе</span>'}</div></div>`;
   }
-  function showProfile() {
+  let profTab = 'quests';
+  function showProfile(t) {
+    if (t) profTab = t;
     ensureQuests();
     const r = rankInfo();
     const now = new Date();
     const tomorrow = new Date(now); tomorrow.setHours(24, 0, 0, 0);
     const nextWeek = weekStart(now); nextWeek.setDate(nextWeek.getDate() + 7);
     const left = ms => { const h = Math.floor(ms / 3600e3); return h >= 24 ? `${Math.floor(h / 24)} дн ${h % 24} ч` : `${h} ч ${Math.floor(ms % 3600e3 / 60e3)} мин`; };
-    showModal(`${sheetHead('Профиль')}
-      <div class="card"><div class="row"><div class="ava">${$('#ava').textContent}</div>
-        <div class="grow"><div class="big-text">${r.cur.icon} ${r.cur.name}</div>
-          ${S.badges.length ? `<div class="small gold">${S.badges.filter(b => BADGES[b]).map(b => `${ic(BADGES[b].icon)} ${BADGES[b].name}`).join(' · ')}</div>` : ''}
-          <div class="bar"><i style="width:${r.pct}%"></i></div>
-          <div class="small muted">${r.next ? `До «${r.next.name}»: ${fmt(r.next.min - r.nw)} ₽ состояния` : 'Вершина пищевой цепи'}</div></div></div></div>
-      <div class="card"><div class="kv"><span>${ic('star', 'gold')} Уровень ${S.lvl}</span><b class="small muted">${S.lvl >= LEVEL_MAX ? 'максимум' : `${Math.floor(S.xp)} / ${levelNeed(S.lvl)} опыта`}</b></div>
-        <div class="bar"><i style="width:${S.lvl >= LEVEL_MAX ? 100 : S.xp / levelNeed(S.lvl) * 100}%"></i></div>
-        <div class="small muted">Опыт — за кейсы, гонки, подработки, учёбу, связи, задания и службу. За уровень — месяц дохода, на каждом 5-м — ещё и билет.
-          ${S.sil ? `<br>${STR().icon} ${svcRank().name} ${STR().name}` : S.lvl < SERVICE_MIN_LEVEL ? `<br>С ${SERVICE_MIN_LEVEL} уровня открывается служба.` : ''}</div></div>
-      ${lifeCard()}
-      <div class="section">Задания дня · обновятся через ${left(tomorrow - now)}</div>
+    const lc = lvlColor(S.lvl), xpPct = S.lvl >= LEVEL_MAX ? 100 : S.xp / levelNeed(S.lvl) * 100;
+    const tabs = [['quests', 'Задания'], ['path', 'Цели'], ['more', 'Ещё']];
+    let body = '';
+    if (profTab === 'quests') body = `
+      <div class="section">Дня · обновятся через ${left(tomorrow - now)}</div>
       <div class="card quests">${questRows(S.daily, 'daily')}${questBonus(S.daily, 'daily')}</div>
-      <div class="section">Задания недели · ещё ${left(nextWeek - now)}</div>
-      <div class="card quests">${questRows(S.weekly, 'weekly')}${questBonus(S.weekly, 'weekly')}</div>
-      <div class="section">Промокод</div>
-      <div class="card"><div class="row"><input id="promo-input" class="input grow" placeholder="Введи промокод" autocomplete="off" autocapitalize="characters">
-        <button class="btn btn-sm" data-action="promo">Активировать</button></div></div>
-      <div class="section">Статистика</div>
+      <div class="section">Недели · ещё ${left(nextWeek - now)}</div>
+      <div class="card quests">${questRows(S.weekly, 'weekly')}${questBonus(S.weekly, 'weekly')}</div>`;
+    else if (profTab === 'path') body = `${lifeCard()}
+      <p class="small muted">Опыт — за кейсы, гонки, подработки, учёбу, связи, задания и службу. За уровень — месяц дохода, на каждом 5-м — ещё и билет.
+        Цвет уровня: серый → синий (5) → фиолетовый (10) → золотой (20) → красный (35) → бирюзовый (45).</p>`;
+    else body = `
+      <div class="card"><div class="row"><input id="promo-input" class="input grow" placeholder="Промокод" autocomplete="off" autocapitalize="characters">
+        <button class="btn btn-sm" data-action="promo">OK</button></div></div>
       <div class="card">
         <div class="kv"><span>Состояние</span><b>${fmt(r.nw)} ₽</b></div>
         <div class="kv"><span>Заработано за всё время</span><b>${fmt(S.total)} ₽</b></div>
@@ -1122,7 +1166,18 @@
       </div>
       <div class="row"><button class="btn btn-ghost btn-sm grow" data-action="credits">${ic('camera')} Авторы фото</button>
         <button class="btn btn-danger btn-sm grow" data-action="reset">Начать заново</button></div>
-      ${DEBUG ? debugPanel() : ''}`, true);
+      ${DEBUG ? debugPanel() : ''}`;
+    showModal(`${sheetHead('Профиль')}
+      <div class="card prof" style="--lc:${lc}"><div class="row">
+        <div class="ava-wrap"><div class="ava">${$('#ava').textContent}</div><span class="lvl">${S.lvl}</span></div>
+        <div class="grow"><div class="prof-name">${name.replace(/[<>&]/g, '')} ${badgeIcons()}</div>
+          <div class="small muted">${r.cur.icon} ${r.cur.name}${S.sil ? ` · ${STR().icon} ${svcRank().name}` : ''}</div></div></div>
+        <div class="kv small" style="margin-top:10px"><span>Уровень ${S.lvl}</span><b class="muted">${S.lvl >= LEVEL_MAX ? 'максимум' : `${Math.floor(S.xp)} / ${levelNeed(S.lvl)}`}</b></div>
+        <div class="bar lvl-bar"><i style="width:${xpPct}%"></i></div>
+        <div class="kv small" style="margin-top:6px"><span>Статус</span><b class="muted">${r.next ? `до «${r.next.name}» ${fmt(r.next.min - r.nw)} ₽` : 'вершина'}</b></div>
+        <div class="bar"><i style="width:${r.pct}%"></i></div></div>
+      <div class="seg">${tabs.map(([k, n]) => `<button class="${profTab === k ? 'active' : ''}" data-action="prof-tab" data-id="${k}">${n}</button>`).join('')}</div>
+      ${body}`, true);
   }
 
   // ---------- тестовая панель: только при адресе с ?debug ----------
@@ -1164,7 +1219,7 @@
           <div class="grow"><div class="big-text">${ev.title}</div>
           <div class="small muted">${ev.good ? 'Забери награду' : 'Требует решения'}${S.event.biz ? ' · ' + BIZ[S.event.biz].name : ''}</div></div>
           <span class="chev">${ic('chevron-right')}</span></div></button>` : ''}
-      ${life ? `<button class="card tap accent ${lifeOk ? 'ok' : ''}" data-action="${lifeOk ? 'claim-life' : 'profile'}">
+      ${life ? `<button class="card tap accent ${lifeOk ? 'ok' : ''}" data-action="${lifeOk ? 'claim-life' : 'life-go'}">
         <div class="label">${ic('route')} Следующая цель</div>
         <div class="row"><div class="grow"><div class="big-text">${lifeText(life)}</div><div class="reward">${rewardText(life.reward)}</div></div>
         ${lifeOk ? '<span class="btn btn-green btn-sm">Забрать</span>' : `<span class="chev">${ic('chevron-right')}</span>`}</div></button>` : ''}
@@ -1223,7 +1278,9 @@
   // ---------- номера: экран ----------
   function renderPlates() {
     const reg = plateReg();
-    const regs = PLATE_REGIONS.map(r => `<button class="chip ${r.id === reg.id ? 'active' : ''}" data-action="plate-reg" data-id="${r.id}">${r.name}${r.mult > 1 ? ' ×' + r.mult : ''}</button>`).join('');
+    const regs = `<button class="card tap" data-action="plate-regs"><div class="list-row"><div class="ico-box">${ic('map-pin')}</div>
+        <div class="grow"><div class="small muted">Регион номера</div><div class="val">${reg.name} · ${reg.codes.slice(0, 3).join(', ')}${reg.codes.length > 3 ? '…' : ''}</div></div>
+        <span class="small gold">${reg.mult > 1 ? '×' + String(reg.mult).replace('.', ',') : ''}</span><span class="chev">${ic('chevron-down')}</span></div></button>`;
     const boxes = PLATE_BOXES.map(box => {
       const price = plateBoxPrice(box, reg), locked = rankIdx() < box.rank;
       const odds = Object.entries(box.w).filter(([, w]) => w > 0)
@@ -1231,8 +1288,8 @@
       return `<div class="card ${locked ? 'locked' : ''}">
         <div class="row"><div class="job-ico">${box.icon}</div>
           <div class="grow"><div class="job-name">${box.name}</div><div class="small">${odds}</div></div>
-          ${locked ? `<span class="tag">${RANKS[box.rank].name}</span>`
-            : `<button class="btn btn-sm btn-col" data-action="plate-open" data-id="${box.id}" ${S.money < price ? 'disabled' : ''}>Открыть<span class="btn-top">${fmt(price)} ₽</span></button>`}</div></div>`;
+          ${locked ? `<span class="tag lock" title="нужен статус">${ic('lock')} ${RANKS[box.rank].name}</span>`
+            : `<button class="btn btn-sm btn-col" data-action="plate-open" data-id="${box.id}" data-confirm="${fmt(price)} ₽" ${S.money < price ? 'disabled' : ''}>Открыть<span class="btn-top">${fmt(price)} ₽</span></button>`}</div></div>`;
     }).join('');
     const mine = [...S.plates].sort((x, y) => y.v - x.v).map(p => {
       const car = p.car && ITEM[p.car];
@@ -1247,8 +1304,7 @@
     }).join('');
     return `<p class="hint">Номер вешается на машину: его цена входит в твой статус и в цену машины при продаже.
         Чем красивее номер и «дороже» регион — тем он ценнее. Госномера ${PLATE_GOV.join(' и ')} бывают только московские — с ними ГИБДД не штрафует.</p>
-      <div class="small muted mb">Регион номера</div>
-      <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px">${regs}</div>
+      ${regs}
       ${boxes}
       <label class="toggle" style="margin:4px 0 12px"><input type="checkbox" data-toggle="fast" ${S.fast ? 'checked' : ''}><i></i>Быстрое открытие</label>
       ${mine || `<div class="empty">${ic('rectangle')}Номеров пока нет</div>`}`;
@@ -1348,10 +1404,10 @@
     const tickets = S.tickets[id] || 0;
     showModal(`${sheetHead(c.name)}
       <div class="case-tile" style="margin-bottom:12px"><div class="case-cover" style="height:140px">${coverHTML(c)}</div></div>
-      <p>${c.desc}. Внутри ${pool.length} предметов.</p>
+      <p>${c.desc}.</p>
       <div class="chance-bar">${bar}</div><div class="chance-legend">${legend}</div>
       ${tickets ? `<button class="btn full" style="margin-top:12px" data-action="ticket" data-id="${id}">${ic('ticket')} Открыть по билету · осталось ${tickets}</button>` : ''}
-      <div class="open-row">${MULTI_OPEN.map(n => `<button class="btn ${n > 1 ? 'btn-ghost' : ''}" data-action="open" data-id="${id}" data-n="${n}">
+      <div class="open-row">${MULTI_OPEN.map(n => `<button class="btn ${n > 1 ? 'btn-ghost' : ''}" data-action="open" data-id="${id}" data-n="${n}" data-confirm="×${n} · ${fmt(batchPrice(c, n))} ₽">
         <span class="btn-top">×${n}${MULTI_DISCOUNT[n] ? ` <s>−${MULTI_DISCOUNT[n] * 100}%</s>` : ''}</span>${fmt(batchPrice(c, n))} ₽</button>`).join('')}</div>
       <button class="btn btn-ghost full" style="margin-top:8px" data-action="peek" data-id="${id}">${ic('list-search')} Что внутри</button>
       <div style="margin-top:8px">
@@ -1361,6 +1417,7 @@
   }
 
   // ---------- уровень игрока ----------
+  const lvlColor = l => LEVEL_COLORS.find(([from]) => l >= from)[1];
   function gainXP(n) {
     if (!n || S.lvl >= LEVEL_MAX) return;
     S.xp += n;
@@ -1852,7 +1909,8 @@
   }
 
   // ---------- связи ----------
-  const stars = lv => `<span class="stars">${'★'.repeat(lv)}<span class="off">${'★'.repeat(CONN_MAX_LV - lv)}</span></span>`;
+  function stars(lv) { return starsHTML(lv); }
+  const starsHTML = lv => `<span class="stars">${'★'.repeat(lv)}<span class="off">${'★'.repeat(CONN_MAX_LV - lv)}</span></span>`;
   const lvPct = id => {
     const lv = connLv(id), c = S.conn[id];
     return lv >= CONN_MAX_LV ? 100 : (c.xp - CONN_XP[lv - 1]) / (CONN_XP[lv] - CONN_XP[lv - 1]) * 100;
@@ -2116,6 +2174,7 @@
     $('#inc').textContent = (im >= 0 ? '+' : '') + fmt(im);
     $('#prank').textContent = rankInfo().cur.icon + ' ' + rankInfo().cur.name;
     $('#plvl').textContent = S.lvl;
+    $('.hdr').style.setProperty('--lc', lvlColor(S.lvl));
     const now = Date.now();
     document.querySelectorAll('[data-timer]').forEach(el => { el.textContent = fmtTime(+el.dataset.timer - now); });
     document.querySelectorAll('[data-cdcase]').forEach(b => {
@@ -2231,6 +2290,20 @@
         toast(`Получен ${ticketName(WEEKLY_BONUS.ticket)}`);
       }
       haptic('ok'); save(); render(); showProfile();
+    },
+    'life-go': () => {
+      const step = LIFE_PATH[S.life];
+      if (!step) return;
+      const go = {
+        job: S.sil ? ['career', 'career', 'jobs'] : ['career', 'career', 'jobs'], skills: ['career', 'career', 'skills'],
+        car: ['cases', 'cases', 'car'], carRarity: ['cases', 'cases', 'car'], home: ['cases', 'cases', 'home'],
+        biz: S.sil ? ['career', 'career', 'jobs'] : ['biz'], bizProfit: S.sil ? ['career', 'career', 'jobs'] : ['biz'],
+        conn: ['cases', 'cases', 'conn'], connLv: ['career', 'career', 'conn'], raceWins: ['career', 'career', 'race'],
+        rank: ['biz'],
+      }[step.type] || ['home'];
+      tab = go[0];
+      if (go[1]) sub[go[1]] = go[2];
+      haptic('light'); window.scrollTo(0, 0); render();
     },
     'claim-life': () => {
       const step = LIFE_PATH[S.life];
@@ -2406,7 +2479,12 @@
       } else { repAdd(-5); toast('Доказательств не нашли. Пронесло'); }
       haptic('medium'); save(); render();
     },
-    'plate-reg': id => { S.plateReg = id; save(); render(); },
+    'plate-reg': id => { S.plateReg = id; closeModal(); save(); render(); },
+    'plate-regs': () => showModal(`${sheetHead('Регион номера')}
+      <p class="small muted">Чем престижнее регион, тем дороже номера — и наборы тоже.</p>
+      ${PLATE_REGIONS.map(r => `<button class="list-btn ${r.id === S.plateReg ? 'active' : ''}" data-action="plate-reg" data-id="${r.id}">
+        <span class="grow"><b>${r.name}</b><br><span class="small muted">${r.codes.join(', ')}</span></span>
+        <span class="small gold">${r.mult > 1 ? '×' + String(r.mult).replace('.', ',') : ''}</span></button>`).join('')}`, true),
     'plate-open': id => openPlate(id),
     'plate-on': id => plateChooseCar(+id),
     'plate-set': v => {
@@ -2474,6 +2552,30 @@
       });
     },
     'event-show': () => showEvent(),
+    'prof-tab': k => showProfile(k),
+    'item-info': v => { const [c, id] = v.split(':'); showItemInfo(c, id); },
+    'multi-pick': (i, el) => {
+      if (!multi) return;
+      i = +i;
+      if (multi.picked.has(i)) multi.picked.delete(i); else multi.picked.add(i);
+      el.classList.toggle('picked', multi.picked.has(i));
+      const b = $('#multi-sel');
+      b.disabled = !multi.picked.size;
+      b.textContent = multi.picked.size ? `Продать ${multi.picked.size} · ${fmt(multiSum(false))} ₽` : 'Продать выбранное';
+      haptic('light');
+    },
+    'multi-sell': how => {
+      if (!multi) return;
+      let sum = 0, n = 0;
+      multi.list.forEach((r, i) => {
+        if (r.sold || r.it.cat === 'conn' || (how !== 'all' && !multi.picked.has(i))) return;
+        const v = sellOne(r.it.id);
+        if (v) { sum += v; n++; r.sold = true; }
+      });
+      multi = null;
+      closeModal(); haptic('ok'); toast(`Продано ${n} шт. · +${fmt(sum)} ₽`); save(); render();
+    },
+    'confirm-yes': () => { const cb = confirmCb; confirmCb = null; closeModal(); if (cb) cb(); },
     'event-solve': how => solveEvent(how),
     conn: id => showConn(id),
     meet: key => {
@@ -2572,6 +2674,18 @@
     if (e.target.id === 'modal') { if (race) return; closeModal(); return; }
     const t = e.target.closest('[data-tab],[data-goto],[data-action],[data-sub]');
     if (!t || t.disabled) return;
+    // Платные открытия — в два нажатия: первое показывает «Точно?», второе открывает
+    if (t.dataset.confirm && !t.classList.contains('armed')) {
+      document.querySelectorAll('.armed').forEach(b => { b.classList.remove('armed'); b.innerHTML = b.dataset.html; });
+      t.dataset.html = t.innerHTML;
+      t.classList.add('armed');
+      t.innerHTML = `<span class="btn-top">${t.dataset.confirm}</span>Открыть?`;
+      haptic('light');
+      clearTimeout(t._arm);
+      t._arm = setTimeout(() => { if (t.classList.contains('armed')) { t.classList.remove('armed'); t.innerHTML = t.dataset.html; } }, 3000);
+      return;
+    }
+    if (t.classList.contains('armed')) { clearTimeout(t._arm); t.classList.remove('armed'); }
     if (t.dataset.action) { ACTIONS[t.dataset.action](t.dataset.id, t); return; }
     if (t.dataset.sub) { const [k, v] = t.dataset.sub.split(':'); sub[k] = v; }
     if (t.dataset.tab || t.dataset.goto) {
@@ -2581,6 +2695,8 @@
     }
     render();
   });
+  // Шапка закреплена; тень появляется, только когда под ней уже есть прокрученный контент
+  addEventListener('scroll', () => $('.hdr').classList.toggle('scrolled', scrollY > 4), { passive: true });
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.id === 'promo-input') redeem(e.target.value);
   });
