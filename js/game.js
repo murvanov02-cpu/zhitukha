@@ -39,6 +39,8 @@
       taxFreeUntil: 0,
       garage: {},                 // гонки: id машины → { tank: делений, ts: с какого момента копится, wear: износ %, broken }
       raceCar: null, pool: { n: RACE_POOL, ts: Date.now() }, raceWins: 0,
+      plates: [], plateSeq: 0,    // номера: { id, a, d, b, r: регион, rar, v: стоимость, car: на какой машине }
+      plateReg: 'msk',            // выбранный регион в наборах номеров
       promo: [],                  // хэши уже активированных промокодов
       badges: [],                 // значки игрока
     };
@@ -180,6 +182,7 @@
     let v = S.money;
     for (const [id, n] of Object.entries(S.inv)) if (ITEM[id]) v += ITEM[id].value * n;
     for (const [id, g] of Object.entries(S.garage)) if (S.inv[id] && g.tuneInv) v += g.tuneInv * TUNE_SELL_RATE;
+    for (const p of S.plates) v += p.v;
     for (const b of Object.values(S.biz)) v += b.inv;
     return v;
   }
@@ -412,6 +415,7 @@
   function eventOk(e) {
     const has = { car: !!carBonus(), home: countCat('home') > 0, biz: Object.keys(S.biz).length > 0 };
     if (e.need && !has[e.need]) return false;
+    if (e.id === 'e_gibdd' && S.car && isGov(S.car)) return false;
     if (e.minRank && rankIdx() < e.minRank) return false;
     if (e.conn && !S.conn[e.conn]) return false;
     return true;
@@ -614,6 +618,8 @@
   const tuneCost = (id, st) => round2(raceUnit(id) * TUNE_STAGES[st].cost);
   // сколько тюнинг добавит к цене машины при продаже (только последнего экземпляра)
   const tuneValue = id => (S.garage[id] ? Math.round((S.garage[id].tuneInv || 0) * TUNE_SELL_RATE) : 0);
+  // что машина стоит сверх себя самой: тюнинг и висящий на ней номер
+  const carExtra = id => tuneValue(id) + (plateOf(id) ? plateSell(plateOf(id)) : 0);
   const stageHp = (hp, st) => Math.round(hp * (1 + (st ? TUNE_STAGES[st - 1].hp : 0)));
   const carHp = id => stageHp(CAR_HP[id], carState(id).stage);
   const carTime = id => quarterMile(carHp(id));
@@ -650,9 +656,63 @@
   function gibddStop(id) {
     const lv = connLv('k_gibdd');
     if (Math.random() * 100 >= Math.max(0, GIBDD_CHANCE - GIBDD_CONN_CUT * lv)) return null;
+    if (isGov(id)) return { fine: 0, gov: true };
     if (lv >= CONN_MAX_LV) return { fine: 0 };
     return { fine: round2(raceUnit(id) * GIBDD_FINE * (1 - perk('fineCut') / 100)) };
   }
+
+  // ---------- номера ----------
+  const PBOX = Object.fromEntries(PLATE_BOXES.map(b => [b.id, b]));
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  const plateReg = () => PLATE_REGIONS.find(r => r.id === S.plateReg) || PLATE_REGIONS[0];
+  const plateOf = carId => S.plates.find(p => p.car === carId);
+  const plateSell = p => Math.round(p.v * PLATE_SELL_RATE);
+  const isGov = carId => { const p = plateOf(carId); return !!p && p.rar === 'mythic'; };
+  // Редкость по виду номера (см. PLATE_RARITY в data.js)
+  function plateRarity(a, d, b) {
+    const sameL = a === b[0] && b[0] === b[1];
+    const pretty = /^(\d)\1\1$/.test(d) || /^00[1-9]$/.test(d);
+    if (sameL && pretty) return 'legendary';
+    if (sameL || pretty) return 'epic';
+    if (/^[1-9]00$/.test(d) || d[0] === d[2]) return 'rare';
+    return 'common';
+  }
+  const rndDigits = () => String(1 + Math.floor(Math.random() * 999)).padStart(3, '0');
+  const prettyDigits = () => (Math.random() < 0.5 ? String(Math.ceil(Math.random() * 9)).repeat(3) : '00' + Math.ceil(Math.random() * 9));
+  const rareDigits = () => { const x = Math.ceil(Math.random() * 9); return Math.random() < 0.4 ? x + '00' : `${x}${Math.floor(Math.random() * 10)}${x}`; };
+  // Номер нужной редкости: собираем подходящий вид и проверяем классификацией
+  function makePlate(rar, reg) {
+    let a, d, b, r = pick(reg.codes);
+    if (rar === 'mythic') {
+      const g = pick(PLATE_GOV);
+      a = g[0]; b = g.slice(1); d = rndDigits(); r = pick(PLATE_GOV_CODES);
+    } else {
+      do {
+        a = pick(PLATE_LETTERS);
+        b = pick(PLATE_LETTERS) + pick(PLATE_LETTERS);
+        d = rndDigits();
+        if (rar === 'legendary') { b = a + a; d = prettyDigits(); }
+        else if (rar === 'epic') { if (Math.random() < 0.5) b = a + a; else d = prettyDigits(); }
+        else if (rar === 'rare') d = rareDigits();
+      } while (plateRarity(a, d, b) !== rar);
+    }
+    const base = PLATE_RARITY[rar].value;
+    const v = rar === 'mythic' ? base : round2(base * reg.mult * (0.9 + Math.random() * 0.2));
+    return { id: ++S.plateSeq, a, d, b, r, rar, v, car: null };
+  }
+  // Цена набора — от ожидаемой стоимости номера в выбранном регионе
+  function plateBoxPrice(box, reg) {
+    let ev = 0;
+    for (const [rar, w] of Object.entries(box.w)) ev += w / 100 * PLATE_RARITY[rar].value * (rar === 'mythic' ? 1 : reg.mult);
+    return round2(ev * PLATE_PRICE_RATE);
+  }
+  function rollPlateRarity(box) {
+    let x = Math.random() * Object.values(box.w).reduce((a, b) => a + b, 0);
+    for (const [rar, w] of Object.entries(box.w)) if ((x -= w) < 0) return rar;
+    return 'common';
+  }
+  const plateInner = p => `<span class="pl-main">${p.a}<b>${p.d}</b>${p.b}</span><span class="pl-reg">${p.r}<i>RUS</i></span>`;
+  const plateHTML = (p, cls = '') => `<span class="plate ${cls}">${plateInner(p)}</span>`;
 
   // ---------- кейсы ----------
   function poolOf(c) {
@@ -742,12 +802,13 @@
   function sell(id) {
     const it = ITEM[id];
     if (!it || !S.inv[id]) return;
-    const price = sellPrice(it) + (S.inv[id] === 1 ? tuneValue(id) : 0);
+    const price = sellPrice(it) + (S.inv[id] === 1 ? carExtra(id) : 0);
     S.inv[id]--;
     earn(price);
     if (!S.inv[id]) {
       delete S.inv[id];
       delete S.garage[id];
+      S.plates = S.plates.filter(p => p.car !== id);
       if (S.car === id) S.car = bestCar();
     }
     haptic('light');
@@ -1045,6 +1106,7 @@
   // ---------- имущество (открывается с главной) ----------
   function renderInv() {
     const cat = sub.inv;
+    if (cat === 'plate') return invTabs(cat) + renderPlates();
     const list = Object.keys(S.inv).map(id => ITEM[id]).filter(it => it && it.cat === cat)
       .sort((a, b) => rarIdx(b.rarity) - rarIdx(a.rarity) || b.value - a.value);
     const rows = list.map(it => {
@@ -1054,16 +1116,100 @@
       return `<div class="inv-item" style="${rStyle(it.rarity)}">
         <div class="inv-icon">${visual(it)}${n > 1 ? `<b class="cnt">×${n}</b>` : ''}</div>
         <div class="grow"><div class="inv-name">${it.name}</div>
+          ${cat === 'car' && plateOf(it.id) ? `<div>${plateHTML(plateOf(it.id), 'sm')}</div>` : ''}
           <div class="small" style="color:${RARITIES[it.rarity].color}">${RARITIES[it.rarity].name}</div>
           <div class="small muted">${bonusText(it)}${cat === 'home' && n > 1 ? ' × ' + n : ''} · ${fmt(it.value)} ₽</div></div>
-        <div class="inv-actions">${equip}<button class="btn btn-sm btn-ghost" data-action="sell" data-id="${it.id}">Продать ${fmt(sellPrice(it) + (n === 1 ? tuneValue(it.id) : 0))}</button></div></div>`;
+        <div class="inv-actions">${equip}<button class="btn btn-sm btn-ghost" data-action="sell" data-id="${it.id}">Продать ${fmt(sellPrice(it) + (n === 1 ? carExtra(it.id) : 0))}</button></div></div>`;
     }).join('');
-    return `<button class="back" data-goto="home">${ic('chevron-left')} Главная</button>
-      <div class="seg">
-        <button class="${cat === 'car' ? 'active' : ''}" data-sub="inv:car">Гараж · ${countCat('car')}</button>
-        <button class="${cat === 'home' ? 'active' : ''}" data-sub="inv:home">Жильё · ${countCat('home')}</button></div>
+    return `${invTabs(cat)}
       <p class="hint">${cat === 'car' ? 'Машина, на которой ездишь, прибавляет к зарплате.' : 'Всё жильё сдаётся и приносит аренду.'} Собрано ${list.length} из ${ITEMS.filter(i => i.cat === cat).length}.</p>
       ${rows || `<div class="empty">${ic(cat === 'car' ? 'car' : 'home')}Пока пусто<br><br><button class="btn btn-sm" data-goto="cases" data-sub="cases:${cat}">К кейсам</button></div>`}`;
+  }
+
+  const invTabs = cat => `<button class="back" data-goto="home">${ic('chevron-left')} Главная</button>
+      <div class="seg">
+        <button class="${cat === 'car' ? 'active' : ''}" data-sub="inv:car">Гараж · ${countCat('car')}</button>
+        <button class="${cat === 'plate' ? 'active' : ''}" data-sub="inv:plate">Номера · ${S.plates.length}</button>
+        <button class="${cat === 'home' ? 'active' : ''}" data-sub="inv:home">Жильё · ${countCat('home')}</button></div>`;
+
+  // ---------- номера: экран ----------
+  function renderPlates() {
+    const reg = plateReg();
+    const regs = PLATE_REGIONS.map(r => `<button class="chip ${r.id === reg.id ? 'active' : ''}" data-action="plate-reg" data-id="${r.id}">${r.name}${r.mult > 1 ? ' ×' + r.mult : ''}</button>`).join('');
+    const boxes = PLATE_BOXES.map(box => {
+      const price = plateBoxPrice(box, reg), locked = rankIdx() < box.rank;
+      const odds = Object.entries(box.w).filter(([, w]) => w > 0)
+        .map(([rar, w]) => `<span style="color:${RARITIES[rar].color}">${PLATE_RARITY[rar].name} ${w}%</span>`).join(' · ');
+      return `<div class="card ${locked ? 'locked' : ''}">
+        <div class="row"><div class="job-ico">${box.icon}</div>
+          <div class="grow"><div class="job-name">${box.name}</div><div class="small">${odds}</div></div>
+          ${locked ? `<span class="tag">${RANKS[box.rank].name}</span>`
+            : `<button class="btn btn-sm btn-col" data-action="plate-open" data-id="${box.id}" ${S.money < price ? 'disabled' : ''}>Открыть<span class="btn-top">${fmt(price)} ₽</span></button>`}</div></div>`;
+    }).join('');
+    const mine = [...S.plates].sort((x, y) => y.v - x.v).map(p => {
+      const car = p.car && ITEM[p.car];
+      return `<div class="card plate-row" style="${rStyle(p.rar)}">
+        <div class="row">${plateHTML(p)}
+          <div class="grow"><div class="small" style="color:${RARITIES[p.rar].color}"><b>${PLATE_RARITY[p.rar].name}</b> · ${fmt(p.v)} ₽</div>
+            <div class="small muted ellipsis">${car ? 'на ' + car.name : 'не установлен'}</div></div></div>
+        <div class="row" style="margin-top:8px">
+          ${car ? `<button class="btn btn-sm btn-ghost grow" data-action="plate-off" data-id="${p.id}">Снять</button>`
+            : `<button class="btn btn-sm btn-line grow" data-action="plate-on" data-id="${p.id}" ${countCat('car') ? '' : 'disabled'}>Повесить на машину</button>`}
+          <button class="btn btn-sm btn-ghost" data-action="plate-sell" data-id="${p.id}">Продать ${fmt(plateSell(p))}</button></div></div>`;
+    }).join('');
+    return `<p class="hint">Номер вешается на машину: его цена входит в твой статус и в цену машины при продаже.
+        Чем красивее номер и «дороже» регион — тем он ценнее. Госномера ${PLATE_GOV.join(' и ')} бывают только московские — с ними ГИБДД не штрафует.</p>
+      <div class="small muted mb">Регион номера</div>
+      <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px">${regs}</div>
+      ${boxes}
+      <label class="toggle" style="margin:4px 0 12px"><input type="checkbox" data-toggle="fast" ${S.fast ? 'checked' : ''}><i></i>Быстрое открытие</label>
+      ${mine || `<div class="empty">${ic('rectangle')}Номеров пока нет</div>`}`;
+  }
+  function openPlate(boxId) {
+    const box = PBOX[boxId], reg = plateReg();
+    if (!box || spinning || rankIdx() < box.rank) return;
+    if (!pay(plateBoxPrice(box, reg))) return;
+    const p = makePlate(rollPlateRarity(box), reg);
+    S.plates.push(p);
+    save(); render();
+    const final = () => {
+      $('#pl-roll').outerHTML = plateHTML(p, 'big win');
+      $('#pl-info').innerHTML = `<div class="drop-name" style="color:${RARITIES[p.rar].color}">${PLATE_RARITY[p.rar].name}</div>
+        <div class="big">${fmt(p.v)} ₽</div>`;
+      $('#pl-actions').classList.remove('hidden');
+      haptic(rarIdx(p.rar) >= 2 ? 'ok' : 'light');
+    };
+    showModal(`<div class="drop" style="${rStyle(p.rar)}">
+        <div class="plate-stage">${plateHTML(p, 'big')}</div>
+        <div id="pl-info" style="min-height:64px;margin-top:10px"></div>
+        <div class="row hidden" id="pl-actions" style="margin-top:6px">
+          <button class="btn btn-ghost grow" data-action="plate-sell" data-id="${p.id}">Продать ${fmt(plateSell(p))}</button>
+          ${countCat('car') ? `<button class="btn grow" data-action="plate-on" data-id="${p.id}">Повесить</button>` : `<button class="btn grow" data-action="close">В коллекцию</button>`}</div></div>`);
+    $('.plate-stage .plate').id = 'pl-roll';
+    if (S.fast) return final();
+    // крутим символы, потом показываем настоящий номер
+    spinning = true;
+    const el = $('#pl-roll'), t0 = performance.now();
+    const tick = () => {
+      if (!el.isConnected) { spinning = false; return; }
+      if (performance.now() - t0 > 1400) { spinning = false; return final(); }
+      const fake = { a: pick(PLATE_LETTERS), d: rndDigits(), b: pick(PLATE_LETTERS) + pick(PLATE_LETTERS), r: pick(reg.codes) };
+      el.innerHTML = plateInner(fake);
+      setTimeout(tick, 70);
+    };
+    tick();
+  }
+  // Выбор машины для номера
+  function plateChooseCar(pid) {
+    const cars = Object.keys(S.inv).filter(id => ITEM[id] && ITEM[id].cat === 'car');
+    const p = S.plates.find(x => x.id === pid);
+    if (!p) return;
+    showModal(`<h3>Повесить ${plateHTML(p, 'sm')}</h3>
+      <p class="small muted">Если на машине уже есть номер — он снимется и останется у тебя.</p>
+      ${cars.map(id => `<button class="list-btn" data-action="plate-set" data-id="${pid}:${id}">
+        <span class="inv-icon">${visual(ITEM[id])}</span><span class="grow">${ITEM[id].name}</span>
+        ${plateOf(id) ? plateHTML(plateOf(id), 'sm') : '<span class="small muted">без номера</span>'}</button>`).join('')}
+      <button class="btn btn-ghost full" data-action="close" style="margin-top:8px">Отмена</button>`);
   }
 
   // ---------- кейсы ----------
@@ -1219,7 +1365,7 @@
         <div class="list-row"><div class="inv-icon">${visual(it)}</div>
           <div class="grow"><div class="job-name">${it.name}</div>
             <div class="small muted">Класс <b class="gold">${rc.name}</b> · ${carHp(id)} л.с. · 402 м за ${carTime(id).toFixed(2)} с</div>
-            <div class="small">${stageStars(st.stage)} <span class="muted">Stage ${st.stage}</span></div></div></div>
+            <div class="small">${stageStars(st.stage)} <span class="muted">Stage ${st.stage}</span> ${plateOf(id) ? plateHTML(plateOf(id), 'sm') : ''}</div></div></div>
         <div class="kv small" style="margin-top:8px"><span>Бак: ${st.tank} / ${TANK_RACES} заездов</span>
           <b class="muted">${st.tank < TANK_RACES ? `+1 через <span data-timer="${st.ts + TANK_REGEN_MIN * 60e3}">${fmtTime(nextIn({ ts: st.ts }, TANK_REGEN_MIN))}</span>` : 'полный'}</b></div>
         <div class="tank">${tank}</div>
@@ -1339,7 +1485,9 @@
     if (stop) {
       const fine = Math.min(stop.fine, S.money);
       S.money -= fine;
-      gibdd = fine
+      gibdd = stop.gov
+        ? `<div class="card small" style="margin-top:10px;text-align:left">🚓 Тормознула ГИБДД. Инспектор увидел номер ${plateHTML(plateOf(id), 'sm')} и молча отдал честь.</div>`
+        : fine
         ? `<div class="card danger small" style="margin-top:10px;text-align:left">🚓 После финиша тормознула ГИБДД: превышение на дороге общего пользования. Штраф <b>${fmt(fine)} ₽</b>.</div>`
         : `<div class="card small" style="margin-top:10px;text-align:left">🚓 Тормознула ГИБДД. Знакомый инспектор: «Опять ты? Ну езжай».</div>`;
     }
@@ -1898,6 +2046,24 @@
     },
     'vp-new': () => { vp = null; render(); },
     'race-car': id => { S.raceCar = id; save(); render(); },
+    'plate-reg': id => { S.plateReg = id; save(); render(); },
+    'plate-open': id => openPlate(id),
+    'plate-on': id => plateChooseCar(+id),
+    'plate-set': v => {
+      const [pid, car] = v.split(':'), p = S.plates.find(x => x.id === +pid);
+      if (!p || !S.inv[car]) return;
+      for (const x of S.plates) if (x.car === car) x.car = null;
+      p.car = car;
+      closeModal(); haptic('light'); toast(`Номер на ${ITEM[car].name}`); save(); render();
+    },
+    'plate-off': id => { const p = S.plates.find(x => x.id === +id); if (p) p.car = null; save(); render(); },
+    'plate-sell': id => {
+      const p = S.plates.find(x => x.id === +id);
+      if (!p) return;
+      S.plates = S.plates.filter(x => x !== p);
+      earn(plateSell(p));
+      closeModal(); haptic('light'); toast(`Номер продан +${fmt(plateSell(p))} ₽`); save(); render();
+    },
     race: lv => startRace(raceCarId(), +lv),
     tune: id => {
       const g = carState(id);
