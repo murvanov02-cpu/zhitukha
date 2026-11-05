@@ -81,6 +81,7 @@
       }
     }
     if (!s.pool) s.pool = { n: RACE_POOL, ts: Date.now() };
+    if (s.sil && s.sil.rep === undefined) { s.sil.rep = 0; s.sil.nextCheck = 0; }
     // v25: уровни появились позже — засчитываем прошлые кейсы, победы и курсы (без наград за уровни)
     if (o.lvl === undefined) {
       let xp = (o.opened || 0) * XP_CASE.cheap + (o.raceWins || 0) * RACE_LEVELS[1].xp * 2
@@ -234,6 +235,7 @@
     const j = JOB[S.job];
     if (j && j.perk === name) v = Math.max(v, j.v);
     if (S.sil && name === 'fineCut' && STR().fineCut) v = Math.max(v, STR().fineCut);
+    if (S.sil) for (let r = 0; r <= S.sil.r; r++) if (SERVICE_RANKS[r].perk === name) v = Math.max(v, SERVICE_RANKS[r].v);
     return v;
   }
   const perkText = (it, lv) => PERKS[it.perk].replace('{v}', it.lv[(lv || connLv(it.id) || 1) - 1]);
@@ -442,10 +444,10 @@
     return Math.round(Math.max(e.min, base) * (e.fine ? 1 - perk('fineCut') / 100 : 1) / 1000) * 1000;
   }
   function eventOk(e) {
-    const has = { car: !!carBonus(), home: countCat('home') > 0, biz: Object.keys(S.biz).length > 0 };
+    const has = { car: !!carBonus(), home: countCat('home') > 0, biz: Object.keys(S.biz).length > 0, sil: !!S.sil, civil: !S.sil };
     if (e.need && !has[e.need]) return false;
     if (e.id === 'e_gibdd' && (S.car && isGov(S.car) || S.sil && S.sil.r >= STR().gibdd)) return false;
-    if (e.minRank && rankIdx() < e.minRank) return false;
+    if (e.minRank && (e.need === 'sil' ? S.sil.r : rankIdx()) < e.minRank) return false;
     if (e.conn && !S.conn[e.conn]) return false;
     return true;
   }
@@ -473,10 +475,11 @@
   }
   const evText = ev => EV[ev.id].text.replace('{biz}', ev.biz ? BIZ[ev.biz].name : 'бизнес');
   // Кто решает событие бесплатно: профессия или связь
+  const callChance = id => Math.min(100, CALL_CHANCE[connLv(id) - 1] + perk('callUp'));
   function evHelper(e) {
     const j = JOB[S.job];
     if (j && (j.solves || []).includes(e.id)) return { kind: 'job', label: `Ты же ${j.name.toLowerCase()} — решишь сам` };
-    if (e.via && S.conn[e.via]) return { kind: 'conn', label: `Позвонить: ${ITEM[e.via].name}` };
+    if (e.via && S.conn[e.via]) return { kind: 'conn', label: `Позвонить: ${ITEM[e.via].name}`, chance: callChance(e.via) };
     return null;
   }
   function showEvent() {
@@ -494,7 +497,8 @@
     const hint = [e.via ? `связь «${ITEM[e.via].name}»` : '', solvers.length ? `профессия ${solvers.join(' или ')}` : ''].filter(Boolean).join(' или ');
     showModal(`<h3>${e.icon} ${e.title}</h3><p>${evText(ev)}</p>
       <div class="choice">
-        ${via ? `<button class="btn btn-green" data-action="event-solve" data-id="via">${via.label}<span class="btn-top">бесплатно и без риска</span></button>` : ''}
+        ${via && ev.callFailed ? `<button class="btn btn-danger" disabled>📵 ${ITEM[e.via].name} не помог<span class="btn-top">звонок не сработал — решай сам</span></button>`
+          : via ? `<button class="btn btn-green" data-action="event-solve" data-id="via">${via.label}<span class="btn-top">${via.kind === 'job' || via.chance >= 100 ? 'бесплатно и без риска' : `бесплатно · шанс ${via.chance}%, иначе — официально`}</span></button>` : ''}
         <button class="btn ${via ? 'btn-ghost' : ''}" data-action="event-solve" data-id="official">Официально · ${fmt(ev.cost)} ₽<span class="btn-top">без риска</span></button>
         <button class="btn btn-line" data-action="event-solve" data-id="bribe">«Договориться» · ${fmt(bribe)} ₽<span class="btn-top">риск ${risk}% — тогда штраф ${fmt(ev.cost * BRIBE_FINE)} ₽</span></button>
         <button class="btn btn-ghost" data-action="close">Решу позже${e.freeze ? ` · «${BIZ[ev.biz].name}» опечатан` : ''}</button>
@@ -507,10 +511,31 @@
     const e = EV[ev.id];
     let msg = '';
     if (how === 'good') { earn(ev.reward); msg = `+${fmt(ev.reward)} ₽`; }
-    else if (how === 'via') { const h = evHelper(e); if (!h) return; msg = h.kind === 'job' ? 'Решил своими полномочиями' : 'Решено по-дружески'; }
+    else if (how === 'via') {
+      const h = evHelper(e);
+      if (!h || ev.callFailed) return;
+      if (h.kind === 'conn' && Math.random() * 100 >= h.chance) {
+        // связь не помогла: платим официально, а если не хватает — вопрос остаётся открытым
+        ev.callFailed = true;
+        haptic('err');
+        if (S.money >= ev.cost) {
+          S.money -= ev.cost;
+          S.event = null;
+          save(); render();
+          showModal(`<div class="drop"><div class="call-fail">📵</div><div class="drop-name bad">Не получилось</div>
+            <p style="margin-top:8px">${ITEM[e.via].name} не смог помочь — пришлось решать официально.</p>
+            <div class="big bad">−${fmt(ev.cost)} ₽</div>
+            <p class="small muted">Чем выше доверие, тем чаще звонок срабатывает: от ${CALL_CHANCE[0]}% до ${CALL_CHANCE[CALL_CHANCE.length - 1]}%.</p>
+            <button class="btn full" data-action="close">Понятно</button></div>`);
+        } else { save(); showEvent(); }
+        return;
+      }
+      msg = h.kind === 'job' ? 'Решил своими полномочиями' : 'Решено по-дружески';
+    }
     else if (how === 'official') { if (!pay(ev.cost)) return; msg = 'Оплачено официально'; }
     else if (how === 'bribe') {
       if (!pay(Math.round(ev.cost / BRIBE_DIVISOR))) return;
+      repAdd(-5);
       if (Math.random() * 100 < bribeRisk()) {
         S.money = Math.max(0, S.money - ev.cost * BRIBE_FINE);
         S.event = null;
@@ -1374,6 +1399,13 @@
     ];
   }
   const missionOf = () => MISSIONS.find(m => m.id === S.sil.mission);
+  // Риск сесть на службе: базовый × структура × защита (связи и звания, но не больше SVC_SAFE_MAX)
+  const svcRisk = base => Math.round(base * STR().riskMult * (1 - Math.min(SVC_SAFE_MAX, perk('safe')) / 100));
+  function repAdd(n) { if (S.sil) S.sil.rep = Math.max(-REP_MAX, Math.min(REP_MAX, (S.sil.rep || 0) + n)); }
+  const checksPerDay = () => CHECKS_PER_DAY * Math.pow(2, -S.sil.rep / 50) * (1 - perk('osbCut') / 100);
+  const badRep = () => Math.max(0, -S.sil.rep);
+  const findChance = () => Math.min(90, svcRisk(S.sil.roofs.length * OSB_PER_ROOF + badRep() * OSB_PER_REP));
+  function scheduleCheck() { S.sil.nextCheck = Date.now() + 24 / checksPerDay() * (0.6 + Math.random() * 0.8) * 3600e3; }
   function nextMission() {
     const pool = MISSIONS.filter(m => m.who.includes(S.sil.s) && m.id !== S.sil.last);
     S.sil.mission = pick(pool).id;
@@ -1392,25 +1424,39 @@
       <p class="small">Суд: условный срок, ${was} — уволен со службы. Конфискация <b>${fmt(lost)} ₽</b>, навыки просели на ${Math.round(JAIL_SKILLS * 100)}%.</p>
       <button class="btn full" data-action="close">Начать с чистого листа</button></div>`);
   }
+  // Служебные проверки: чем хуже репутация и больше «крыш», тем чаще приходят и тем чаще что-то находят
   function maybeOsb() {
-    if (!S.sil || !S.sil.roofs.length) return;
-    if (!S.sil.osb && Date.now() >= S.sil.nextCheck) {
-      const [a, b] = OSB_EVERY_H;
-      S.sil.nextCheck = Date.now() + (a + Math.random() * (b - a)) * 3600e3;
-      if (Math.random() * 100 < OSB_PER_ROOF * S.sil.roofs.length * STR().riskMult) S.sil.osb = true;
+    if (!S.sil) return;
+    if (!S.sil.nextCheck) { scheduleCheck(); save(); }
+    if (!S.sil.osb && !S.sil.clean && Date.now() >= S.sil.nextCheck) {
+      scheduleCheck();
+      if (Math.random() * 100 < findChance()) S.sil.osb = true;
+      else { S.sil.xp += OSB_CLEAN_XP; repAdd(3); S.sil.clean = true; }
       save();
     }
-    if (S.sil.osb && $('#modal').classList.contains('hidden')) showOsb();
+    if (!$('#modal').classList.contains('hidden')) return;
+    if (S.sil.osb) showOsb();
+    else if (S.sil.clean) {
+      S.sil.clean = false;
+      save(); render();
+      showModal(`<div class="drop"><div class="drop-name">🗂️ Служебная проверка</div>
+        <p style="margin-top:8px">Проверяющие перерыли твои дела и ничего не нашли.</p>
+        <div class="big">+${OSB_CLEAN_XP} опыта</div>
+        <button class="btn full" data-action="close">Служу честно</button></div>`);
+    }
   }
+  const osbPayoff = () => Math.round(Math.max(roofIncome() * OSB_PAYOFF_MONTHS, rankMonth() * 3) / 1000) * 1000;
+  const denyRisk = () => Math.min(90, svcRisk(OSB_DENY_JAIL + badRep() * OSB_PER_REP));
   function showOsb() {
-    const pay = Math.round(roofIncome() * OSB_PAYOFF_MONTHS / 1000) * 1000;
+    const pay = osbPayoff();
     const top = S.sil.roofs.slice().sort((x, y) => BIZ[y].price - BIZ[x].price)[0];
-    showModal(`<h3>🕴️ Проверка ОСБ</h3>
-      <p>Собственная безопасность заинтересовалась, почему бизнесмены так тебя любят. Нужно решать.</p>
+    showModal(`<h3>🕴️ Служебная проверка</h3>
+      <p>${S.sil.roofs.length ? 'Проверяющие заинтересовались, почему бизнесмены так тебя любят.' : 'Проверяющие нашли «нестыковки» в твоих делах.'} Нужно решать.</p>
       <div class="choice">
-        <button class="btn" data-action="osb" data-id="pay" ${S.money < pay ? 'disabled' : ''}>Занести «кому надо»<span class="small">${fmt(pay)} ₽ — вопрос закрыт</span></button>
-        <button class="btn btn-ghost" data-action="osb" data-id="give">Отдать «крышу»<span class="small">${BIZ[top].icon} ${BIZ[top].name} — больше не твоя</span></button>
-        <button class="btn btn-danger" data-action="osb" data-id="deny">Пойти в отказ<span class="small">${Math.round(OSB_DENY_JAIL * STR().riskMult)}% — сесть</span></button>
+        <button class="btn" data-action="osb" data-id="pay" ${S.money < pay ? 'disabled' : ''}>Занести «кому надо»<span class="small">${fmt(pay)} ₽ — вопрос закрыт, репутация хуже</span></button>
+        ${top ? `<button class="btn btn-ghost" data-action="osb" data-id="give">Отдать «крышу»<span class="small">${BIZ[top].icon} ${BIZ[top].name} — больше не твоя</span></button>`
+          : `<button class="btn btn-ghost" data-action="osb" data-id="reprimand">Принять выговор<span class="small">−100 служебного опыта</span></button>`}
+        <button class="btn btn-danger" data-action="osb" data-id="deny">Пойти в отказ<span class="small">${denyRisk()}% — сесть</span></button>
       </div>`);
   }
 
@@ -1450,7 +1496,8 @@
       const bits = [];
       if (c.xp) bits.push(`+${c.xp} опыта`);
       if (c.money) bits.push(`+${fmt(round2(rankMonth() * st.bribeMult * c.money))} ₽`);
-      if (c.risk) bits.push(`риск сесть ${Math.round(c.risk * st.riskMult)}%`);
+      if (c.risk) bits.push(`риск сесть ${svcRisk(c.risk)}%`);
+      bits.push(c.risk ? `репутация −${REP_BRIBE + 4 * c.money}` : `репутация +${c.money ? 4 : REP_HONEST}`);
       const need = c.need && !st.force ? Object.entries(c.need).map(([k, v]) => `${SKILL[k].name} ${v}${S.skills[k] < v ? ' ✗' : ' ✓'}`).join(', ') : '';
       return `<button class="btn ${c.risk ? 'btn-danger' : c.need ? 'btn-line' : ''}" data-action="mission" data-id="${i}">${c.t}
         <span class="small">${bits.join(' · ')}${need ? `<br>нужно: ${need}` : ''}</span></button>`;
@@ -1475,6 +1522,13 @@
           <button class="btn full" style="margin-top:8px" data-action="sil-promote" ${reqs.every(x => x.ok) ? '' : 'disabled'}>Аттестация — получить звание</button>`
           : '<div class="small gold" style="margin-top:8px">Высшее звание. Дальше только пенсия.</div>'}
       </div>
+      <div class="section">Репутация</div>
+      <div class="card">
+        <div class="rep-bar"><i style="left:${(sv.rep + REP_MAX) / (2 * REP_MAX) * 100}%"></i></div>
+        <div class="kv small"><span class="bad">Взяточник</span><b class="${sv.rep < -20 ? 'bad' : sv.rep > 20 ? 'good' : 'muted'}">${sv.rep > 0 ? '+' : ''}${Math.round(sv.rep)}</b><span class="good">Честный</span></div>
+        <div class="small muted">Проверок: ${checksPerDay() >= 1 ? `≈ ${String(+checksPerDay().toFixed(1)).replace('.', ',')} в сутки` : `≈ раз в ${String(+(1 / checksPerDay()).toFixed(1)).replace('.', ',')} сут.`} ·
+          найдут что-то с шансом ${findChance()}%. Честные решения поднимают репутацию, деньги и «крыши» — роняют.</div>
+      </div>
       <div class="section">Задание</div>
       ${mission}
       <div class="section">«Крыша» · ${sv.roofs.length} из ${rk.roofs}</div>
@@ -1483,6 +1537,10 @@
         ${mine}${can ? `<div class="small" style="margin-top:10px">Можно взять:</div>${can}` : ''}
         ${!rk.roofs ? '<div class="small muted" style="margin-top:6px">«Крыша» — с сержанта.</div>' : ''}
       </div>
+      <div class="section">Что дают звания</div>
+      <div class="card small">${SERVICE_RANKS.map((x, i) => x.bonus ? `<div class="rank-perk ${i <= sv.r ? 'on' : ''}">${ic(i <= sv.r ? 'check' : 'lock')}
+          <span><b>${x.name}</b> — ${x.bonus}</span></div>` : '').join('')}
+        <div class="muted" style="margin-top:6px">Каждое звание ещё и повышает довольствие и «потолок» бизнесов под «крышей».</div></div>
       <div class="section">Что даёт ${st.name}</div>
       <div class="card small">${st.perks.map(t => `<div>${ic('star', 'gold')} ${t}</div>`).join('')}
         <div class="muted" style="margin-top:6px">Для званий качай в «Учёбе»: ${st.skills.map(k => SKILL[k].name).join(' и ')}.</div>
@@ -2268,7 +2326,7 @@
     },
     'sil-pick': id => {
       if (S.sil || S.lvl < SERVICE_MIN_LEVEL || Object.keys(S.biz).length || S.gig || !STRUCTURES.some(x => x.id === id)) return;
-      S.sil = { s: id, r: 0, xp: 0, since: Date.now(), roofs: [], mission: null, last: '', nextMission: Date.now(), nextCheck: 0, osb: false };
+      S.sil = { s: id, r: 0, xp: 0, rep: 0, since: Date.now(), roofs: [], mission: null, last: '', nextMission: Date.now(), nextCheck: 0, osb: false, clean: false };
       S.job = null;
       sub.career = 'jobs';
       closeModal(); haptic('ok'); toast(`${STR().icon} Ты на службе: ${svcRank().name} ${STR().name}`); save(); render();
@@ -2286,6 +2344,7 @@
       showModal(`<div class="drop"><div class="pogon-pair">${boardImg(S.sil.r - 1, 'old')}${ic('arrow-right')}${boardImg(S.sil.r, 'new')}</div>
         <div class="drop-name">🎖️ ${rk.name}</div>
         <p style="margin-top:8px">Присвоено новое звание. Довольствие: <b>${fmt(servicePay())} ₽/мес</b>.</p>
+        ${rk.bonus ? `<div class="card small" style="text-align:left">${ic('star', 'gold')} ${rk.bonus}</div>` : ''}
         ${rk.roofs ? `<p class="small">«Крыша»: ${rk.roofs === 1 ? 'один бизнес' : `до ${rk.roofs} бизнесов`}, вплоть до «${BUSINESSES[rk.tier].name}».</p>` : ''}
         <button class="btn full" data-action="close">Служу Отечеству!</button></div>`);
     },
@@ -2297,12 +2356,13 @@
       sv.nextMission = Date.now() + MISSION_EVERY_MIN * 60e3;
       nextMission();
       const failed = c.need && !st.force && Object.entries(c.need).some(([k, v]) => S.skills[k] < v);
-      if (!failed && c.risk && Math.random() * 100 < c.risk * st.riskMult)
+      if (!failed && c.risk && Math.random() * 100 < svcRisk(c.risk))
         return goToJail(`«${m.title}»: деньги оказались мечеными — это была проверка.`);
       const xp = failed ? c.fail.xp : c.xp || 0;
       const money = !failed && c.money ? round2(rankMonth() * st.bribeMult * c.money) : 0;
       sv.xp += xp;
       if (money) earn(money);
+      repAdd(failed ? 3 : c.risk ? -(REP_BRIBE + 4 * c.money) : c.money ? 4 : REP_HONEST);
       gainXP(3 + Math.round(xp / 5));
       haptic(failed ? 'err' : 'ok'); save(); render();
       showModal(`<div class="drop"><div class="drop-name">${failed ? '😬 Не вышло' : '✅ ' + m.title}</div>
@@ -2314,26 +2374,36 @@
       const sv = S.sil, rk = sv && svcRank(), i = BUSINESSES.findIndex(d => d.id === id);
       if (!sv || i < 0 || i > rk.tier || sv.roofs.includes(id) || sv.roofs.length >= rk.roofs) return;
       sv.roofs.push(id);
-      if (!sv.nextCheck) sv.nextCheck = Date.now() + OSB_EVERY_H[0] * 3600e3;
+      repAdd(-REP_ROOF);
       haptic('ok'); toast(`☂️ ${BIZ[id].name} теперь под «крышей»`); save(); render();
     },
-    'roof-drop': id => { if (S.sil) S.sil.roofs = S.sil.roofs.filter(x => x !== id); save(); render(); },
+    'roof-drop': id => {
+      if (!S.sil || !S.sil.roofs.includes(id)) return;
+      S.sil.roofs = S.sil.roofs.filter(x => x !== id);
+      repAdd(REP_ROOF / 2);
+      save(); render();
+    },
     osb: how => {
       const sv = S.sil;
       if (!sv || !sv.osb) return;
       sv.osb = false;
       closeModal();
       if (how === 'pay') {
-        const v = Math.round(roofIncome() * OSB_PAYOFF_MONTHS / 1000) * 1000;
-        if (!pay(v)) { sv.osb = true; return; }
+        if (!pay(osbPayoff())) { sv.osb = true; return; }
+        repAdd(-5);
         toast('Вопрос закрыт');
       } else if (how === 'give') {
         const top = sv.roofs.slice().sort((x, y) => BIZ[y].price - BIZ[x].price)[0];
+        if (!top) { sv.osb = true; return; }
         sv.roofs = sv.roofs.filter(x => x !== top);
+        repAdd(5);
         toast(`${BIZ[top].name} больше не под твоей «крышей»`);
-      } else if (Math.random() * 100 < OSB_DENY_JAIL * STR().riskMult) {
-        return goToJail('ОСБ нашла переводы от бизнесменов. Отказ не помог.');
-      } else toast('Доказательств не нашли. Пронесло');
+      } else if (how === 'reprimand') {
+        sv.xp = Math.max(0, sv.xp - 100);
+        toast('Выговор в личное дело');
+      } else if (Math.random() * 100 < denyRisk()) {
+        return goToJail('Проверка нашла переводы от бизнесменов. Отказ не помог.');
+      } else { repAdd(-5); toast('Доказательств не нашли. Пронесло'); }
       haptic('medium'); save(); render();
     },
     'plate-reg': id => { S.plateReg = id; save(); render(); },
