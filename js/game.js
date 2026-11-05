@@ -83,7 +83,7 @@
     if (!s.pool) s.pool = { n: RACE_POOL, ts: Date.now() };
     // v25: уровни появились позже — засчитываем прошлые кейсы, победы и курсы (без наград за уровни)
     if (o.lvl === undefined) {
-      let xp = (o.opened || 0) * XP_FOR.open + (o.raceWins || 0) * (XP_FOR.race + XP_FOR.race_win)
+      let xp = (o.opened || 0) * XP_CASE.cheap + (o.raceWins || 0) * RACE_LEVELS[1].xp * 2
         + Object.values(s.skills).reduce((a, b) => a + b, 0) * XP_FOR.skill;
       s.lvl = 1;
       while (s.lvl < LEVEL_MAX && xp >= levelNeed(s.lvl)) { xp -= levelNeed(s.lvl); s.lvl++; }
@@ -189,7 +189,7 @@
     if (h) return `${h} ч ${m} мин`;
     return `${m}:${String(s).padStart(2, '0')}`;
   }
-  const hoursText = h => (h < 1 ? `${Math.max(1, Math.round(h * 60))} мин` : `${+h.toFixed(1)} ч`);
+  const hoursText = h => (h < 1 ? `${Math.max(1, Math.round(h * 60))} мин` : `${String(+h.toFixed(1)).replace('.', ',')} ч`);
   const visual = it => (it.img ? `<img class="pic${it.cat === 'home' ? ' cover' : ''}" src="${it.img}" alt="" loading="lazy">` : it.icon);
   const rStyle = r => `--rc:${RARITIES[r].color};--rbg:${RARITIES[r].bg}`;
   const short = name => name.split(',')[0];
@@ -816,6 +816,7 @@
     for (let i = 0; i < n; i++) results.push(addItem(rollItem(c, true)));
     S.opened += n;
     progress('open', n);
+    gainXP(n * (XP_CASE[c.tier] || XP_CASE.cheap));
     if (c.cooldown && !byTicket) progress(c.id === 'free' ? 'free' : 'conn_free');
     save();
     render();
@@ -1300,10 +1301,10 @@
     const list = CASES.filter(c => !c.cooldown && caseSection(c) === sec);
     const dot = c => (!cdLeft(c) ? ' <span class="dotty">•</span>' : '');
     const tierBlock = (tier, title) => {
-      const l = list.filter(c => c.tier === tier && !c.theme);
+      const l = list.filter(c => c.tier === tier && !c.theme).sort((a, b) => a.price - b.price);
       return l.length ? `<div class="section">${title}</div><div class="case-grid">${l.map(caseTile).join('')}</div>` : '';
     };
-    const themed = list.filter(c => c.theme);
+    const themed = list.filter(c => c.theme).sort((a, b) => a.price - b.price);
     return `<div class="seg">
         <button class="${sec === 'car' ? 'active' : ''}" data-sub="cases:car">Авто${dot(CASE.free)}</button>
         <button class="${sec === 'home' ? 'active' : ''}" data-sub="cases:home">Жильё</button>
@@ -1358,6 +1359,8 @@
   // «Месяц звания» — мерило денег в заданиях: довольствие + самая дорогая доступная «крыша»
   const rankMonth = () => svcRank().pay * STR().payMult + (svcRank().tier >= 0 ? BUSINESSES[svcRank().tier].price * ROOF_RATE : 0);
   const serviceH = () => (Date.now() - S.sil.since) / 3600e3;
+  // Погоны звания: у МВД — полицейские, у ФСБ и спецназа — армейские
+  const boardImg = (r, cls = '') => `<img class="pogon ${cls}" src="img/ranks/${S.sil.s === 'mvd' ? 'p' : 'a'}${r}.png" alt="${SERVICE_RANKS[r].name}">`;
   // Что нужно до следующего звания: [{ text, ok }]
   function promoReqs() {
     const nx = SERVICE_RANKS[S.sil.r + 1];
@@ -1366,6 +1369,7 @@
     return [
       { ok: left <= 0, text: left > 0 ? `Выслуга: ещё ${fmtTime(left * 3600e3)}` : `Выслуга ${nx.h} ч` },
       { ok: S.lvl >= nx.lv, text: `Уровень ${nx.lv}` + (S.lvl < nx.lv ? ` (сейчас ${S.lvl})` : '') },
+      ...STR().skills.map(k => ({ ok: S.skills[k] >= nx.sk, text: `${SKILL[k].name} ${nx.sk}` + (S.skills[k] < nx.sk ? ` (сейчас ${S.skills[k]})` : '') })),
       { ok: S.sil.xp >= nx.xp, text: `Служебный опыт ${Math.floor(S.sil.xp)} / ${nx.xp}` },
     ];
   }
@@ -1462,8 +1466,8 @@
     const can = free > 0 ? BUSINESSES.filter((d, i) => i <= rk.tier && !sv.roofs.includes(d.id)).reverse()
       .map(d => roofRow(d, `<button class="btn btn-sm" data-action="roof-take" data-id="${d.id}">Взять</button>`)).join('') : '';
     return `<div class="card accent">
-        <div class="row"><div class="job-ico">${st.icon}</div>
-          <div class="grow"><div class="job-name">${rk.name} · ${st.name}</div>
+        <div class="row">${boardImg(sv.r)}
+          <div class="grow"><div class="job-name">${rk.name} · ${st.icon} ${st.name}</div>
             <div class="job-pay">${fmt(servicePay())} ₽/мес довольствие</div>
             <div class="small muted">Выслуга ${hoursText(serviceH())} · звание ${sv.r + 1} из ${SERVICE_RANKS.length}</div></div></div>
         ${reqs ? `<div class="small" style="margin-top:10px">До звания «${SERVICE_RANKS[sv.r + 1].name}»:</div>
@@ -1481,7 +1485,8 @@
       </div>
       <div class="section">Что даёт ${st.name}</div>
       <div class="card small">${st.perks.map(t => `<div>${ic('star', 'gold')} ${t}</div>`).join('')}
-        <div class="muted" style="margin-top:6px">Обычная работа, подработки и свой бизнес — запрещены.</div></div>
+        <div class="muted" style="margin-top:6px">Для званий качай в «Учёбе»: ${st.skills.map(k => SKILL[k].name).join(' и ')}.</div>
+        <div class="muted">Обычная работа, подработки и свой бизнес — запрещены.</div></div>
       <button class="btn btn-ghost btn-sm full" data-action="sil-quit">Уволиться со службы</button>`;
   }
   function renderJobs() {
@@ -1676,7 +1681,7 @@
       S.raceWins++;
       progress('race_win');
     }
-    if (!jump) gainXP(XP_FOR.race);
+    if (!jump) gainXP(RACE_LEVELS[r.lv].xp * (win ? 2 : 1));
     let gibdd = '';
     if (stop) {
       const fine = Math.min(stop.fine, S.money);
@@ -2257,7 +2262,8 @@
           Подработки и свой бизнес — нельзя. Уволишься или сядешь — звание сгорит.</p>
         ${block ? `<div class="card danger small">${block}</div>` : ''}
         ${STRUCTURES.map(x => `<div class="card"><div class="row"><div class="job-ico">${x.icon}</div><div class="grow"><div class="job-name">${x.name}</div>
-          ${x.perks.map(t => `<div class="small">${ic('star', 'gold')} ${t}</div>`).join('')}</div></div>
+          ${x.perks.map(t => `<div class="small">${ic('star', 'gold')} ${t}</div>`).join('')}
+          <div class="small muted">${ic('school')} Для званий: ${x.skills.map(k => SKILL[k].name).join(' и ')}</div></div></div>
           <button class="btn full" style="margin-top:8px" data-action="sil-pick" data-id="${x.id}" ${block ? 'disabled' : ''}>Поступить в ${x.name}</button></div>`).join('')}`, true);
     },
     'sil-pick': id => {
@@ -2277,9 +2283,10 @@
       S.sil.r++;
       const rk = svcRank();
       haptic('ok'); save(); render();
-      showModal(`<div class="drop"><div class="drop-name">🎖️ ${rk.name}</div>
+      showModal(`<div class="drop"><div class="pogon-pair">${boardImg(S.sil.r - 1, 'old')}${ic('arrow-right')}${boardImg(S.sil.r, 'new')}</div>
+        <div class="drop-name">🎖️ ${rk.name}</div>
         <p style="margin-top:8px">Присвоено новое звание. Довольствие: <b>${fmt(servicePay())} ₽/мес</b>.</p>
-        ${rk.roofs ? `<p class="small">«Крыша»: до ${rk.roofs} бизнесов, вплоть до «${BUSINESSES[rk.tier].name}».</p>` : ''}
+        ${rk.roofs ? `<p class="small">«Крыша»: ${rk.roofs === 1 ? 'один бизнес' : `до ${rk.roofs} бизнесов`}, вплоть до «${BUSINESSES[rk.tier].name}».</p>` : ''}
         <button class="btn full" data-action="close">Служу Отечеству!</button></div>`);
     },
     mission: i => {
@@ -2484,7 +2491,8 @@
     },
     credits: () => showModal(`${sheetHead('Авторы фото')}
       <p class="small">Фотографии с Wikimedia Commons: фон удалён, размер уменьшен.</p>
-      ${ITEMS.concat(CASES).filter(i => i.credit).map(i => `<div class="kv small"><span>${i.name}</span><b>${i.credit}</b></div>`).join('')}`, true),
+      ${ITEMS.concat(CASES).filter(i => i.credit).map(i => `<div class="kv small"><span>${i.name}</span><b>${i.credit}</b></div>`).join('')}
+      <div class="kv small"><span>Погоны армии и полиции</span><b>Wikimedia Commons · общественное достояние</b></div>`, true),
     reset: () => askConfirm('Точно начать заново? Весь прогресс пропадёт.', () => {
       S = newState(); ensureQuests(); save(); tab = 'home'; closeModal(); render();
     }),
