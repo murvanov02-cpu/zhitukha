@@ -42,6 +42,9 @@
       plates: [], plateSeq: 0,    // номера: { id, a, d, b, r: регион, rar, v: стоимость, car: на какой машине }
       plateReg: 'msk',            // выбранный регион в наборах номеров
       tune2: true,                // тюнинг уже по новым ценам (см. upgrade)
+      lvl: 1, xp: 0,              // уровень игрока и опыт внутри уровня
+      sil: null,                  // служба: { s: структура, r: звание, xp, since, roofs: [id бизнесов], mission, nextMission, nextCheck, osb }
+      jailed: 0,                  // сколько раз сидел
       promo: [],                  // хэши уже активированных промокодов
       badges: [],                 // значки игрока
     };
@@ -78,6 +81,14 @@
       }
     }
     if (!s.pool) s.pool = { n: RACE_POOL, ts: Date.now() };
+    // v25: уровни появились позже — засчитываем прошлые кейсы, победы и курсы (без наград за уровни)
+    if (o.lvl === undefined) {
+      let xp = (o.opened || 0) * XP_FOR.open + (o.raceWins || 0) * (XP_FOR.race + XP_FOR.race_win)
+        + Object.values(s.skills).reduce((a, b) => a + b, 0) * XP_FOR.skill;
+      s.lvl = 1;
+      while (s.lvl < LEVEL_MAX && xp >= levelNeed(s.lvl)) { xp -= levelNeed(s.lvl); s.lvl++; }
+      s.xp = xp;
+    }
     // v18: тюнинг подешевел в 2,5 раза — возвращаем переплату тем, кто тюнинговал раньше
     if (!o.tune2) {
       for (const g of Object.values(s.garage)) if (g.tuneInv) { s.money += g.tuneInv * 0.6; g.tuneInv *= 0.4; }
@@ -222,6 +233,7 @@
     }
     const j = JOB[S.job];
     if (j && j.perk === name) v = Math.max(v, j.v);
+    if (S.sil && name === 'fineCut' && STR().fineCut) v = Math.max(v, STR().fineCut);
     return v;
   }
   const perkText = (it, lv) => PERKS[it.perk].replace('{v}', it.lv[(lv || connLv(it.id) || 1) - 1]);
@@ -239,6 +251,7 @@
   // ---------- экономика ----------
   const carBonus = () => (S.car && S.inv[S.car] ? ITEM[S.car].bonus : 0);
   function jobPay() {
+    if (S.sil) return servicePay();
     const j = JOB[S.job];
     if (!j || (j.needCar && !carBonus())) return 0;
     return j.pay * (1 + carBonus() / 100) * (1 + S.skills.int * 0.01);
@@ -286,7 +299,7 @@
 
   // Всё считается и показывается в «игровых месяцах»: зарплаты реальные, помесячные,
   // а за реальный час проходит MONTHS_PER_HOUR месяцев (месяц = 60 / MONTHS_PER_HOUR минут).
-  const incomeMonth = () => jobPay() + rent() + bizProfit();
+  const incomeMonth = () => jobPay() + rent() + bizProfit() + roofIncome();
   const casePrice = c => Math.round(c.price * (1 - (Math.min(S.skills.cha, 30) + perk('caseCheap')) / 100));
   const batchPrice = (c, n) => Math.round(casePrice(c) * n * (1 - (MULTI_DISCOUNT[n] || 0)));
   function meetsJob(j) {
@@ -340,6 +353,7 @@
     ensureQuests();
     maybeEvent();
     maybeFavor();
+    maybeOsb();
     if (away > 60 && r.earned >= 1) showOffline(r);
     updateLive();
   }
@@ -356,7 +370,7 @@
     return d;
   }
   function pickQuests(pool, k) {
-    const has = { conn: Object.keys(S.conn).length > 0, biz: Object.keys(S.biz).length > 0, car: countCat('car') > 0 };
+    const has = { conn: Object.keys(S.conn).length > 0, biz: Object.keys(S.biz).length > 0, car: countCat('car') > 0, civil: !S.sil };
     const avail = pool.filter(q => !q.need || has[q.need]).sort(() => Math.random() - 0.5);
     return avail.slice(0, k).map(q => ({ id: q.id, prog: 0, claimed: false, target: q.hours ? monthsMoney(q.hours) : q.n }));
   }
@@ -375,6 +389,7 @@
     return changed;
   }
   function progress(ev, n = 1) {
+    if (XP_FOR[ev]) gainXP(XP_FOR[ev] * (ev === 'open' ? n : 1));
     for (const set of [S.daily, S.weekly]) {
       if (!set) continue;
       for (const q of set.list) if (QDEF[q.id].ev === ev && q.prog < q.target) q.prog = Math.min(q.target, q.prog + n);
@@ -385,16 +400,24 @@
   const ticketName = id => `билет «${CASE[id].name}»`;
 
   // ---------- жизненный путь ----------
+  // У силовика шаги про работу и бизнес читаются как служба и «крыша»
+  function lifeText(step) {
+    if (!S.sil) return step.text;
+    if (step.type === 'job') return `Довольствие от ${fmt(step.v)} ₽/мес`;
+    if (step.type === 'biz') return step.v > 1 ? `Держи ${step.v} бизнеса под «крышей»` : 'Возьми бизнес под «крышу»';
+    if (step.type === 'bizProfit') return `«Крыша» от ${fmt(step.v)} ₽/мес`;
+    return step.text;
+  }
   function lifeDone(step) {
     switch (step.type) {
-      case 'job': return !!JOB[S.job] && JOB[S.job].pay >= step.v;
+      case 'job': return S.sil ? servicePay() >= step.v : !!JOB[S.job] && JOB[S.job].pay >= step.v;
       case 'car': return countCat('car') > 0;
       case 'skills': return Object.values(S.skills).reduce((a, b) => a + b, 0) >= step.v;
       case 'home': return countCat('home') >= step.v;
       case 'rank': return rankIdx() >= step.v;
       case 'carRarity': return Object.keys(S.inv).some(id => ITEM[id] && ITEM[id].cat === 'car' && rarIdx(ITEM[id].rarity) >= step.v);
-      case 'biz': return Object.keys(S.biz).length >= step.v;
-      case 'bizProfit': return bizProfit() >= step.v;
+      case 'biz': return (S.sil ? S.sil.roofs.length : Object.keys(S.biz).length) >= step.v;
+      case 'bizProfit': return (S.sil ? roofIncome() : bizProfit()) >= step.v;
       case 'conn': return Object.keys(S.conn).length >= step.v;
       case 'raceWins': return S.raceWins >= step.v;
       case 'connLv': return Object.keys(S.conn).some(id => connLv(id) >= step.v);
@@ -421,7 +444,7 @@
   function eventOk(e) {
     const has = { car: !!carBonus(), home: countCat('home') > 0, biz: Object.keys(S.biz).length > 0 };
     if (e.need && !has[e.need]) return false;
-    if (e.id === 'e_gibdd' && S.car && isGov(S.car)) return false;
+    if (e.id === 'e_gibdd' && (S.car && isGov(S.car) || S.sil && S.sil.r >= STR().gibdd)) return false;
     if (e.minRank && rankIdx() < e.minRank) return false;
     if (e.conn && !S.conn[e.conn]) return false;
     return true;
@@ -688,6 +711,7 @@
     const lv = connLv('k_gibdd');
     if (Math.random() * 100 >= Math.max(0, GIBDD_CHANCE - GIBDD_CONN_CUT * lv)) return null;
     if (isGov(id)) return { fine: 0, gov: true };
+    if (S.sil && S.sil.r >= STR().gibdd) return { fine: 0, sil: true };
     if (lv >= CONN_MAX_LV) return { fine: 0 };
     return { fine: round2(raceUnit(id) * GIBDD_FINE * (1 - perk('fineCut') / 100)) };
   }
@@ -1035,7 +1059,7 @@
     const done = lifeDone(step);
     return `<div class="card accent ${done ? 'ok' : ''}">
       <div class="label">${ic('route')} Цель ${S.life + 1} из ${LIFE_PATH.length}</div>
-      <div class="row"><div class="grow"><div class="big-text">${step.text}</div><div class="reward">${rewardText(step.reward)}</div></div>
+      <div class="row"><div class="grow"><div class="big-text">${lifeText(step)}</div><div class="reward">${rewardText(step.reward)}</div></div>
       ${done ? '<button class="btn btn-green btn-sm" data-action="claim-life">Забрать</button>' : '<span class="tag lock">в процессе</span>'}</div></div>`;
   }
   function showProfile() {
@@ -1051,6 +1075,10 @@
           ${S.badges.length ? `<div class="small gold">${S.badges.filter(b => BADGES[b]).map(b => `${ic(BADGES[b].icon)} ${BADGES[b].name}`).join(' · ')}</div>` : ''}
           <div class="bar"><i style="width:${r.pct}%"></i></div>
           <div class="small muted">${r.next ? `До «${r.next.name}»: ${fmt(r.next.min - r.nw)} ₽ состояния` : 'Вершина пищевой цепи'}</div></div></div></div>
+      <div class="card"><div class="kv"><span>${ic('star', 'gold')} Уровень ${S.lvl}</span><b class="small muted">${S.lvl >= LEVEL_MAX ? 'максимум' : `${Math.floor(S.xp)} / ${levelNeed(S.lvl)} опыта`}</b></div>
+        <div class="bar"><i style="width:${S.lvl >= LEVEL_MAX ? 100 : S.xp / levelNeed(S.lvl) * 100}%"></i></div>
+        <div class="small muted">Опыт — за кейсы, гонки, подработки, учёбу, связи, задания и службу. За уровень — месяц дохода, на каждом 5-м — ещё и билет.
+          ${S.sil ? `<br>${STR().icon} ${svcRank().name} ${STR().name}` : S.lvl < SERVICE_MIN_LEVEL ? `<br>С ${SERVICE_MIN_LEVEL} уровня открывается служба.` : ''}</div></div>
       ${lifeCard()}
       <div class="section">Задания дня · обновятся через ${left(tomorrow - now)}</div>
       <div class="card quests">${questRows(S.daily, 'daily')}${questBonus(S.daily, 'daily')}</div>
@@ -1112,23 +1140,25 @@
           <span class="chev">${ic('chevron-right')}</span></div></button>` : ''}
       ${life ? `<button class="card tap accent ${lifeOk ? 'ok' : ''}" data-action="${lifeOk ? 'claim-life' : 'profile'}">
         <div class="label">${ic('route')} Следующая цель</div>
-        <div class="row"><div class="grow"><div class="big-text">${life.text}</div><div class="reward">${rewardText(life.reward)}</div></div>
+        <div class="row"><div class="grow"><div class="big-text">${lifeText(life)}</div><div class="reward">${rewardText(life.reward)}</div></div>
         ${lifeOk ? '<span class="btn btn-green btn-sm">Забрать</span>' : `<span class="chev">${ic('chevron-right')}</span>`}</div></button>` : ''}
       <div class="grid2">
         <button class="tile-card" data-action="inv" data-id="car">
           <div class="ph">${car ? visual(car) : ic('car')}</div>
           <div class="body"><div class="label">Гараж · ${countCat('car')}</div>
             <div class="val ellipsis">${car ? car.name : 'Пешком'}</div>
-            <div class="small ${car ? 'good' : 'muted'}">${car ? `+${car.bonus}% к зарплате` : 'машины — в кейсах'}</div></div></button>
+            <div class="small ${car ? 'good' : 'muted'}">${car ? (S.sil ? 'на службе — служебная' : `+${car.bonus}% к зарплате`) : 'машины — в кейсах'}</div></div></button>
         <button class="tile-card" data-action="inv" data-id="home">
           <div class="ph">${homes.length ? `<img class="cover" src="${ITEM[homes[0]].img}" alt="">` : ic('home')}</div>
           <div class="body"><div class="label">Жильё · ${countCat('home')}</div>
             <div class="val ellipsis">${homes.length ? ITEM[homes[0]].name : 'Нет жилья'}</div>
             <div class="small ${homes.length ? 'good' : 'muted'}">${homes.length ? `+${fmt(rent())} ₽/мес` : 'жильё — в кейсах'}</div></div></button>
       </div>
-      ${row('data-goto="career"', 'briefcase', job ? job.name : 'Предприниматель',
-        `${pay ? `<span class="good">${fmt(pay)} ₽/мес</span> · ` : ''}${studyLine}${gigLine}`)}
-      ${row('data-goto="biz"', 'building-factory-2', nBiz ? `Бизнес · ${nBiz}` : 'Свой бизнес',
+      ${row('data-goto="career"', S.sil ? 'shield' : 'briefcase', S.sil ? `${STR().icon} ${svcRank().name} ${STR().name}` : job ? job.name : 'Предприниматель',
+        `${pay ? `<span class="good">${fmt(pay)} ₽/мес</span> · ` : ''}${studyLine}${gigLine}${S.sil && Date.now() >= S.sil.nextMission ? ' · <span class="gold">есть задание</span>' : ''}`)}
+      ${S.sil ? row('data-goto="career"', 'umbrella', `«Крыша» · ${S.sil.roofs.length}`,
+        S.sil.roofs.length ? `+${fmt(roofIncome())} ₽/мес` : svcRank().roofs ? 'возьми бизнес под «крышу»' : 'с сержанта', S.sil.roofs.length ? 'good' : 'muted')
+      : row('data-goto="biz"', 'building-factory-2', nBiz ? `Бизнес · ${nBiz}` : 'Свой бизнес',
         nBiz ? `${bp >= 0 ? '+' : ''}${fmt(bp)} ₽/мес` : 'от ларька с шаурмой до IT-холдинга', nBiz ? (bp < 0 ? 'bad' : 'good') : 'muted')}
       ${row('data-goto="career" data-sub="career:conn"', 'users', nConn ? `Связи · ${nConn}` : 'Связи',
         S.favor ? 'Тебя кое о чём просят' : nConn ? 'полезные люди решают проблемы' : 'открой «Знакомство дня»', S.favor ? 'gold' : 'muted')}
@@ -1304,18 +1334,95 @@
       </div>`, true);
   }
 
+  // ---------- уровень игрока ----------
+  function gainXP(n) {
+    if (!n || S.lvl >= LEVEL_MAX) return;
+    S.xp += n;
+    while (S.lvl < LEVEL_MAX && S.xp >= levelNeed(S.lvl)) {
+      S.xp -= levelNeed(S.lvl);
+      S.lvl++;
+      const v = monthsMoney(LEVEL_MONEY_MONTHS, LEVEL_MONEY_MIN), t = LEVEL_TICKETS[S.lvl];
+      earn(v);
+      if (t) giveTicket(t);
+      haptic('ok');
+      toast(`⭐ Уровень ${S.lvl}! +${fmt(v)} ₽${t ? ' и ' + ticketName(t) : ''}`);
+      if (S.lvl === SERVICE_MIN_LEVEL && !S.sil) setTimeout(() => toast('Открыта служба: МВД, ФСБ, спецназ — в «Карьере»'), 2500);
+    }
+  }
+
+  // ---------- служба ----------
+  const STR = () => STRUCTURES.find(x => x.id === S.sil.s);
+  const svcRank = () => SERVICE_RANKS[S.sil.r];
+  const servicePay = () => Math.round(svcRank().pay * STR().payMult * (1 + S.skills.int * 0.01));
+  const roofIncome = () => (S.sil ? S.sil.roofs.reduce((a, id) => a + BIZ[id].price * ROOF_RATE, 0) : 0);
+  // «Месяц звания» — мерило денег в заданиях: довольствие + самая дорогая доступная «крыша»
+  const rankMonth = () => svcRank().pay * STR().payMult + (svcRank().tier >= 0 ? BUSINESSES[svcRank().tier].price * ROOF_RATE : 0);
+  const serviceH = () => (Date.now() - S.sil.since) / 3600e3;
+  // Что нужно до следующего звания: [{ text, ok }]
+  function promoReqs() {
+    const nx = SERVICE_RANKS[S.sil.r + 1];
+    if (!nx) return null;
+    const left = Math.max(0, nx.h - serviceH());
+    return [
+      { ok: left <= 0, text: left > 0 ? `Выслуга: ещё ${fmtTime(left * 3600e3)}` : `Выслуга ${nx.h} ч` },
+      { ok: S.lvl >= nx.lv, text: `Уровень ${nx.lv}` + (S.lvl < nx.lv ? ` (сейчас ${S.lvl})` : '') },
+      { ok: S.sil.xp >= nx.xp, text: `Служебный опыт ${Math.floor(S.sil.xp)} / ${nx.xp}` },
+    ];
+  }
+  const missionOf = () => MISSIONS.find(m => m.id === S.sil.mission);
+  function nextMission() {
+    const pool = MISSIONS.filter(m => m.who.includes(S.sil.s) && m.id !== S.sil.last);
+    S.sil.mission = pick(pool).id;
+  }
+  // Попался: суд, конфискация, навыки проседают, со службы — уволен
+  function goToJail(why) {
+    const lost = Math.round(S.money * JAIL_MONEY);
+    S.money -= lost;
+    for (const k of Object.keys(S.skills)) S.skills[k] = Math.floor(S.skills[k] * (1 - JAIL_SKILLS));
+    const was = `${svcRank().name} ${STR().name}`;
+    S.sil = null;
+    S.jailed++;
+    haptic('err'); save(); render();
+    showModal(`<div class="drop"><div class="drop-name">⛓️ Попался</div>
+      <p style="margin-top:8px">${why}</p>
+      <p class="small">Суд: условный срок, ${was} — уволен со службы. Конфискация <b>${fmt(lost)} ₽</b>, навыки просели на ${Math.round(JAIL_SKILLS * 100)}%.</p>
+      <button class="btn full" data-action="close">Начать с чистого листа</button></div>`);
+  }
+  function maybeOsb() {
+    if (!S.sil || !S.sil.roofs.length) return;
+    if (!S.sil.osb && Date.now() >= S.sil.nextCheck) {
+      const [a, b] = OSB_EVERY_H;
+      S.sil.nextCheck = Date.now() + (a + Math.random() * (b - a)) * 3600e3;
+      if (Math.random() * 100 < OSB_PER_ROOF * S.sil.roofs.length * STR().riskMult) S.sil.osb = true;
+      save();
+    }
+    if (S.sil.osb && $('#modal').classList.contains('hidden')) showOsb();
+  }
+  function showOsb() {
+    const pay = Math.round(roofIncome() * OSB_PAYOFF_MONTHS / 1000) * 1000;
+    const top = S.sil.roofs.slice().sort((x, y) => BIZ[y].price - BIZ[x].price)[0];
+    showModal(`<h3>🕴️ Проверка ОСБ</h3>
+      <p>Собственная безопасность заинтересовалась, почему бизнесмены так тебя любят. Нужно решать.</p>
+      <div class="choice">
+        <button class="btn" data-action="osb" data-id="pay" ${S.money < pay ? 'disabled' : ''}>Занести «кому надо»<span class="small">${fmt(pay)} ₽ — вопрос закрыт</span></button>
+        <button class="btn btn-ghost" data-action="osb" data-id="give">Отдать «крышу»<span class="small">${BIZ[top].icon} ${BIZ[top].name} — больше не твоя</span></button>
+        <button class="btn btn-danger" data-action="osb" data-id="deny">Пойти в отказ<span class="small">${Math.round(OSB_DENY_JAIL * STR().riskMult)}% — сесть</span></button>
+      </div>`);
+  }
+
   // ---------- карьера ----------
   const connAlert = () => !cdLeft(CASE.conn_free) || !!S.favor || !!(S.deal && Date.now() >= S.deal.until);
   function renderCareer() {
     const v = sub.career;
     const gigReady = S.gig && Date.now() >= S.gig.until;
+    const missionReady = S.sil && Date.now() >= S.sil.nextMission;
     return `<div class="seg seg-scroll">
-        <button class="${v === 'jobs' ? 'active' : ''}" data-sub="career:jobs">Работа</button>
+        <button class="${v === 'jobs' ? 'active' : ''}" data-sub="career:jobs">${S.sil ? `Служба${missionReady ? ' <span class="dotty">•</span>' : ''}` : 'Работа'}</button>
         <button class="${v === 'skills' ? 'active' : ''}" data-sub="career:skills">Учёба</button>
-        <button class="${v === 'gigs' ? 'active' : ''}" data-sub="career:gigs">Подработки${gigReady ? ' <span class="dotty">•</span>' : ''}</button>
+        ${S.sil ? '' : `<button class="${v === 'gigs' ? 'active' : ''}" data-sub="career:gigs">Подработки${gigReady ? ' <span class="dotty">•</span>' : ''}</button>`}
         <button class="${v === 'race' ? 'active' : ''}" data-sub="career:race">Гонки</button>
         <button class="${v === 'conn' ? 'active' : ''}" data-sub="career:conn">Связи${connAlert() ? ' <span class="dotty">•</span>' : ''}</button></div>
-      ${v === 'jobs' ? renderJobs() : v === 'skills' ? renderSkills() : v === 'gigs' ? renderGigs() : v === 'race' ? renderRace() : renderConn()}`;
+      ${v === 'jobs' ? (S.sil ? renderService() : renderJobs()) : v === 'skills' ? renderSkills() : v === 'gigs' && !S.sil ? renderGigs() : v === 'race' ? renderRace() : renderConn()}`;
   }
   const reqTags = (req, extra = []) => Object.entries(req || {})
     .map(([k, v]) => `<span class="req ${S.skills[k] >= v ? 'ok' : 'no'}">${SKILL[k].name} ${v}</span>`).concat(extra).join('');
@@ -1331,6 +1438,52 @@
         ${bonus ? `<div class="perk">${ic('star')} ${bonus}</div>` : ''}${!ok && !cur && reqs ? `<div class="reqs">${reqs}</div>` : ''}</div>
       ${action}</div>`;
   }
+  function renderService() {
+    const sv = S.sil, st = STR(), rk = svcRank(), reqs = promoReqs();
+    if (!sv.mission) nextMission();
+    const m = missionOf(), ready = Date.now() >= sv.nextMission;
+    const choice = (c, i) => {
+      const bits = [];
+      if (c.xp) bits.push(`+${c.xp} опыта`);
+      if (c.money) bits.push(`+${fmt(round2(rankMonth() * st.bribeMult * c.money))} ₽`);
+      if (c.risk) bits.push(`риск сесть ${Math.round(c.risk * st.riskMult)}%`);
+      const need = c.need && !st.force ? Object.entries(c.need).map(([k, v]) => `${SKILL[k].name} ${v}${S.skills[k] < v ? ' ✗' : ' ✓'}`).join(', ') : '';
+      return `<button class="btn ${c.risk ? 'btn-danger' : c.need ? 'btn-line' : ''}" data-action="mission" data-id="${i}">${c.t}
+        <span class="small">${bits.join(' · ')}${need ? `<br>нужно: ${need}` : ''}</span></button>`;
+    };
+    const mission = ready
+      ? `<div class="card accent"><div class="big-text">${m.title}</div><p class="small" style="margin:6px 0 10px">${m.text}</p>
+          <div class="choice">${m.choices.map(choice).join('')}</div></div>`
+      : `<div class="card small muted">${ic('clock')} Новое задание через <span data-timer="${sv.nextMission}">${fmtTime(sv.nextMission - Date.now())}</span></div>`;
+    const free = rk.roofs - sv.roofs.length;
+    const roofRow = (d, act) => `<div class="list-row" style="margin-top:8px"><div class="ico-box" style="font-size:20px">${d.icon}</div>
+        <div class="grow"><div class="val">${d.name}</div><div class="small good">+${fmt(d.price * ROOF_RATE)} ₽/мес</div></div>${act}</div>`;
+    const mine = sv.roofs.map(id => roofRow(BIZ[id], `<button class="btn btn-sm btn-ghost" data-action="roof-drop" data-id="${id}">Отпустить</button>`)).join('');
+    const can = free > 0 ? BUSINESSES.filter((d, i) => i <= rk.tier && !sv.roofs.includes(d.id)).reverse()
+      .map(d => roofRow(d, `<button class="btn btn-sm" data-action="roof-take" data-id="${d.id}">Взять</button>`)).join('') : '';
+    return `<div class="card accent">
+        <div class="row"><div class="job-ico">${st.icon}</div>
+          <div class="grow"><div class="job-name">${rk.name} · ${st.name}</div>
+            <div class="job-pay">${fmt(servicePay())} ₽/мес довольствие</div>
+            <div class="small muted">Выслуга ${hoursText(serviceH())} · звание ${sv.r + 1} из ${SERVICE_RANKS.length}</div></div></div>
+        ${reqs ? `<div class="small" style="margin-top:10px">До звания «${SERVICE_RANKS[sv.r + 1].name}»:</div>
+          ${reqs.map(x => `<div class="small ${x.ok ? 'good' : 'muted'}">${ic(x.ok ? 'check' : 'point')} ${x.text}</div>`).join('')}
+          <button class="btn full" style="margin-top:8px" data-action="sil-promote" ${reqs.every(x => x.ok) ? '' : 'disabled'}>Аттестация — получить звание</button>`
+          : '<div class="small gold" style="margin-top:8px">Высшее звание. Дальше только пенсия.</div>'}
+      </div>
+      <div class="section">Задание</div>
+      ${mission}
+      <div class="section">«Крыша» · ${sv.roofs.length} из ${rk.roofs}</div>
+      <div class="card">
+        <div class="small muted">Бизнес платит тебе за спокойствие ${(ROOF_RATE * 100).toFixed(2).replace('.', ',')}% своей цены в месяц. Чем больше «крыш», тем чаще интересуется ОСБ.</div>
+        ${mine}${can ? `<div class="small" style="margin-top:10px">Можно взять:</div>${can}` : ''}
+        ${!rk.roofs ? '<div class="small muted" style="margin-top:6px">«Крыша» — с сержанта.</div>' : ''}
+      </div>
+      <div class="section">Что даёт ${st.name}</div>
+      <div class="card small">${st.perks.map(t => `<div>${ic('star', 'gold')} ${t}</div>`).join('')}
+        <div class="muted" style="margin-top:6px">Обычная работа, подработки и свой бизнес — запрещены.</div></div>
+      <button class="btn btn-ghost btn-sm full" data-action="sil-quit">Уволиться со службы</button>`;
+  }
   function renderJobs() {
     const open = JOBS.filter(j => S.job === j.id || meetsJob(j)).reverse();
     const locked = JOBS.filter(j => S.job !== j.id && !meetsJob(j));
@@ -1341,7 +1494,13 @@
     // Ближайшая закрытая профессия: меньше всего не хватает уровней навыков
     const miss = j => Object.entries(j.req).reduce((a, [k, v]) => a + Math.max(0, v - S.skills[k]), 0);
     const near = locked.slice().sort((x, y) => miss(x) - miss(y))[0];
+    const service = S.lvl >= SERVICE_MIN_LEVEL
+      ? `<button class="card tap accent" data-action="sil-join"><div class="list-row"><div class="ico-box">${ic('shield')}</div>
+          <div class="grow"><div class="val">Пойти на службу</div><div class="small muted">МВД, ФСБ или спецназ: звания, «крыша», задания — и риск сесть</div></div>
+          <span class="chev">${ic('chevron-right')}</span></div></button>`
+      : `<div class="card small muted">${ic('lock')} Служба в МВД, ФСБ или спецназе — с ${SERVICE_MIN_LEVEL} уровня (сейчас ${S.lvl})</div>`;
     return `<p class="hint">Кроме зарплаты каждая профессия даёт свою пользу ${ic('star', 'gold')} — пока ты на ней работаешь.</p>
+      ${service}
       ${focus}
       ${locked.length ? `<details class="card more-card"><summary class="row"><span class="ico-box">${ic('lock')}</span>
         <span class="grow"><span class="val">Ещё ${locked.length} профессий закрыто</span><br>
@@ -1517,11 +1676,14 @@
       S.raceWins++;
       progress('race_win');
     }
+    if (!jump) gainXP(XP_FOR.race);
     let gibdd = '';
     if (stop) {
       const fine = Math.min(stop.fine, S.money);
       S.money -= fine;
-      gibdd = stop.gov
+      gibdd = stop.sil
+        ? `<div class="card small" style="margin-top:10px;text-align:left">🚓 Тормознула ГИБДД. «Знаешь, кто я?» — ${svcRank().name.toLowerCase()} ${STR().name} показывает удостоверение, инспектор извиняется и отпускает.</div>`
+        : stop.gov
         ? `<div class="card small" style="margin-top:10px;text-align:left">🚓 Тормознула ГИБДД. Инспектор увидел номер ${plateHTML(plateOf(id), 'sm')} и молча отдал честь.</div>`
         : fine
         ? `<div class="card danger small" style="margin-top:10px;text-align:left">🚓 После финиша тормознула ГИБДД: превышение на дороге общего пользования. Штраф <b>${fmt(fine)} ₽</b>.</div>`
@@ -1563,6 +1725,8 @@
 
   // ---------- бизнес ----------
   function renderBiz() {
+    if (S.sil) return `<div class="empty">${ic('shield')}Госслужащему нельзя владеть бизнесом.<br>Зато бизнес можно взять под «крышу».<br><br>
+      <button class="btn btn-sm" data-goto="career" data-sub="career:jobs">К службе</button></div>`;
     const owned = BUSINESSES.filter(d => S.biz[d.id]);
     const total = bizProfit();
     const plus = v => `${v >= 0 ? '+' : ''}${fmt(v)}`;
@@ -1888,6 +2052,7 @@
     const im = incomeMonth();
     $('#inc').textContent = (im >= 0 ? '+' : '') + fmt(im);
     $('#prank').textContent = rankInfo().cur.icon + ' ' + rankInfo().cur.name;
+    $('#plvl').textContent = S.lvl;
     const now = Date.now();
     document.querySelectorAll('[data-timer]').forEach(el => { el.textContent = fmtTime(+el.dataset.timer - now); });
     document.querySelectorAll('[data-cdcase]').forEach(b => {
@@ -1937,7 +2102,7 @@
     sell: id => sell(id),
     equip: id => { S.car = id; haptic('light'); save(); render(); },
     job: id => {
-      if (!meetsJob(JOB[id])) return;
+      if (S.sil || !meetsJob(JOB[id])) return;
       S.job = id;
       haptic('ok'); toast('Ты устроился: ' + JOB[id].name);
       save(); render();
@@ -1957,7 +2122,7 @@
     },
     gig: id => {
       const d = GIG[id];
-      if (S.gig || !gigOpen(d)) return;
+      if (S.sil || S.gig || !gigOpen(d)) return;
       S.gig = { id, until: Date.now() + d.h * 3600e3 };
       haptic('medium'); toast(`${d.icon} Подработка начата`);
       save(); render();
@@ -1976,6 +2141,7 @@
       const set = kind === 'daily' ? S.daily : S.weekly, q = set.list[+i];
       if (!q || q.claimed || q.prog < q.target) return;
       q.claimed = true;
+      gainXP(XP_QUEST[kind]);
       if (kind === 'daily') {
         const v = monthsMoney(DAILY_REWARD.hours, DAILY_REWARD.min);
         earn(v);
@@ -2015,7 +2181,7 @@
     },
     'biz-buy': id => {
       const d = BIZ[id];
-      if (S.biz[id] || !bizOpen(d)) return;
+      if (S.sil || S.biz[id] || !bizOpen(d)) return;
       const lic = licenseCost(d), bribe = Math.round(lic / BRIBE_DIVISOR), risk = bribeRisk('license');
       showModal(`<h3>${d.icon} ${d.name}</h3>
         <p>Помещение и запуск: <b>${fmt(d.price)} ₽</b>. Осталось оформить лицензии и разрешения.</p>
@@ -2082,6 +2248,87 @@
     },
     'vp-new': () => { vp = null; render(); },
     'race-car': id => { S.raceCar = id; save(); render(); },
+    'sil-join': () => {
+      if (S.sil || S.lvl < SERVICE_MIN_LEVEL) return;
+      const nBiz = Object.keys(S.biz).length;
+      const block = nBiz ? 'Госслужащему нельзя владеть бизнесом — сначала продай его.' : S.gig ? 'Сначала закончи подработку.' : '';
+      showModal(`${sheetHead('Служба')}
+        <p class="small">Вместо работы — служба: звания по выслуге и опыту, довольствие, «крыша» над бизнесами, задания.
+          Подработки и свой бизнес — нельзя. Уволишься или сядешь — звание сгорит.</p>
+        ${block ? `<div class="card danger small">${block}</div>` : ''}
+        ${STRUCTURES.map(x => `<div class="card"><div class="row"><div class="job-ico">${x.icon}</div><div class="grow"><div class="job-name">${x.name}</div>
+          ${x.perks.map(t => `<div class="small">${ic('star', 'gold')} ${t}</div>`).join('')}</div></div>
+          <button class="btn full" style="margin-top:8px" data-action="sil-pick" data-id="${x.id}" ${block ? 'disabled' : ''}>Поступить в ${x.name}</button></div>`).join('')}`, true);
+    },
+    'sil-pick': id => {
+      if (S.sil || S.lvl < SERVICE_MIN_LEVEL || Object.keys(S.biz).length || S.gig || !STRUCTURES.some(x => x.id === id)) return;
+      S.sil = { s: id, r: 0, xp: 0, since: Date.now(), roofs: [], mission: null, last: '', nextMission: Date.now(), nextCheck: 0, osb: false };
+      S.job = null;
+      sub.career = 'jobs';
+      closeModal(); haptic('ok'); toast(`${STR().icon} Ты на службе: ${svcRank().name} ${STR().name}`); save(); render();
+    },
+    'sil-quit': () => askConfirm('Уволиться со службы? Звание, выслуга и «крыша» сгорят — вернуться можно только с нуля.', () => {
+      S.sil = null;
+      haptic('medium'); toast('Ты снова гражданский'); save(); render();
+    }),
+    'sil-promote': () => {
+      const reqs = promoReqs();
+      if (!reqs || !reqs.every(x => x.ok)) return;
+      S.sil.r++;
+      const rk = svcRank();
+      haptic('ok'); save(); render();
+      showModal(`<div class="drop"><div class="drop-name">🎖️ ${rk.name}</div>
+        <p style="margin-top:8px">Присвоено новое звание. Довольствие: <b>${fmt(servicePay())} ₽/мес</b>.</p>
+        ${rk.roofs ? `<p class="small">«Крыша»: до ${rk.roofs} бизнесов, вплоть до «${BUSINESSES[rk.tier].name}».</p>` : ''}
+        <button class="btn full" data-action="close">Служу Отечеству!</button></div>`);
+    },
+    mission: i => {
+      const sv = S.sil, m = sv && missionOf(), c = m && m.choices[+i];
+      if (!c || Date.now() < sv.nextMission) return;
+      const st = STR();
+      sv.last = m.id;
+      sv.nextMission = Date.now() + MISSION_EVERY_MIN * 60e3;
+      nextMission();
+      const failed = c.need && !st.force && Object.entries(c.need).some(([k, v]) => S.skills[k] < v);
+      if (!failed && c.risk && Math.random() * 100 < c.risk * st.riskMult)
+        return goToJail(`«${m.title}»: деньги оказались мечеными — это была проверка.`);
+      const xp = failed ? c.fail.xp : c.xp || 0;
+      const money = !failed && c.money ? round2(rankMonth() * st.bribeMult * c.money) : 0;
+      sv.xp += xp;
+      if (money) earn(money);
+      gainXP(3 + Math.round(xp / 5));
+      haptic(failed ? 'err' : 'ok'); save(); render();
+      showModal(`<div class="drop"><div class="drop-name">${failed ? '😬 Не вышло' : '✅ ' + m.title}</div>
+        <p style="margin-top:8px">${failed ? c.fail.text : c.risk ? 'Деньги у тебя. Никто ничего не видел… пока.' : 'Сделано чисто — начальство заметило.'}</p>
+        <div class="big">${money ? '+' + fmt(money) + ' ₽ · ' : ''}+${xp} опыта</div>
+        <button class="btn full" data-action="close">Дальше</button></div>`);
+    },
+    'roof-take': id => {
+      const sv = S.sil, rk = sv && svcRank(), i = BUSINESSES.findIndex(d => d.id === id);
+      if (!sv || i < 0 || i > rk.tier || sv.roofs.includes(id) || sv.roofs.length >= rk.roofs) return;
+      sv.roofs.push(id);
+      if (!sv.nextCheck) sv.nextCheck = Date.now() + OSB_EVERY_H[0] * 3600e3;
+      haptic('ok'); toast(`☂️ ${BIZ[id].name} теперь под «крышей»`); save(); render();
+    },
+    'roof-drop': id => { if (S.sil) S.sil.roofs = S.sil.roofs.filter(x => x !== id); save(); render(); },
+    osb: how => {
+      const sv = S.sil;
+      if (!sv || !sv.osb) return;
+      sv.osb = false;
+      closeModal();
+      if (how === 'pay') {
+        const v = Math.round(roofIncome() * OSB_PAYOFF_MONTHS / 1000) * 1000;
+        if (!pay(v)) { sv.osb = true; return; }
+        toast('Вопрос закрыт');
+      } else if (how === 'give') {
+        const top = sv.roofs.slice().sort((x, y) => BIZ[y].price - BIZ[x].price)[0];
+        sv.roofs = sv.roofs.filter(x => x !== top);
+        toast(`${BIZ[top].name} больше не под твоей «крышей»`);
+      } else if (Math.random() * 100 < OSB_DENY_JAIL * STR().riskMult) {
+        return goToJail('ОСБ нашла переводы от бизнесменов. Отказ не помог.');
+      } else toast('Доказательств не нашли. Пронесло');
+      haptic('medium'); save(); render();
+    },
     'plate-reg': id => { S.plateReg = id; save(); render(); },
     'plate-open': id => openPlate(id),
     'plate-on': id => plateChooseCar(+id),
