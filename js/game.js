@@ -41,6 +41,7 @@
       raceCar: null, pool: { n: RACE_POOL, ts: Date.now() }, raceWins: 0,
       plates: [], plateSeq: 0,    // номера: { id, a, d, b, r: регион, rar, v: стоимость, car: на какой машине }
       plateReg: 'msk',            // выбранный регион в наборах номеров
+      tune2: true,                // тюнинг уже по новым ценам (см. upgrade)
       promo: [],                  // хэши уже активированных промокодов
       badges: [],                 // значки игрока
     };
@@ -77,6 +78,11 @@
       }
     }
     if (!s.pool) s.pool = { n: RACE_POOL, ts: Date.now() };
+    // v18: тюнинг подешевел в 2,5 раза — возвращаем переплату тем, кто тюнинговал раньше
+    if (!o.tune2) {
+      for (const g of Object.values(s.garage)) if (g.tuneInv) { s.money += g.tuneInv * 0.6; g.tuneInv *= 0.4; }
+      s.tune2 = true;
+    }
     for (const g of Object.values(s.garage)) if (g.tank === undefined) { g.tank = TANK_RACES; g.ts = Date.now(); delete g.fuel; delete g.ft; }
     for (const k of ['rel', 'love', 'pref', 'course', 'lastFree', 'energy', 'taps', 'study', 'raceDay', 'races']) delete s[k];
     for (const id of Object.keys(s.tickets)) if (!CASE[id]) delete s.tickets[id];
@@ -625,11 +631,18 @@
   const carTime = id => quarterMile(carHp(id));
   const stageStars = st => `<span class="stars">${'★'.repeat(st)}<span class="off">${'★'.repeat(TUNE_STAGES.length - st)}</span></span>`;
   // Шанс победы на уровне lv (0…4): соперник уровня затюнингован на Stage lv, сравниваем с твоим Stage
-  function raceChance(id, lv) {
-    const s = carState(id).stage, d = lv + 1 - s;
+  function raceChance(id, lv, stage) {
+    const s = stage === undefined ? carState(id).stage : stage, d = lv + 1 - s;
     if (d <= 0) return 100;
     if (d === 1 && s > 0) return RACE_NEAR_WIN;
     return RACE_LEVELS[d - 1].base;
+  }
+  // Средний выигрыш за заезд на самом выгодном уровне (без учёта мастерства) — чтобы видеть, что даёт тюнинг
+  function bestRaceEV(id, stage) {
+    return Math.max(...RACE_LEVELS.map((L, lv) => {
+      const st = raceStake(id, lv);
+      return raceChance(id, lv, stage) / 100 * st.prize - st.fee;
+    }));
   }
   // Соперник уровня: машина того же класса, чем выше уровень — тем мощнее
   function rivalOf(id, lv) {
@@ -1342,7 +1355,8 @@
     const next = TUNE_STAGES[st.stage];
     const tune = next
       ? `<div class="row"><div class="grow"><div class="small">Stage ${st.stage + 1} · <b>${next.name}</b></div>
-          <div class="small muted">${carHp(id)} → ${stageHp(CAR_HP[id], st.stage + 1)} л.с. · соперники посильнее станут по зубам</div></div>
+          <div class="small muted">${carHp(id)} → ${stageHp(CAR_HP[id], st.stage + 1)} л.с.</div>
+          <div class="small">В среднем за заезд: ${fmt(round2(bestRaceEV(id, st.stage)))} → <b class="good">${fmt(round2(bestRaceEV(id, st.stage + 1)))} ₽</b></div></div>
           <button class="btn btn-sm btn-col" data-action="tune" data-id="${id}" ${S.money < tuneCost(id, st.stage) ? 'disabled' : ''}>Тюнинг<span class="btn-top">${fmt(tuneCost(id, st.stage))} ₽</span></button></div>`
       : `<div class="small good">${ic('check')} Гоночная сборка — максимальный тюнинг</div>`;
     const levels = RACE_LEVELS.map((L, lv) => {
