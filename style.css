@@ -343,3 +343,11 @@ details.more-card .card { background: var(--card2); }
 .pcard.held { outline: 3px solid var(--gold); transform: translateY(-4px); }
 .hold-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .hold-btn span { font-size: 11px; color: var(--gold); height: 14px; }
+
+/* гонки 2.0: уровни соперников */
+.race-lv { border-left: 3px solid var(--lc); }
+.race-lv .lv-name { color: var(--lc); font-weight: 700; }
+.race-lv .lv-chance { color: var(--lc); font-size: 16px; }
+.race-vs { display: flex; align-items: center; justify-content: center; gap: 12px; text-align: center; margin: 4px 0 6px; }
+.race-vs > div { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.race-vs .vs { color: var(--lc); font-size: 18px; }
