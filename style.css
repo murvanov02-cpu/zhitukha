@@ -299,3 +299,18 @@ details.more-card .card { background: var(--card2); }
 .race-tacho .zone.perfect { left: 72%; width: 16%; background: var(--green); }
 .race-tacho .needle { position: absolute; top: -2px; bottom: -2px; width: 4px; margin-left: -2px; background: #fff; left: 0; }
 .race-btn { padding: 18px; font-size: 18px; }
+
+/* ---------- рулетка кейса ---------- */
+#roulette { background: radial-gradient(circle at 50% 45%, rgba(212,168,75,.12), rgba(5,5,7,.92) 60%); }
+.rl-title { font-size: 20px; letter-spacing: .02em; }
+.rl-window { padding: 16px 0; background: linear-gradient(180deg, #16171a, #1d1f23); border-color: rgba(212,168,75,.25); }
+.rl-window::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 112px; transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(212,168,75,.0), rgba(212,168,75,.10), rgba(212,168,75,.0)); pointer-events: none; z-index: 1; }
+.rl-strip .tile { height: 124px; border-width: 1px; position: relative; overflow: hidden; background: linear-gradient(180deg, var(--rbg), rgba(0,0,0,.25)); }
+.rl-strip .tile::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--rc); box-shadow: 0 0 10px var(--rc); }
+.rl-strip .tile.win { animation: winpop .6s ease-out forwards; z-index: 2; }
+@keyframes winpop { 40% { transform: scale(1.14); box-shadow: 0 0 34px var(--rc); } 100% { transform: scale(1.08); box-shadow: 0 0 26px var(--rc); } }
+.rl-marker { width: 3px; z-index: 3; }
+.rl-marker::before, .rl-marker::after { content: ''; position: absolute; left: 50%; transform: translateX(-50%); border: 8px solid transparent; }
+.rl-marker::before { top: -2px; border-top-color: var(--gold); }
+.rl-marker::after { bottom: -2px; border-bottom-color: var(--gold); }
