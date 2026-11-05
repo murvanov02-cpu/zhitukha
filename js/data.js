@@ -206,10 +206,10 @@ const CASES = [
   { id: 'car_new', cover: 'img/cases/car_new.jpg', credit: 'Swoodchatla · CC BY-SA 3.0', name: 'Автосалон', icon: '🚘', price: 'auto', tier: 'mid',
     desc: 'Новые машины бизнес-класса', w: W_MID,
     items: ['c_octavia', 'c_k5', 'c_mazda6', 'c_xtrail', 'c_camry', 'c_rav4', 'c_tiguan', 'c_monjaro', 'c_eclass', 'c_lc300', 'c_x5', 'c_cayenne'] },
-  { id: 'car_premium', cover: 'img/cases/car_de.jpg', credit: 'Diego Delso · CC BY-SA 3.0', name: 'Премиум-салон', icon: '💼', price: 'auto', tier: 'elite',
+  { id: 'car_premium', cover: 'img/cases/car_premium.jpg', credit: 'Diego Delso · CC BY-SA 3.0', name: 'Премиум-салон', icon: '💼', price: 'auto', tier: 'elite',
     desc: 'Мощные седаны и внедорожники, шанс на спорткар', w: { common: 0, rare: 0, epic: 80, legendary: 20, mythic: 0 },
     items: ['c_eclass', 'c_lc300', 'c_x5', 'c_cayenne', 'c_gtr', 'c_m5', 'c_rs6', 'c_sclass', 'c_lx', 'c_911', 'c_g63', 'c_bentley'] },
-  { id: 'car_elite', cover: 'img/cases/car_elite.jpg', credit: 'Rex Gray from Southern California · CC BY 2.0', name: 'Элитный автосалон Дубая', icon: '🏎️', price: 'auto', tier: 'elite',
+  { id: 'car_elite', cover: 'img/cases/car_elite.jpg', credit: 'Saaremees · CC BY-SA 4.0', name: 'Элитный автосалон Дубая', icon: '🏎️', price: 'auto', tier: 'elite',
     desc: 'Спорткары и редкие роскошные машины', w: { common: 0, rare: 0, epic: 0, legendary: 85, mythic: 15 },
     items: ['c_911', 'c_g63', 'c_bentley', 'c_mclaren', 'c_ferrari', 'c_urus', 'c_aventador', 'c_phantom', 'c_cullinan'] },
   { id: 'car_hyper', cover: 'img/cases/car_sc.jpg', credit: 'Axion23 · CC BY 2.0', name: 'Гиперкары', icon: '🏁', price: 'auto', tier: 'elite',
@@ -224,7 +224,7 @@ const CASES = [
     desc: 'VW, Skoda, BMW, Mercedes, Audi, Porsche', w: { common: 0, rare: 55, epic: 42, legendary: 3, mythic: 0 },
     items: ['c_octavia', 'c_tiguan', 'c_eclass', 'c_x5', 'c_cayenne', 'c_m5', 'c_rs6', 'c_sclass', 'c_911', 'c_g63'] },
 
-  { id: 'home_dorm', cover: 'img/cases/home_used.jpg', credit: 'Andreas Wolf 01 · CC BY-SA 4.0', name: 'Общаги и гаражи', icon: '🛏️', price: 'auto', tier: 'cheap',
+  { id: 'home_dorm', cover: 'img/cases/home_dorm.jpg', credit: 'benuski from Richmond, VA, USA · CC BY-SA 2.0', name: 'Общаги и гаражи', icon: '🛏️', price: 'auto', tier: 'cheap',
     desc: 'Койка, гараж, дача, дом в деревне', w: W_CHEAP, items: ['h_bed', 'h_garage', 'h_dacha', 'h_village'] },
   { id: 'home_used', cover: 'img/cases/home_used.jpg', credit: 'Andreas Wolf 01 · CC BY-SA 4.0', name: 'Вторичка', icon: '🏚️', price: 'auto', tier: 'cheap',
     desc: 'Комнаты и квартиры в старых домах', w: { common: 75, rare: 25, epic: 0, legendary: 0, mythic: 0 },
@@ -237,10 +237,10 @@ const CASES = [
   { id: 'home_abroad', cover: 'img/cases/home_abroad.jpg', credit: 'Phil6007 · CC BY-SA 4.0', name: 'Зарубежная элитка', icon: '✈️', price: 'auto', tier: 'elite',
     desc: 'Дубай, Лондон, Лазурный берег, Монако', w: { common: 0, rare: 0, epic: 60, legendary: 36, mythic: 4 },
     items: ['h_cottage', 'h_dubai_apt', 'h_palm', 'h_london', 'h_riviera', 'h_monaco'] },
-  { id: 'home_castle', cover: 'img/cases/home_country.jpg', credit: 'Peretz Partensky from San Francisco, USA · CC BY-SA 2.0', name: 'Замки и острова', icon: '🏰', price: 'auto', tier: 'elite',
+  { id: 'home_castle', cover: 'img/cases/home_castle.jpg', credit: 'WorldKnowledge0815 · CC BY-SA 3.0', name: 'Замки и острова', icon: '🏰', price: 'auto', tier: 'elite',
     desc: 'Только здесь: замок и частный остров', w: { common: 0, rare: 0, epic: 0, legendary: 65, mythic: 35 },
     items: ['h_rublyovka', 'h_palm', 'h_london', 'h_castle', 'h_island', 'h_riviera', 'h_monaco'] },
-  { id: 'home_resort', cover: 'img/cases/home_abroad.jpg', credit: 'Phil6007 · CC BY-SA 4.0', name: 'Курорты', icon: '🏖️', price: 'auto', tier: 'mid', theme: true,
+  { id: 'home_resort', cover: 'img/cases/home_resort.jpg', credit: 'Narek75 · CC BY-SA 4.0', name: 'Курорты', icon: '🏖️', price: 'auto', tier: 'mid', theme: true,
     desc: 'Батуми, Алания, Сочи, Дубай', w: { common: 35, rare: 55, epic: 10, legendary: 0, mythic: 0 },
     items: ['h_batumi', 'h_alanya', 'h_sochi', 'h_dubai_apt'] },
   { id: 'home_country', cover: 'img/cases/home_country.jpg', credit: 'Peretz Partensky from San Francisco, USA · CC BY-SA 2.0', name: 'Загородная жизнь', icon: '🌲', price: 'auto', tier: 'mid', theme: true,
@@ -250,10 +250,10 @@ const CASES = [
     desc: 'От коммуналки до квартиры на Патриарших', w: { common: 30, rare: 55, epic: 15, legendary: 0, mythic: 0 },
     items: ['h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_patriki'] },
 
-  { id: 'conn_free', cover: 'img/cases/conn_free.jpg', credit: 'Rufino · CC BY-SA 2.0', name: 'Знакомство дня', icon: '🍀', price: 0, cooldown: 24 * 3600e3, tier: 'free',
+  { id: 'conn_free', cover: 'img/cases/conn_free.jpg', credit: 'US Embassy from New Zealand · CC BY 2.0', name: 'Знакомство дня', icon: '🍀', price: 0, cooldown: 24 * 3600e3, tier: 'free',
     desc: 'Раз в сутки: полезный человек', w: { common: 75, rare: 20, epic: 4, legendary: 0.9, mythic: 0.1 },
     items: ['k_police', 'k_gibdd', 'k_zhkh', 'k_tax', 'k_official', 'k_banker', 'k_prosecutor', 'k_judge', 'k_deputy', 'k_governor', 'k_oligarch', 'k_minister'] },
-  { id: 'conn_district', cover: 'img/cases/conn_free.jpg', credit: 'Rufino · CC BY-SA 2.0', name: 'Районные знакомства', icon: '🏘️', price: 150e3, tier: 'cheap',
+  { id: 'conn_district', cover: 'img/cases/conn_district.jpg', credit: 'Юрий Д.К. · CC BY 4.0', name: 'Районные знакомства', icon: '🏘️', price: 150e3, tier: 'cheap',
     desc: 'Участковый, гаишник, ЖКХ — иногда кто-то повыше', w: W_CHEAP,
     items: ['k_police', 'k_gibdd', 'k_zhkh', 'k_tax', 'k_banker'] },
   { id: 'conn_forum', cover: 'img/cases/conn_forum.jpg', credit: 'USDAgov · Public domain', name: 'Деловой форум', icon: '🎤', price: 4e6, tier: 'mid',
@@ -554,11 +554,14 @@ const EVENTS = [
 // ---------- промокоды и значки ----------
 // Коды хранятся не открытым текстом, а в виде SHA-256 от кода в ВЕРХНЕМ регистре без пробелов —
 // так их не подсмотреть в файлах игры. Хэш для нового кода выдаёт тестовая панель (?debug → профиль).
-// reward: money — рубли; tickets — { id кейса: сколько }; badge — значок из BADGES.
+// reward: money — рубли; tickets — { id кейса: сколько }; items — вещи сразу в имущество; badge — значок из BADGES;
+// message — личное сообщение в окне активации.
 // until — до какой даты (включительно) код работает; без until — бессрочно. Каждый код срабатывает на телефоне один раз.
 const PROMO_CODES = [
   { hash: 'c37c4ebb553abdd981090aa5a9b0b1b557afe1cca78b302a54b9fc1634514f5f', label: 'Для первых игроков',
     until: '2026-11-30', reward: { money: 5e6, tickets: { car_new: 1, conn_forum: 1 }, badge: 'first' } },
+  { hash: 'e6ce4116699e55cc3bab95ed51b9d3865ef609c0a771d3295ef249ff713f6a13', label: 'Подарок',
+    reward: { money: 10e6, items: ['c_x5', 'h_newflat'], message: 'Моей хорошей девушке Кате ❤️' } },
 ];
 const BADGES = {
   first: { name: 'Первый игрок', icon: 'crown' },
@@ -601,3 +604,20 @@ const SERVICE_COST = 0.015;          // ТО (износ → 0) — доля с�
 const REPAIR_COST = 0.05;            // ремонт после поломки — доля стоимости машины
 // Время на 402 м по мощности (сек): 23 − 4,3·ln(л.с./50), не быстрее 8,8 с
 const quarterMile = hp => Math.max(8.8, 23 - 4.3 * Math.log(hp / 50));
+
+// ---------- бесплатные кейсы растут вместе с игроком ----------
+// Ежедневный кейс: набор вещей зависит от статуса (индекс в RANKS) — от «копейки» до машин бизнес-класса.
+const FREE_TIERS = [
+  { rank: 0, items: ['c_2109', 'c_2107', 'c_matiz', 'h_bed', 'h_garage'] },
+  { rank: 2, items: ['c_2107', 'c_matiz', 'c_logan', 'c_granta', 'c_niva', 'h_bed', 'h_garage', 'h_dacha', 'h_village'] },
+  { rank: 4, items: ['c_granta', 'c_niva', 'c_polo', 'c_vesta', 'c_solaris', 'c_rio', 'c_tiggo', 'c_octavia', 'h_dacha', 'h_village', 'h_room', 'h_studio'] },
+  { rank: 6, items: ['c_solaris', 'c_rio', 'c_jolion', 'c_camry', 'c_k5', 'c_tiguan', 'c_eclass', 'h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_house'] },
+];
+// Связи появляются в «Знакомстве дня», когда они игроку уже полезны (минимальный статус)
+const CONN_MIN_RANK = {
+  k_police: 0, k_gibdd: 0, k_zhkh: 0,
+  k_banker: 2, k_tax: 2, k_official: 3,
+  k_prosecutor: 4, k_judge: 4,
+  k_deputy: 5, k_governor: 5,
+  k_oligarch: 6, k_minister: 6,
+};

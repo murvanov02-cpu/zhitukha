@@ -505,6 +505,7 @@
   }
   function rewardList(r) {
     return [r.money ? `+${fmt(r.money)} ₽` : '',
+      ...(r.items || []).map(id => ITEM[id].name),
       ...Object.entries(r.tickets || {}).map(([id, n]) => `${ticketName(id)}${n > 1 ? ' ×' + n : ''}`),
       r.badge ? `значок «${BADGES[r.badge].name}»` : ''].filter(Boolean).join(', ');
   }
@@ -521,10 +522,11 @@
     const r = p.reward;
     if (r.money) earn(r.money);
     for (const [id, n] of Object.entries(r.tickets || {})) for (let i = 0; i < n; i++) giveTicket(id);
+    for (const id of r.items || []) addItem(ITEM[id]);
     if (r.badge && !S.badges.includes(r.badge)) S.badges.push(r.badge);
     save(); render(); showName();
     showModal(`<div class="drop"><div class="drop-icon" style="--rbg:var(--gold-bg)">${ic('gift', 'gold')}</div>
-      <div class="drop-name">Промокод активирован</div><div class="small muted">${p.label || ''}</div>
+      <div class="drop-name">${r.message || 'Промокод активирован'}</div><div class="small muted">${r.message ? 'Промокод активирован' : p.label || ''}</div>
       <div class="drop-bonus">${rewardList(r)}</div>
       <button class="btn full" style="margin-top:12px" data-action="close">Отлично</button></div>`);
     haptic('ok');
@@ -571,7 +573,11 @@
 
   // ---------- кейсы ----------
   function poolOf(c) {
-    return c.items.map(id => ITEM[id]).filter(Boolean);
+    let ids = c.items;
+    // бесплатные кейсы растут вместе со статусом игрока
+    if (c.id === 'free') ids = FREE_TIERS.filter(t => rankIdx() >= t.rank).pop().items;
+    if (c.id === 'conn_free') ids = ids.filter(id => rankIdx() >= (CONN_MIN_RANK[id] || 0));
+    return ids.map(id => ITEM[id]).filter(Boolean);
   }
   // real = настоящий дроп (учитывает и двигает гарантию), иначе — заполнитель ленты рулетки
   function rollItem(c, real) {
@@ -684,9 +690,14 @@
       if (done) return;
       done = true;
       cancelAnimationFrame(raf);
-      $('#roulette').classList.add('hidden');
-      spinning = false;
-      showDrop(res);
+      const winTile = strip.children[RL_WIN];
+      winTile.classList.add('win');
+      haptic(rarIdx(res.it.rarity) >= 2 ? 'ok' : 'medium');
+      setTimeout(() => {
+        $('#roulette').classList.add('hidden');
+        spinning = false;
+        showDrop(res);
+      }, 750);
     };
     const follow = () => {
       const m = new DOMMatrix(getComputedStyle(strip).transform);
@@ -696,12 +707,22 @@
     };
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const x = RL_WIN * RL_STEP + 48 - box.clientWidth / 2 + (Math.random() - 0.5) * 70;
-      strip.style.transition = 'transform 5.5s cubic-bezier(.1,.75,.15,1)';
+      strip.style.transition = 'transform 6s cubic-bezier(.08,.6,.12,1)';
       strip.style.transform = `translateX(${-x}px)`;
       raf = requestAnimationFrame(follow);
     }));
-    strip.addEventListener('transitionend', () => setTimeout(finish, 350), { once: true });
-    $('#rl-skip').onclick = finish;
+    strip.addEventListener('transitionend', () => setTimeout(finish, 150), { once: true });
+    $('#rl-skip').onclick = () => {
+      // пропуск: мгновенно доезжаем до выигрышной плитки
+      const cur = new DOMMatrix(getComputedStyle(strip).transform).m41;
+      strip.style.transition = 'none';
+      strip.style.transform = `translateX(${cur}px)`;
+      requestAnimationFrame(() => {
+        strip.style.transition = 'transform .35s ease-out';
+        strip.style.transform = `translateX(${-(RL_WIN * RL_STEP + 48 - box.clientWidth / 2)}px)`;
+        setTimeout(finish, 380);
+      });
+    };
   }
 
   // ---------- окна и уведомления ----------
