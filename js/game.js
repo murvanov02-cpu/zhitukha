@@ -8,6 +8,8 @@
   const ECO = 2;          // версия экономики: 2 — реальные цены
   const ECO_SCALE = 500;  // во сколько раз выросли деньги при переходе на реальные цены
   const OFFLINE_CAP_H = 6;       // сколько реальных часов копится доход, пока игрок не в игре
+  const OFFLINE_RATE = 0.5;      // без игрока доход идёт вполовину — играть выгоднее, чем просто заходить
+  const OFFLINE_AFTER_S = 60;    // перерыв дольше этого — уже «вне игры»
   const RL_STEP = 104;           // ширина плитки рулетки + отступ
   const RL_WIN = 50;             // позиция выигрышной плитки в ленте
 
@@ -367,7 +369,8 @@
     const now = Date.now();
     const sec = Math.max(0, Math.min((now - S.lastTick) / 1000, OFFLINE_CAP_H * 3600));
     S.lastTick = now;
-    const earned = incomeMonth() * MONTHS_PER_HOUR * sec / 3600;
+    const rate = sec > OFFLINE_AFTER_S ? OFFLINE_RATE : 1;
+    const earned = incomeMonth() * MONTHS_PER_HOUR * sec / 3600 * rate;
     if (earned >= 0) earn(earned, 'work');
     else S.money = Math.max(0, S.money + earned);  // бизнес в минусе — убыток, но не ниже нуля
     // доверие тает, если долго не общаться (уровень не падает)
@@ -1114,7 +1117,7 @@
     showModal(`<h3>С возвращением 👋</h3>
       <p>Тебя не было ${h ? h + ' ч ' : ''}${m} мин. Работа, аренда и бизнес принесли:</p>
       <div class="big">+${fmt(earned)} ₽</div>
-      <p class="small">Доход копится максимум ${OFFLINE_CAP_H} часов — заходи почаще.</p>
+      <p class="small">Без тебя доход идёт на ${Math.round(OFFLINE_RATE * 100)}% и копится максимум ${OFFLINE_CAP_H} часов — в игре он полный.</p>
       <button class="btn full" data-action="close">Забрать</button>`);
   }
   function showPeek(id) {
@@ -1320,7 +1323,7 @@
         nBiz ? `${bp >= 0 ? '+' : ''}${fmt(bp)} ₽/мес` : 'от ларька с шаурмой до IT-холдинга', nBiz ? (bp < 0 ? 'bad' : 'good') : 'muted')}
       ${row('data-goto="career" data-sub="career:conn"', 'users', nConn ? `Связи · ${nConn}` : 'Связи',
         S.favor ? 'Тебя кое о чём просят' : nConn ? 'полезные люди решают проблемы' : 'открой «Знакомство дня»', S.favor ? 'gold' : 'muted')}
-      <p class="small muted" style="text-align:center;margin-top:6px">${ic('clock')} Игровой месяц длится ${String(60 / MONTHS_PER_HOUR).replace('.', ',')} мин — деньги капают непрерывно.<br>Без тебя доход копится максимум ${OFFLINE_CAP_H} ч</p>`;
+      <p class="small muted" style="text-align:center;margin-top:6px">${ic('clock')} Игровой месяц длится ${String(60 / MONTHS_PER_HOUR).replace('.', ',')} мин — деньги капают непрерывно.<br>Без тебя — ${Math.round(OFFLINE_RATE * 100)}% дохода, максимум ${OFFLINE_CAP_H} ч</p>`;
   }
 
   // ---------- имущество (открывается с главной) ----------
