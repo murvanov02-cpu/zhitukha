@@ -222,16 +222,16 @@ const ITEMS = [
   // Связи: cat conn, perk — что даёт (см. PERKS), lv — сила по уровню доверия 1–5,
   // special — особая услуга на максимальном доверии (см. SPECIALS)
   { id: 'k_police',   cat: 'conn', name: 'Участковый Петрович',     icon: '👮',   rarity: 'common',    perk: 'fineCut',    lv: [20, 30, 40, 50, 60], special: { type: 'closeEvent' } },
-  { id: 'k_gibdd',    cat: 'conn', name: 'Инспектор ГИБДД',         icon: '🚓',   rarity: 'common',    perk: 'gibdd',      lv: [1, 1, 1, 1, 1], special: { type: 'cash', hours: 3 } },
-  { id: 'k_zhkh',     cat: 'conn', name: 'Начальница ЖКХ',          icon: '🧹',   rarity: 'common',    perk: 'rentUp',     lv: [3, 5, 7, 9, 12], special: { type: 'cash', hours: 4 } },
+  { id: 'k_gibdd',    cat: 'conn', name: 'Инспектор ГИБДД',         icon: '🚓',   rarity: 'common',    perk: 'gibdd',      lv: [1, 1, 1, 1, 1], special: { type: 'ticket', case: 'car_junk' } },
+  { id: 'k_zhkh',     cat: 'conn', name: 'Начальница ЖКХ',          icon: '🧹',   rarity: 'common',    perk: 'rentUp',     lv: [3, 5, 7, 9, 12], special: { type: 'ticket', case: 'home_dorm' } },
   { id: 'k_tax',      cat: 'conn', name: 'Налоговый инспектор',     icon: '🧾',   rarity: 'rare',      perk: 'taxCut',     lv: [2, 3, 4, 5, 7], special: { type: 'taxHoliday', hours: 24 } },
-  { id: 'k_official', cat: 'conn', name: 'Чиновник мэрии',          icon: '🏛️',   rarity: 'rare',      perk: 'license',    lv: [20, 30, 40, 55, 70], special: { type: 'cash', hours: 8 } },
-  { id: 'k_banker',   cat: 'conn', name: 'Банкир',                  icon: '🏦',   rarity: 'rare',      perk: 'sellUp',     lv: [3, 4, 6, 8, 10], special: { type: 'cash', hours: 12 } },
+  { id: 'k_official', cat: 'conn', name: 'Чиновник мэрии',          icon: '🏛️',   rarity: 'rare',      perk: 'license',    lv: [20, 30, 40, 55, 70], special: { type: 'cash', hours: 6 } },
+  { id: 'k_banker',   cat: 'conn', name: 'Банкир',                  icon: '🏦',   rarity: 'rare',      perk: 'sellUp',     lv: [3, 4, 6, 8, 10], special: { type: 'cash', hours: 8 } },
   { id: 'k_prosecutor', cat: 'conn', name: 'Прокурор',              icon: '⚖️',   rarity: 'epic',      perk: 'safe',       lv: [20, 35, 50, 75, 100], special: { type: 'closeEvent' } },
   { id: 'k_judge',    cat: 'conn', name: 'Судья',                   icon: '👨‍⚖️', rarity: 'epic',      perk: 'court',      lv: [1, 1, 1, 1, 1], special: { type: 'closeEvent' } },
   { id: 'k_deputy',   cat: 'conn', name: 'Депутат',                 icon: '🎩',   rarity: 'legendary', perk: 'demandUp',   lv: [5, 8, 11, 15, 20], special: { type: 'tender', hours: 20 } },
   { id: 'k_governor', cat: 'conn', name: 'Губернатор',              icon: '🏢',   rarity: 'legendary', perk: 'licenseCut', lv: [30, 45, 60, 75, 90], special: { type: 'tender', hours: 20 } },
-  { id: 'k_oligarch', cat: 'conn', name: 'Олигарх',                 icon: '💼',   rarity: 'mythic',    perk: 'deal',       lv: [20, 25, 30, 40, 50], special: { type: 'cash', hours: 24 } },
+  { id: 'k_oligarch', cat: 'conn', name: 'Олигарх',                 icon: '💼',   rarity: 'mythic',    perk: 'deal',       lv: [20, 25, 30, 40, 50], special: { type: 'cash', hours: 36 } },
   { id: 'k_minister', cat: 'conn', name: 'Министр экономики',       icon: '🕴️',   rarity: 'mythic',    perk: 'bizBoost',   lv: [10, 13, 16, 20, 25], special: { type: 'tender', hours: 40 } },
 ];
 
@@ -343,14 +343,32 @@ const MULTI_DISCOUNT = { 10: 0.1 }; // ×10 — скидка 10%
 const PITY = 30;                    // не позже чем на 30-м кейсе гарантированно эпик или выше
 // ---------- связи: доверие ----------
 const CONN_MAX_LV = 5;
-const CONN_XP = [0, 100, 250, 500, 1000];  // сколько доверия нужно для уровней 1–5
+const CONN_XP = [0, 150, 400, 900, 1800];  // сколько доверия нужно для уровней 1–5 (у обычной связи)
+// Чем влиятельнее человек, тем дольше завоёвывать его доверие: пороги умножаются на это
+const CONN_RARITY_XP = { common: 1, rare: 1.3, epic: 1.7, legendary: 2.2, mythic: 3 };
 const DUP_CONN_XP = 100;                   // повторное знакомство из кейса
-// Встречи: цена умножается на mult редкости связи; cd — перезарядка у каждой связи своя
+// Встречи: три ступени — быстрая, серьёзная и большая (доверие и перезарядка у всех одинаковые),
+// а что именно и почём — у каждого человека своё: начальницу ЖКХ не зовут на рыбалку за миллион.
 const MEETS = [
-  { id: 'lunch',   name: 'Деловой обед', icon: 'ti-tools-kitchen-2', cost: 20e3,  xp: 15,  cd: 1 * 3600e3 },
-  { id: 'banya',   name: 'Баня',         icon: 'ti-flame',           cost: 150e3, xp: 50,  cd: 6 * 3600e3 },
-  { id: 'fishing', name: 'Рыбалка',      icon: 'ti-fish',            cost: 1e6,   xp: 150, cd: 24 * 3600e3 },
+  { id: 'lunch',   xp: 15,  cd: 1 * 3600e3 },
+  { id: 'banya',   xp: 50,  cd: 6 * 3600e3 },
+  { id: 'fishing', xp: 150, cd: 24 * 3600e3 },
 ];
+// [название, иконка, цена] для каждой ступени
+const CONN_MEETS = {
+  k_police:     [['Чай с баранками', 'coffee', 3e3], ['Шашлыки на даче', 'flame', 40e3], ['Подарок к Дню полиции', 'gift', 200e3]],
+  k_gibdd:      [['Кофе на посту', 'coffee', 2e3], ['Шины для патрульной', 'steering-wheel', 60e3], ['Путёвка в Сочи', 'beach', 250e3]],
+  k_zhkh:       [['Цветы и конфеты', 'flower', 3e3], ['Ремонт в кабинете', 'paint', 80e3], ['Санаторий для мамы', 'heart', 300e3]],
+  k_tax:        [['Обед в ресторане', 'tools-kitchen-2', 25e3], ['Абонемент в фитнес', 'barbell', 150e3], ['Путёвка в Турцию', 'plane', 700e3]],
+  k_official:   [['Ужин', 'tools-kitchen-2', 40e3], ['Баня', 'flame', 250e3], ['Рыбалка на Волге', 'fish', 1e6]],
+  k_banker:     [['Деловой ланч', 'tools-kitchen-2', 50e3], ['Гольф-клуб', 'golf', 400e3], ['Яхтенный уикенд', 'sailboat', 2e6]],
+  k_prosecutor: [['Ужин без свидетелей', 'tools-kitchen-2', 120e3], ['Охота', 'target', 1.5e6], ['Коллекционное ружьё', 'gift', 5e6]],
+  k_judge:      [['Коллекционный коньяк', 'glass-full', 150e3], ['Картина в кабинет', 'photo', 1.5e6], ['Дача на лето', 'home', 6e6]],
+  k_deputy:     [['Пожертвование в фонд', 'heart-handshake', 1e6], ['Спонсорство выборов', 'speakerphone', 8e6], ['Вилла в Ницце на лето', 'building', 30e6]],
+  k_governor:   [['Приём в резиденции', 'tools-kitchen-2', 1.5e6], ['Охота с вертолёта', 'helicopter', 12e6], ['Яхта на неделю', 'sailboat', 45e6]],
+  k_oligarch:   [['Покер по-крупному', 'cards', 5e6], ['Ралли в Монако', 'car', 40e6], ['Остров на неделю', 'trees', 150e6]],
+  k_minister:   [['Закрытый ужин', 'tools-kitchen-2', 4e6], ['Форум в Давосе', 'plane', 35e6], ['Часы в подарок', 'clock', 120e6]],
+};
 // Просьбы: время от времени одна из связей о чём-то просит. Выполнил — много доверия, отказал — немного теряешь.
 // cost: hours — столько часов твоего дохода (не меньше min); salary — столько месячных зарплат сотрудника бизнеса
 const FAVORS = [
@@ -370,6 +388,7 @@ const SPECIAL_CD_H = 24;          // особая услуга — раз в с�
 const SPECIALS = {
   closeEvent: 'Закрыть любую текущую проблему бесплатно',
   cash:       'Выгодная сделка: +{h} мес. твоего дохода',
+  ticket:     'Свой человек: бесплатное открытие «{case}»',
   taxHoliday: 'Налоговые каникулы: {h} ч без налога на бизнес',
   tender:     'Госзаказ: {h} мес. прибыли бизнеса сразу',
 };
@@ -514,7 +533,7 @@ const BIZ_TAX = 0.15;
 const BIZ_SELL_RATE = 0.7;      // бизнес продаётся за 70% вложенного — как и вещи
 const BIZ_LICENSE = 0.1;        // лицензии — доля цены
 const BIZ_START = 2;            // рабочих мест и уровней клиентов на старте
-const BIZ_MAX = 10;             // максимум рабочих мест (и столько же уровней клиентов)
+const BIZ_MAX = 20;             // максимум рабочих мест (и столько же уровней клиентов); каждое следующее дороже на BIZ_GROWTH
 const BIZ_REV = 0.035;          // выручка одного загруженного места в месяц — доля цены бизнеса
 const BIZ_SALARY = 0.008;       // зарплата на одно место в месяц
 const BIZ_RENT = 0.006;         // аренда помещения в месяц
@@ -522,7 +541,16 @@ const BIZ_MGR = 0.008;          // управляющий в месяц
 const BIZ_SLOT_COST = 0.55;     // первое новое место — доля цены бизнеса
 const BIZ_AD_COST = 0.35;       // первый уровень рекламы
 const BIZ_GROWTH = 1.12;        // каждое следующее место и уровень рекламы дороже
-const HIRE_MGR_MONTHS = 2;      // найм управляющего — столько его зарплат
+const HIRE_MGR_MONTHS = 2;      // (старое) найм управляющего — столько его зарплат
+// Управляющие: чем круче, тем дороже (найм — hire его месячных зарплат, salary — доля цены бизнеса в месяц),
+// но тем выше эффективность бизнеса (eff) и шанс самому решить проблему бизнеса (solve, %). req — нужный навык «Бизнес».
+const MANAGERS = [
+  { id: 'intern',   name: 'Стажёр',       icon: '🧑‍🎓', salary: 0.003, eff: 0.75, solve: 0,  hire: 1,  req: 0 },
+  { id: 'manager',  name: 'Менеджер',     icon: '🧑‍💼', salary: 0.006, eff: 0.9,  solve: 15, hire: 3,  req: 5 },
+  { id: 'head',     name: 'Управляющий',  icon: '👔', salary: 0.009, eff: 1,    solve: 25, hire: 4,  req: 10 },
+  { id: 'director', name: 'Директор',     icon: '🎩', salary: 0.014, eff: 1.12, solve: 40, hire: 6,  req: 18 },
+  { id: 'ceo',      name: 'CEO',          icon: '🦈', salary: 0.022, eff: 1.25, solve: 55, hire: 10, req: 28 },
+];
 
 // price — помещение и запуск; rank / req — что нужно для открытия; unit — чем меряем клиентов; perSlot — клиентов на место в месяц
 const BUSINESSES = [
@@ -873,13 +901,15 @@ const SERVICE_OWN_RACE_UNTIL = 3;
 const SERVICE_NO_RACE = 6;
 // Служебная машина и номер — со звания капитана, растут со званием. Продать нельзя; «списать на личное» —
 // после SVC_WRITEOFF_H часов на звании и с репутацией не ниже 0, за SVC_WRITEOFF_RATE стоимости машины и номера.
+// plate — шансы редкости служебного номера (%): номер выпадает случайно, но чем выше звание, тем он красивее.
+// Генералу номер не выпадает, а «бронируется»: А 003 МР 97.
 const SERVICE_CARS = {
-  3: { car: 'c_vesta',  plate: 'rare' },
-  4: { car: 'c_camry',  plate: 'rare' },
-  5: { car: 'c_eclass', plate: 'epic' },
-  6: { car: 'c_lc300',  plate: 'epic' },
-  7: { car: 'c_sclass', plate: 'legendary' },
-  8: { car: 'c_g63',    plate: 'legendary' },
+  3: { car: 'c_vesta',  plate: { common: 60, rare: 35, epic: 5 } },
+  4: { car: 'c_camry',  plate: { common: 30, rare: 55, epic: 15 } },
+  5: { car: 'c_eclass', plate: { rare: 50, epic: 45, legendary: 5 } },
+  6: { car: 'c_lc300',  plate: { rare: 25, epic: 60, legendary: 15 } },
+  7: { car: 'c_sclass', plate: { epic: 50, legendary: 45, mythic: 5 } },
+  8: { car: 'c_g63',    plate: { epic: 25, legendary: 60, mythic: 15 } },
   9: { car: 'c_aurus',  plate: { a: 'А', d: '003', b: 'МР', r: '97', rar: 'mythic' } },
 };
 const SVC_WRITEOFF_H = 24;

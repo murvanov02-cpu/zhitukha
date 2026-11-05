@@ -41,6 +41,7 @@
       raceCar: null, pool: { n: RACE_POOL, ts: Date.now() }, raceWins: 0,
       plates: [], plateSeq: 0,    // номера: { id, a, d, b, r: регион, rar, v: стоимость, car: на какой машине }
       plateReg: 'msk',            // выбранный регион в наборах номеров
+      conn2: true,                // доверие уже по новым порогам
       tune2: true,                // тюнинг уже по новым ценам (см. upgrade)
       lvl: 1, xp: 0,              // уровень игрока и опыт внутри уровня
       sil: null,                  // служба: { s: структура, r: звание, xp, since, roofs: [id бизнесов], mission, nextMission, nextCheck, osb }
@@ -70,7 +71,7 @@
     // связи раньше хранились как уровень 1–3
     for (const [id, v] of Object.entries(s.conn)) {
       if (!ITEM[id]) delete s.conn[id];
-      else if (typeof v === 'number') s.conn[id] = newConn(CONN_XP[Math.min(v, CONN_MAX_LV) - 1]);
+      else if (typeof v === 'number') s.conn[id] = newConn(cxp(id, Math.min(v, CONN_MAX_LV) - 1));
     }
     if (s.job && !JOB[s.job]) s.job = 'flyers';
     if (s.event && !EV[s.event.id]) s.event = null;
@@ -87,6 +88,20 @@
     if (s.sil && s.sil.rep !== undefined && o.rep === undefined) s.rep = s.sil.rep;   // v30: репутация стала общей
     if (s.sil && !s.sil.rankAt) s.sil.rankAt = s.sil.since;
     if (s.lvl > LEVEL_MAX) { s.lvl = LEVEL_MAX; s.xp = 0; }
+    // v31: пороги доверия выросли — пересчитываем, сохраняя уровень и долю до следующего
+    if (!o.conn2) {
+      const OLD = [0, 100, 250, 500, 1000];
+      for (const [id, c] of Object.entries(s.conn)) {
+        if (!ITEM[id] || typeof c !== 'object') continue;
+        let lv = 1;
+        while (lv < 5 && c.xp >= OLD[lv]) lv++;
+        const frac = lv >= 5 ? 0 : (c.xp - OLD[lv - 1]) / (OLD[lv] - OLD[lv - 1]);
+        c.xp = cxp(id, lv - 1) + (lv >= 5 ? 0 : frac * (cxp(id, lv) - cxp(id, lv - 1)));
+      }
+      s.conn2 = true;
+    }
+    // v31: управляющий стал выбором из пяти; старый «просто управляющий» — это «Управляющий»
+    for (const b of Object.values(s.biz)) if (b.mgr === true) b.mgr = 3; else if (!b.mgr) b.mgr = 0;
     // v25: уровни появились позже — засчитываем прошлые кейсы, победы и курсы (без наград за уровни)
     if (o.lvl === undefined) {
       let xp = (o.opened || 0) * XP_CASE.cheap + (o.raceWins || 0) * RACE_LEVELS[1].xp * 2
@@ -223,11 +238,13 @@
   }
 
   // ---------- связи и польза от профессии ----------
+  // Порог доверия для уровня (индекс 0…4) у конкретной связи — у влиятельных выше
+  function cxp(id, i) { return Math.round(CONN_XP[i] * (CONN_RARITY_XP[ITEM[id].rarity] || 1)); }
   function connLv(id) {
     const c = S.conn[id];
     if (!c) return 0;
     let lv = 1;
-    while (lv < CONN_MAX_LV && c.xp >= CONN_XP[lv]) lv++;
+    while (lv < CONN_MAX_LV && c.xp >= cxp(id, lv)) lv++;
     return lv;
   }
   // Сила бонуса: лучшее из связей (по уровню доверия) и текущей профессии
@@ -284,9 +301,10 @@
     const cap = b.slots * d.perSlot;
     const demand = Math.round((BIZ_START + b.ads) * d.perSlot * (1 + perk('demandUp') / 100));
     const sold = Math.min(cap, demand);
-    const eff = b.mgr ? 1 : ownerEff();
+    const M = MANAGERS[b.mgr - 1];
+    const eff = M ? M.eff : ownerEff();
     const revenue = frozen(id) ? 0 : sold / d.perSlot * n.rev * eff * (1 + perk('bizBoost') / 100);
-    const wages = b.slots * n.salary, mgr = b.mgr ? n.mgr : 0;
+    const wages = b.slots * n.salary, mgr = M ? d.price * M.salary : 0;
     const pre = revenue - wages - n.rent - mgr;
     const tax = pre > 0 ? pre * taxRate() : 0;
     const neck = cap < demand ? 'slots' : cap > demand ? 'ads' : '';
@@ -295,7 +313,8 @@
   const bizProfit = () => Object.keys(S.biz).reduce((a, id) => a + (BIZ[id] ? bizStats(id).profit : 0), 0);
   const slotCost = id => Math.round(BIZ[id].price * BIZ_SLOT_COST * Math.pow(BIZ_GROWTH, S.biz[id].slots - BIZ_START));
   const adCost = id => Math.round(BIZ[id].price * BIZ_AD_COST * Math.pow(BIZ_GROWTH, S.biz[id].ads));
-  const mgrHire = id => Math.round(bizNum(BIZ[id]).mgr * HIRE_MGR_MONTHS);
+  const mgrSalary = (id, t) => BIZ[id].price * MANAGERS[t - 1].salary;
+  const mgrHire = (id, t) => Math.round(mgrSalary(id, t) * MANAGERS[t - 1].hire / 1000) * 1000;
   // Насколько изменится прибыль, если поменять состояние бизнеса
   const bizDelta = (id, change) => bizStats(id, Object.assign({}, S.biz[id], change)).profit - bizStats(id).profit;
   function bizOpen(d) {
@@ -350,7 +369,7 @@
     // доверие тает, если долго не общаться (уровень не падает)
     for (const [id, c] of Object.entries(S.conn)) {
       if (now - c.last < DECAY_AFTER_H * 3600e3) continue;
-      const floor = CONN_XP[connLv(id) - 1];
+      const floor = cxp(id, connLv(id) - 1);
       c.xp = Math.max(floor, c.xp - DECAY_XP_PER_DAY * sec / 86400);
     }
     return { sec, earned };
@@ -498,6 +517,8 @@
     if (e.via && S.conn[e.via]) return { kind: 'conn', label: `Позвонить: ${ITEM[e.via].name}`, chance: callChance(e.via) };
     return null;
   }
+  // Управляющий бизнеса, которого коснулась проблема, может решить её сам
+  const evMgr = ev => { const b = ev.biz && S.biz[ev.biz], M = b && MANAGERS[b.mgr - 1]; return M && M.solve ? M : null; };
   function showEvent() {
     const ev = S.event;
     if (!ev) return;
@@ -515,6 +536,8 @@
       <div class="choice">
         ${via && ev.callFailed ? `<button class="btn btn-danger" disabled>📵 ${ITEM[e.via].name} не помог<span class="btn-top">звонок не сработал — решай сам</span></button>`
           : via ? `<button class="btn btn-green" data-action="event-solve" data-id="via">${via.label}<span class="btn-top">${via.kind === 'job' || via.chance >= 100 ? 'бесплатно и без риска' : `бесплатно · шанс ${via.chance}%, иначе — официально`}</span></button>` : ''}
+        ${evMgr(ev) ? (ev.mgrFailed ? `<button class="btn btn-danger" disabled>${evMgr(ev).icon} ${evMgr(ev).name} не справился<span class="btn-top">решай сам</span></button>`
+          : `<button class="btn btn-line" data-action="event-solve" data-id="mgr">Поручить: ${evMgr(ev).name}<span class="btn-top">бесплатно · шанс ${evMgr(ev).solve}%</span></button>`) : ''}
         <button class="btn ${via ? 'btn-ghost' : ''}" data-action="event-solve" data-id="official">Официально · ${fmt(ev.cost)} ₽<span class="btn-top">без риска</span></button>
         <button class="btn btn-line" data-action="event-solve" data-id="bribe">«Договориться» · ${fmt(bribe)} ₽<span class="btn-top">риск ${risk}% — тогда штраф ${fmt(ev.cost * BRIBE_FINE)} ₽</span></button>
         <button class="btn btn-ghost" data-action="close">Решу позже${e.freeze ? ` · «${BIZ[ev.biz].name}» опечатан` : ''}</button>
@@ -527,6 +550,12 @@
     const e = EV[ev.id];
     let msg = '';
     if (how === 'good') { earn(ev.reward); msg = `+${fmt(ev.reward)} ₽`; }
+    else if (how === 'mgr') {
+      const M = evMgr(ev);
+      if (!M || ev.mgrFailed) return;
+      if (Math.random() * 100 >= M.solve) { ev.mgrFailed = true; haptic('err'); save(); showEvent(); return; }
+      msg = `${M.name} всё уладил`;
+    }
     else if (how === 'via') {
       const h = evHelper(e);
       if (!h || ev.callFailed) return;
@@ -570,10 +599,11 @@
   }
 
   // ---------- связи: встречи, просьбы, услуги ----------
-  const meetCost = (id, m) => Math.round(m.cost * RARITIES[ITEM[id].rarity].mult * (1 - perk('meetCheap') / 100));
+  const meetOf = (id, i) => CONN_MEETS[id] ? CONN_MEETS[id][i] : ['Встреча', 'users', 20e3 * RARITIES[ITEM[id].rarity].mult];
+  const meetCost = (id, m) => Math.round(meetOf(id, MEETS.indexOf(m))[2] * (1 - perk('meetCheap') / 100));
   function addXp(id, xp) {
     const c = S.conn[id], before = connLv(id);
-    c.xp = Math.min(CONN_XP[CONN_MAX_LV - 1], c.xp + xp);
+    c.xp = Math.min(cxp(id, CONN_MAX_LV - 1), c.xp + xp);
     c.last = Date.now();
     const after = connLv(id);
     if (after > before) { toast(`${ITEM[id].icon} Доверие ${after}: ${perkText(ITEM[id], after)}`); haptic('ok'); }
@@ -587,7 +617,7 @@
     const now = Date.now();
     if (S.favor && now > S.favor.until) {
       const id = S.favor.conn;
-      if (S.conn[id]) S.conn[id].xp = Math.max(CONN_XP[connLv(id) - 1], S.conn[id].xp - FAVOR_FAIL_XP);
+      if (S.conn[id]) S.conn[id].xp = Math.max(cxp(id, connLv(id) - 1), S.conn[id].xp - FAVOR_FAIL_XP);
       if (ITEM[id]) toast(`${ITEM[id].icon} ${short(ITEM[id].name)} обиделся: просьба осталась без ответа`);
       S.favor = null;
     }
@@ -613,7 +643,7 @@
   }
   function specialText(it) {
     const amt = specialAmount(it);
-    const base = SPECIALS[it.special.type].replace('{h}', it.special.hours);
+    const base = SPECIALS[it.special.type].replace('{h}', it.special.hours).replace('{case}', it.special.case ? CASE[it.special.case].name : '');
     return amt ? `${base.split(':')[0]}: +${fmt(amt)} ₽` : base;
   }
   const specialLeft = id => Math.max(0, (S.conn[id].sp || 0) + SPECIAL_CD_H * 3600e3 - Date.now());
@@ -872,13 +902,13 @@
   function addItem(it) {
     if (it.cat === 'conn') {
       if (!S.conn[it.id]) { S.conn[it.id] = newConn(0); return { it, isNew: true }; }
-      if (S.conn[it.id].xp >= CONN_XP[CONN_MAX_LV - 1]) {
+      if (S.conn[it.id].xp >= cxp(it.id, CONN_MAX_LV - 1)) {
         const v = monthsMoney(2, 50e3);
         earn(v);
         return { it, gift: v };
       }
       const before = connLv(it.id);
-      S.conn[it.id].xp = Math.min(CONN_XP[CONN_MAX_LV - 1], S.conn[it.id].xp + DUP_CONN_XP);
+      S.conn[it.id].xp = Math.min(cxp(it.id, CONN_MAX_LV - 1), S.conn[it.id].xp + DUP_CONN_XP);
       S.conn[it.id].last = Date.now();
       return { it, xp: DUP_CONN_XP, lvUp: connLv(it.id) > before };
     }
@@ -1501,8 +1531,8 @@
     S.inv[id] = (S.inv[id] || 0) + 1;
     S.sil.car = id;
     S.sil.carAt = Date.now();
-    const p = typeof spec.plate === 'string' ? makePlate(spec.plate, PLATE_REGIONS[0])
-      : Object.assign({ id: ++S.plateSeq, car: null }, spec.plate, { v: PLATE_RARITY[spec.plate.rar].value });
+    const p = spec.plate.rar ? Object.assign({ id: ++S.plateSeq, car: null }, spec.plate, { v: PLATE_RARITY[spec.plate.rar].value })
+      : makePlate(rollPlateRarity({ w: spec.plate }), PLATE_REGIONS[0]);
     for (const x of S.plates) if (x.car === id) x.car = null;
     p.car = id; p.svc = true;
     S.plates.push(p);
@@ -1970,7 +2000,7 @@
       return `<div class="card ${frozen(d.id) ? 'danger' : ''}">
         <div class="biz-head"><div class="ico-box" style="font-size:22px">${d.icon}</div>
           <div class="grow"><div class="job-name">${d.name}</div>
-            <div class="small muted">${frozen(d.id) ? '🔒 Опечатан' : b.mgr ? 'С управляющим: 100%' : `Без управляющего: ${Math.round(st.eff * 100)}%`}</div></div>
+            <div class="small muted">${frozen(d.id) ? '🔒 Опечатан' : b.mgr ? `${MANAGERS[b.mgr - 1].icon} ${MANAGERS[b.mgr - 1].name}: ${Math.round(st.eff * 100)}%` : `Без управляющего: ${Math.round(st.eff * 100)}%`}</div></div>
           <div class="biz-profit ${st.profit < 0 ? 'bad' : ''}">${plus(st.profit)}<div class="small muted">₽/мес</div></div></div>
         <div class="biz-grid">
           <div><span class="small muted">Мощность</span><b>${fmt(st.cap)}</b><span class="small muted">${b.slots} мест</span></div>
@@ -1990,19 +2020,18 @@
           <div class="kv small"><span>Выручка</span><b>${fmt(st.revenue)}</b></div>
           <div class="kv small"><span>Зарплаты (${b.slots} × ${fmt(n.salary)})</span><b>−${fmt(st.wages)}</b></div>
           <div class="kv small"><span>Аренда помещения</span><b>−${fmt(st.rent)}</b></div>
-          ${b.mgr ? `<div class="kv small"><span>Управляющий</span><b>−${fmt(st.mgr)}</b></div>` : ''}
+          ${b.mgr ? `<div class="kv small"><span>${MANAGERS[b.mgr - 1].name}</span><b>−${fmt(st.mgr)}</b></div>` : ''}
           <div class="kv small"><span>Налог ${Math.round(taxRate() * 100)}%</span><b>−${fmt(st.tax)}</b></div>
           <div class="small muted" style="margin-top:4px">Все суммы — за час</div><div class="kv small"><span>Вложено</span><b>${fmt(b.inv)}</b></div>
           <div class="row" style="margin-top:10px;flex-wrap:wrap">
-            ${b.mgr ? `<button class="btn btn-sm btn-ghost" data-action="biz-mgr" data-id="${d.id}">Уволить управляющего</button>`
-              : `<button class="btn btn-sm btn-line" data-action="biz-mgr" data-id="${d.id}">Нанять управляющего · ${fmt(n.mgr)}/мес · ${plus(bizDelta(d.id, { mgr: true }))}</button>`}
+            <button class="btn btn-sm ${b.mgr ? 'btn-ghost' : 'btn-line'}" data-action="biz-mgr" data-id="${d.id}">${b.mgr ? 'Сменить управляющего' : 'Нанять управляющего'}</button>
             <button class="btn btn-sm btn-danger" data-action="biz-sell" data-id="${d.id}">Продать за ${fmt(b.inv * bizSellRate())} (${Math.round(bizSellRate() * 100)}% вложенного)</button></div>
         </details></div>`;
     }).join('');
     const rest = BUSINESSES.filter(d => !S.biz[d.id]);
     const shop = rest.map(d => {
       const open = bizOpen(d);
-      const start = Math.round((BIZ_START * bizNum(d).rev - BIZ_START * bizNum(d).salary - bizNum(d).rent - bizNum(d).mgr) * (1 - BIZ_TAX));
+      const start = Math.round((BIZ_START * bizNum(d).rev - BIZ_START * bizNum(d).salary - bizNum(d).rent - d.price * MANAGERS[2].salary) * (1 - BIZ_TAX));
       const reqs = reqTags(d.req, [`<span class="req ${rankIdx() >= d.rank ? 'ok' : 'no'}">${RANKS[d.rank].name}</span>`]);
       return `<div class="card job ${open ? '' : 'locked'}"><div class="ico-box" style="font-size:22px">${d.icon}</div>
         <div class="grow"><div class="job-name">${d.name}</div>
@@ -2023,7 +2052,7 @@
   const starsHTML = lv => `<span class="stars">${'★'.repeat(lv)}<span class="off">${'★'.repeat(CONN_MAX_LV - lv)}</span></span>`;
   const lvPct = id => {
     const lv = connLv(id), c = S.conn[id];
-    return lv >= CONN_MAX_LV ? 100 : (c.xp - CONN_XP[lv - 1]) / (CONN_XP[lv] - CONN_XP[lv - 1]) * 100;
+    return lv >= CONN_MAX_LV ? 100 : (c.xp - cxp(id, lv - 1)) / (cxp(id, lv) - cxp(id, lv - 1)) * 100;
   };
   function renderConn() {
     const ids = Object.keys(S.conn).filter(id => ITEM[id]).sort((a, b) => rarIdx(ITEM[b].rarity) - rarIdx(ITEM[a].rarity) || connLv(b) - connLv(a));
@@ -2065,11 +2094,11 @@
   }
   function showConn(id) {
     const it = ITEM[id], c = S.conn[id], lv = connLv(id), now = Date.now();
-    const toNext = lv < CONN_MAX_LV ? `${Math.ceil(CONN_XP[lv] - c.xp)} доверия до ${lv + 1} ★` : 'Полное доверие';
-    const meets = MEETS.map(m => {
-      const until = c.cd[m.id] || 0, wait = until > now;
-      return `<button class="act" data-action="meet" data-id="${id}:${m.id}" ${wait ? 'disabled' : ''}>${ic(m.icon.replace('ti-', ''))}
-        <span class="act-name">${m.name}</span><span class="act-sub">+${Math.round(m.xp * (1 + perk('trustUp') / 100))} доверия</span>
+    const toNext = lv < CONN_MAX_LV ? `${Math.ceil(cxp(id, lv) - c.xp)} доверия до ${lv + 1} ★` : 'Полное доверие';
+    const meets = MEETS.map((m, i) => {
+      const until = c.cd[m.id] || 0, wait = until > now, [mname, micon] = meetOf(id, i);
+      return `<button class="act" data-action="meet" data-id="${id}:${m.id}" ${wait ? 'disabled' : ''}>${ic(micon)}
+        <span class="act-name">${mname}</span><span class="act-sub">+${Math.round(m.xp * (1 + perk('trustUp') / 100))} доверия</span>
         <span class="act-cost">${wait ? fmtTime(until - now) : fmt(meetCost(id, m)) + ' ₽'}</span></button>`;
     }).join('');
     const spLeft = specialLeft(id);
@@ -2443,7 +2472,7 @@
       const lic = licenseCost(d);
       if (!pay(d.price + (how === 'bribe' ? Math.round(lic / BRIBE_DIVISOR) : lic))) return;
       closeModal();
-      S.biz[id] = { slots: BIZ_START, ads: 0, mgr: false, inv: d.price };
+      S.biz[id] = { slots: BIZ_START, ads: 0, mgr: 0, inv: d.price };
       if (how === 'bribe' && Math.random() * 100 < bribeRisk('license')) {
         S.money = Math.max(0, S.money - lic * BRIBE_FINE);
         showModal(`<h3>🚨 Попался</h3><p>Взятку за лицензию заметили. Бизнес оформили, но пришлось заплатить штраф ${fmt(lic * BRIBE_FINE)} ₽.</p>
@@ -2683,10 +2712,29 @@
       b.ads++; b.inv += c;
     }),
     'biz-mgr': id => {
-      const b = S.biz[id];
+      const b = S.biz[id], d = BIZ[id];
       if (!b) return;
-      if (b.mgr) { b.mgr = false; haptic('light'); save(); render(); return; }
-      bizUp(id, () => { if (!pay(mgrHire(id))) return false; b.mgr = true; });
+      showModal(`${sheetHead('Управляющий · ' + d.name)}
+        <p class="small muted">Чем круче управляющий, тем дороже, но тем больше приносит бизнес и тем чаще сам решает его проблемы.</p>
+        ${MANAGERS.map((M, i) => {
+          const t = i + 1, cur = b.mgr === t, ok = S.skills.biz >= M.req, delta = bizDelta(id, { mgr: t });
+          return `<div class="card ${cur ? 'accent' : ''} ${ok ? '' : 'locked'}"><div class="row"><div class="job-ico">${M.icon}</div>
+            <div class="grow"><div class="job-name">${M.name}</div>
+              <div class="small">${Math.round(M.eff * 100)}% эффективности${M.solve ? ` · решает проблемы в ${M.solve}%` : ''}</div>
+              <div class="small muted">${fmt(mgrSalary(id, t))} ₽/мес · найм ${fmt(mgrHire(id, t))} ₽${M.req ? ` · Бизнес ${M.req}` : ''}</div></div>
+            ${cur ? '<span class="tag">Работает</span>' : ok ? `<button class="btn btn-sm btn-col" data-action="mgr-hire" data-id="${id}:${t}">${delta >= 0 ? '+' : ''}${fmt(delta)}<span class="btn-top">₽/мес</span></button>` : `<span class="tag lock">${ic('lock')}</span>`}</div></div>`;
+        }).join('')}
+        ${b.mgr ? `<button class="btn btn-ghost full" data-action="mgr-hire" data-id="${id}:0">Уволить — управлять самому (${Math.round(ownerEff() * 100)}%)</button>` : ''}`, true);
+    },
+    'mgr-hire': v => {
+      const [id, t] = v.split(':'), b = S.biz[id], tier = +t;
+      if (!b || b.mgr === tier) return;
+      if (tier && S.skills.biz < MANAGERS[tier - 1].req) return;
+      if (tier && !pay(mgrHire(id, tier))) return;
+      b.mgr = tier;
+      closeModal(); haptic(tier ? 'ok' : 'light');
+      toast(tier ? `${MANAGERS[tier - 1].icon} ${MANAGERS[tier - 1].name} в «${BIZ[id].name}»` : 'Управляешь сам');
+      save(); render();
     },
     'biz-sell': id => {
       const b = S.biz[id], d = BIZ[id];
@@ -2741,6 +2789,9 @@
         if (!S.event || EV[S.event.id].good) return;
         toast(`${it.icon} ${it.name} закрыл вопрос «${EV[S.event.id].title}»`);
         S.event = null;
+      } else if (sp.type === 'ticket') {
+        giveTicket(sp.case);
+        toast(`${it.icon} ${ticketName(sp.case)}`);
       } else if (sp.type === 'taxHoliday') {
         S.taxFreeUntil = Date.now() + sp.hours * 3600e3;
         toast(`${it.icon} Налоговые каникулы на ${sp.hours} ч`);
@@ -2768,7 +2819,7 @@
       const fv = S.favor;
       if (!fv) return;
       const c = S.conn[fv.conn];
-      if (c) c.xp = Math.max(CONN_XP[connLv(fv.conn) - 1], c.xp - FAVOR_FAIL_XP);
+      if (c) c.xp = Math.max(cxp(fv.conn, connLv(fv.conn) - 1), c.xp - FAVOR_FAIL_XP);
       S.favor = null;
       haptic('light'); toast('Отказал. Доверие немного упало');
       save(); render();
