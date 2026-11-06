@@ -438,3 +438,8 @@ details.more-card .card { background: var(--card2); }
 #tut .tut-skip { flex: none; background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; }
 .tut-glow { position: relative; z-index: 2; box-shadow: 0 0 0 2px var(--gold), 0 0 18px var(--gold) !important; border-radius: 12px; animation: tutpulse 1.4s ease-in-out infinite; }
 @keyframes tutpulse { 50% { box-shadow: 0 0 0 3px var(--gold), 0 0 28px var(--gold) !important; } }
+
+/* генеральская служебная: флажок на капоте и мигалка */
+.svc-car .svc-flag { position: absolute; left: 6px; top: 2px; font-size: 13px; }
+.svc-car .svc-light { position: absolute; right: 8px; top: -4px; font-size: 13px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .25; } }
