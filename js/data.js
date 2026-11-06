@@ -689,6 +689,11 @@ const PROMO_CODES = [
 // Заблокированные игроки: сюда вписывают личные ID (ZH-XXXXXX из профиля → «Ещё»). Блокировка работает без сервера,
 // поэтому обходится сбросом сохранения на другом устройстве — это защита от случайных нарушителей, а не от решительных.
 const BANNED_IDS = [];
+
+// Учёт игроков: игра раз в REPORT_EVERY_H часов при запуске отправляет ID, Telegram-тег, имя и уровень
+// в таблицу Google (Apps Script). Пустая строка — отправка выключена. Игрок видит это в профиле → «Ещё».
+const STATS_URL = 'https://script.google.com/macros/s/AKfycbwNQlTyIRf4781M3Osqp5wjkfkiiQEtKWmHuKwyJhTXPisaUVIQqBrb_F_HPqVIY09T/exec';
+const REPORT_EVERY_H = 3;
 const BADGES = {
   first: { name: 'Первый игрок', icon: 'crown' },
   collector: { name: 'Коллекционер', icon: 'cars' },

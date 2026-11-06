@@ -47,6 +47,7 @@
       coll: {},                   // полученные награды коллекций: id → true
       tut: 0,                     // шаг обучения (-1 — пройдено или пропущено)
       incHour: false,             // доход в шапке: false — в игровой месяц, true — в реальный час
+      lastReport: 0,              // когда последний раз отправляли данные в таблицу учёта
       pid: '',                    // личный ID игрока: выдаётся сам, случайный, не меняется даже при «Начать заново"
       tune2: true,                // тюнинг уже по новым ценам (см. upgrade)
       lvl: 1, xp: 0,              // уровень игрока и опыт внутри уровня
@@ -711,6 +712,21 @@
   }
   const badgeIcons = () => S.badges.filter(b => BADGES[b]).map(b => `<i class="ti ti-${BADGES[b].icon} gold" title="${BADGES[b].name}"></i>`).join(' ');
 
+  // ---------- учёт игроков ----------
+  // Отправка в таблицу Google: без ответа (no-cors), тихо, не чаще раза в REPORT_EVERY_H часов.
+  // С локального адреса и в тестовом режиме не шлём, чтобы тесты не засоряли таблицу.
+  function reportPlayer() {
+    const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
+    if (!STATS_URL || DEBUG || (local && !window.__forceReport)) return;
+    if (Date.now() - (S.lastReport || 0) < REPORT_EVERY_H * 3600e3) return;
+    S.lastReport = Date.now();
+    try {
+      fetch(STATS_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ id: S.pid, tag: (user && user.username) || '', name: (user && user.first_name) || '', lvl: S.lvl }) }).catch(() => {});
+    } catch (e) { /* без сети — отправим в другой раз */ }
+    save();
+  }
+
   // ---------- сделка с олигархом ----------
   const dealMax = () => Math.min(S.money, monthsMoney(DEAL_INCOME_H, 50e3));
 
@@ -1258,6 +1274,7 @@
     else body = `
       <div class="card"><div class="row"><div class="grow"><div class="small muted">Твой ID</div><div class="val" style="letter-spacing:1px">${S.pid}</div></div>
         <button class="btn btn-ghost btn-sm" data-action="copy-pid">${ic('copy')} Копировать</button></div></div>
+      <p class="small muted" style="margin:0 2px 8px">Игра отправляет разработчику твой ID, Telegram-тег, имя и уровень — для промокодов и поддержки.</p>
       <div class="card"><div class="row"><input id="promo-input" class="input grow" placeholder="Промокод" autocomplete="off" autocapitalize="characters">
         <button class="btn btn-sm" data-action="promo">OK</button></div></div>
       <div class="card">
@@ -3053,6 +3070,7 @@
   const first = catchUp();
   ensureQuests();
   render();
+  reportPlayer();
   if (S.tut === 0) startTutorial();
   else if (S.event) showEvent();
   else maybeEvent();
