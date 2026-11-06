@@ -47,6 +47,7 @@
       coll: {},                   // полученные награды коллекций: id → true
       tut: 0,                     // шаг обучения (-1 — пройдено или пропущено)
       incHour: false,             // доход в шапке: false — в игровой месяц, true — в реальный час
+      pid: '',                    // личный ID игрока: выдаётся сам, случайный, не меняется даже при «Начать заново"
       tune2: true,                // тюнинг уже по новым ценам (см. upgrade)
       lvl: 1, xp: 0,              // уровень игрока и опыт внутри уровня
       sil: null,                  // служба: { s: структура, r: звание, xp, since, roofs: [id бизнесов], mission, nextMission, nextCheck, osb }
@@ -66,7 +67,15 @@
       const old = localStorage.getItem(OLD_SAVE_KEY);
       if (old) return rescale(migrateV1(JSON.parse(old)));
     } catch (e) { /* битое сохранение — начинаем заново */ }
-    return newState();
+    const n = newState();
+    n.pid = makePid();
+    return n;
+  }
+  // Личный ID: ZH- и 6 случайных символов (без похожих O/0, I/1). Выдаётся автоматически при первом запуске.
+  function makePid() {
+    const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', b = new Uint8Array(6);
+    (window.crypto && crypto.getRandomValues) ? crypto.getRandomValues(b) : b.forEach((_, i) => { b[i] = Math.random() * 256; });
+    return 'ZH-' + Array.from(b, x => A[x % A.length]).join('');
   }
   // Приводит сохранение любой прошлой версии к нынешней
   function upgrade(o) {
@@ -108,6 +117,7 @@
     // v31: управляющий стал выбором из пяти; старый «просто управляющий» — это «Управляющий»
     for (const b of Object.values(s.biz)) if (b.mgr === true) b.mgr = 3; else if (!b.mgr) b.mgr = 0;
     if (o.tut === undefined) s.tut = -1;   // старые игроки обучение не проходят
+    if (!s.pid) s.pid = makePid();
     // v25: уровни появились позже — засчитываем прошлые кейсы, победы и курсы (без наград за уровни)
     if (o.lvl === undefined) {
       let xp = (o.opened || 0) * XP_CASE.cheap + (o.raceWins || 0) * RACE_LEVELS[1].xp * 2
@@ -194,6 +204,13 @@
   }
 
   let S = load();
+  // Заблокированный ID (список BANNED_IDS в data.js): экран-заглушка поверх игры
+  if (BANNED_IDS.includes(S.pid)) {
+    const ban = document.createElement('div');
+    ban.style.cssText = 'position:fixed;inset:0;z-index:999;background:#0f1012;color:#eee;display:grid;place-items:center;text-align:center;padding:24px;font:16px system-ui';
+    ban.innerHTML = `<div><div style="font-size:48px">⛔</div><h3>Доступ закрыт</h3><p style="color:#9aa0a6">Этот аккаунт заблокирован.<br>Твой ID: ${S.pid}</p></div>`;
+    document.body.appendChild(ban);
+  }
   let tab = 'home';
   const sub = { cases: 'car', career: 'jobs', inv: 'car', casino: 'roulette' };
   let spinning = false;
@@ -674,7 +691,9 @@
     const hash = await sha256(code);
     const p = PROMO_CODES.find(x => x.hash === hash);
     if (!p) { toast('Такого промокода нет'); haptic('err'); return; }
-    if (p.only && !(user && user.username && user.username.toLowerCase() === p.only)) { toast('Этот промокод не для тебя'); haptic('err'); return; }
+    if ((p.only || p.onlyId) && !((p.only && user && user.username && user.username.toLowerCase() === p.only) || (p.onlyId && S.pid === p.onlyId))) {
+      toast('Этот промокод не для тебя'); haptic('err'); return;
+    }
     if (S.promo.includes(hash)) { toast('Этот промокод уже активирован'); haptic('err'); return; }
     if (p.until && new Date() > new Date(p.until + 'T23:59:59')) { toast('Срок действия промокода истёк'); haptic('err'); return; }
     S.promo.push(hash);
@@ -1237,6 +1256,8 @@
       <p class="small muted">Опыт — за кейсы, гонки, подработки, учёбу, связи, задания и службу. За уровень — месяц дохода, на каждом 5-м — ещё и билет.
         Цвет уровня: серый → синий (5) → фиолетовый (10) → золотой (20) → красный (35) → бирюзовый (45).</p>`;
     else body = `
+      <div class="card"><div class="row"><div class="grow"><div class="small muted">Твой ID</div><div class="val" style="letter-spacing:1px">${S.pid}</div></div>
+        <button class="btn btn-ghost btn-sm" data-action="copy-pid">${ic('copy')} Копировать</button></div></div>
       <div class="card"><div class="row"><input id="promo-input" class="input grow" placeholder="Промокод" autocomplete="off" autocapitalize="characters">
         <button class="btn btn-sm" data-action="promo">OK</button></div></div>
       <div class="card">
@@ -2834,6 +2855,11 @@
     },
     'event-show': () => showEvent(),
     'prof-tab': k => showProfile(k),
+    'copy-pid': () => {
+      const done = () => { haptic('light'); toast('ID скопирован'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(S.pid).then(done, () => toast(S.pid));
+      else toast(S.pid);
+    },
     'inc-toggle': () => { S.incHour = !S.incHour; haptic('light'); save(); updateLive(); },
     'tut-go': () => { S.tut = 1; closeModal(); save(); tab = 'home'; render(); },
     'tut-skip': () => { S.tut = -1; closeModal(); $('#tut') && $('#tut').remove(); document.querySelectorAll('.tut-glow').forEach(el => el.classList.remove('tut-glow')); save(); },
@@ -2962,7 +2988,8 @@
       ${ITEMS.concat(CASES).filter(i => i.credit).map(i => `<div class="kv small"><span>${i.name}</span><b>${i.credit}</b></div>`).join('')}
       <div class="kv small"><span>Погоны армии и полиции</span><b>Wikimedia Commons · общественное достояние</b></div>`, true),
     reset: () => askConfirm('Точно начать заново? Весь прогресс пропадёт.', () => {
-      S = newState(); ensureQuests(); save(); tab = 'home'; closeModal(); render();
+      const pid = S.pid;
+      S = newState(); S.pid = pid; ensureQuests(); save(); tab = 'home'; closeModal(); render();
     }),
   };
 
