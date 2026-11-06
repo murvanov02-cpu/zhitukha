@@ -919,14 +919,15 @@
   function rollItem(c, real) {
     const pool = poolOf(c);
     let rars = RARITY_ORDER.filter(r => c.w[r] > 0 && pool.some(i => i.rarity === r));
-    if (real && S.pity >= PITY - 1) {
+    const hiW = rars.filter(r => rarIdx(r) >= 2).reduce((x, r) => x + c.w[r], 0) / rars.reduce((x, r) => x + c.w[r], 0) * 100;
+    if (real && S.pity >= PITY - 1 && hiW >= PITY_MIN_W) {
       const hi = rars.filter(r => rarIdx(r) >= 2);
       if (hi.length) rars = hi;
     }
     let x = Math.random() * rars.reduce((a, r) => a + c.w[r], 0);
     let rar = rars[rars.length - 1];
     for (const r of rars) { if ((x -= c.w[r]) < 0) { rar = r; break; } }
-    if (real) S.pity = rarIdx(rar) >= 2 ? 0 : S.pity + 1;
+    if (real && hiW >= PITY_MIN_W) S.pity = rarIdx(rar) >= 2 ? 0 : S.pity + 1;
     const list = pool.filter(i => i.rarity === rar);
     return list[Math.floor(Math.random() * list.length)];
   }
@@ -1163,8 +1164,8 @@
       <div class="tiles mb">${tiles}</div>
       <p class="small">Лучшее: <b style="color:${RARITIES[best.rarity].color}">${best.name}</b>${soldSum ? ` · автопродажа +${fmt(soldSum)} ₽` : ''}</p>
       ${sellable ? `<p class="small muted">Нажми на вещи, чтобы выбрать, что продать.</p>
-        <div class="row" style="margin-bottom:8px"><button class="btn btn-ghost grow" data-action="multi-sell" data-id="all">Продать всё · ${fmt(multiSum(true))} ₽</button>
-          <button class="btn btn-line grow" id="multi-sel" data-action="multi-sell" data-id="sel" disabled>Продать выбранное</button></div>` : ''}
+        <div class="sell-row"><button class="btn btn-ghost" data-action="multi-sell" data-id="all">Продать всё · ${fmt(multiSum(true))} ₽</button>
+          <button class="btn btn-line" id="multi-sel" data-action="multi-sell" data-id="sel" disabled>Продать выбранное</button></div>` : ''}
       <button class="btn full" data-action="close">Забрать всё</button>`);
     setTimeout(() => haptic(rarIdx(best.rarity) >= 2 ? 'ok' : 'medium'), sorted.length * step * 1000);
   }
@@ -1177,13 +1178,15 @@
       <p class="small">Без тебя доход идёт на ${Math.round(OFFLINE_RATE * 100)}% и копится максимум ${OFFLINE_CAP_H} часов — в игре он полный.</p>
       <button class="btn full" data-action="close">Забрать</button>`);
   }
+  // Шанс в процентах по-русски: 7,9% · 0,5% · 0,05%
+  const pct = v => (v >= 1 ? String(+v.toFixed(1)) : String(+v.toPrecision(2))).replace('.', ',') + '%';
   function showPeek(id) {
     const c = CASE[id], pool = poolOf(c);
     const rars = RARITY_ORDER.filter(x => c.w[x] > 0 && pool.some(i => i.rarity === x));
     const tw = rars.reduce((a, x) => a + c.w[x], 0);
     const tiles = rars.slice().reverse().flatMap(r => {
       const list = pool.filter(i => i.rarity === r);
-      return list.map(i => `<div data-action="item-info" data-id="${id}:${i.id}">${tileHTML(i, `<div class="tile-note muted">${+(c.w[r] / tw * 100 / list.length).toFixed(2)}%${i.value ? ` · ${fmt(i.value)}` : ''}</div>`)}</div>`);
+      return list.map(i => `<div data-action="item-info" data-id="${id}:${i.id}">${tileHTML(i, `<div class="tile-note muted">${pct(c.w[r] / tw * 100 / list.length)}${i.value ? ` · ${fmt(i.value)}` : ''}</div>`)}</div>`);
     });
     showModal(`${sheetHead(c.name + ': что внутри')}<p class="small muted">Нажми на вещь — покажу, что она даёт.</p><div class="tiles">${tiles.join('')}</div>
       <button class="btn btn-ghost full" style="margin-top:12px" data-action="case" data-id="${id}">${ic('arrow-left')} Назад</button>`, true);
@@ -1534,7 +1537,7 @@
         <button class="${sec === 'car' ? 'active' : ''}" data-sub="cases:car">Авто${dot(CASE.free)}</button>
         <button class="${sec === 'home' ? 'active' : ''}" data-sub="cases:home">Жильё</button>
         <button class="${sec === 'conn' ? 'active' : ''}" data-sub="cases:conn">Связи${dot(CASE.conn_free)}</button></div>
-      <p class="pity mb">${ic('target')} Эпик или выше не позже чем через ${PITY - S.pity} шт. в кейсах, где он есть${S.skills.cha ? ` · скидка ${Math.min(S.skills.cha, 30)}%` : ''}</p>
+      <p class="pity mb">${ic('target')} Эпик или выше не позже чем через ${PITY - S.pity} шт. в кейсах, где его шанс от ${PITY_MIN_W}%${S.skills.cha ? ` · скидка ${Math.min(S.skills.cha, 30)}%` : ''}</p>
       ${freeCaseCard(sec === 'conn' ? CASE.conn_free : CASE.free)}
       ${tierBlock('cheap', 'Недорогие')}${tierBlock('mid', 'Средние')}${tierBlock('elite', 'Дорогие')}
       ${themed.length ? `<details class="more"><summary>${ic('category')} Тематические · ${themed.length}</summary>${themed.map(themeRow).join('')}</details>` : ''}`;
@@ -1544,7 +1547,7 @@
     const rars = RARITY_ORDER.filter(r => c.w[r] > 0 && pool.some(i => i.rarity === r));
     const tw = rars.reduce((a, r) => a + c.w[r], 0);
     const bar = rars.map(r => `<i style="width:${c.w[r] / tw * 100}%;background:${RARITIES[r].color}"></i>`).join('');
-    const legend = rars.map(r => `<span style="color:${RARITIES[r].color}">${RARITIES[r].name} ${+(c.w[r] / tw * 100).toFixed(1)}%</span>`).join('');
+    const legend = rars.map(r => `<span style="color:${RARITIES[r].color}">${RARITIES[r].name} ${pct(c.w[r] / tw * 100)}</span>`).join('');
     const tickets = S.tickets[id] || 0;
     showModal(`${sheetHead(c.name)}
       <div class="case-tile" style="margin-bottom:12px"><div class="case-cover" style="height:140px">${coverHTML(c)}</div></div>
@@ -3235,6 +3238,16 @@
       if (!DEBUG) return;
       S.cd = {}; if (S.gig) S.gig.until = 0;
       for (const c of Object.values(S.conn)) { c.cd = {}; c.sp = 0; }
+      // всё, что ждёт реального времени: служба, гонки, сделка, номера, бизнес
+      S.silBan = 0;
+      if (S.sil) {
+        S.sil.nextMission = 0; S.sil.nextSpec = 0;
+        S.sil.since -= 7 * 86400e3; S.sil.rankAt = 0; S.sil.carAt = 0;   // выслуга +7 суток: хватит на любое звание
+      }
+      S.pool = { n: RACE_POOL, ts: Date.now() };
+      for (const g of Object.values(S.garage)) { g.tank = TANK_RACES; g.ts = Date.now(); }
+      if (S.deal) S.deal.until = 0;
+      for (const b of Object.values(S.biz)) b.nephew = 0;
       save(); render(); showProfile(); toast('Таймеры сброшены');
     },
     promo: () => redeem(($('#promo-input') || {}).value),
