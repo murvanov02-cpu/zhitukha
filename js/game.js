@@ -47,6 +47,7 @@
       coll: {},                   // полученные награды коллекций: id → true
       tut: 0,                     // шаг обучения (-1 — пройдено или пропущено)
       incHour: false,             // доход в шапке: false — в игровой месяц, true — в реальный час
+      msgSeen: [],                // какие личные сообщения уже показаны
       lastReport: 0,              // когда последний раз отправляли данные в таблицу учёта
       pid: '',                    // личный ID игрока: выдаётся сам, случайный, не меняется даже при «Начать заново"
       tune2: true,                // тюнинг уже по новым ценам (см. upgrade)
@@ -406,6 +407,7 @@
     maybeEvent();
     maybeFavor();
     maybeOsb();
+    maybeMessage();
     if (away > 60 && r.earned >= 1) showOffline(r);
     updateLive();
   }
@@ -711,6 +713,20 @@
     haptic('ok');
   }
   const badgeIcons = () => S.badges.filter(b => BADGES[b]).map(b => `<i class="ti ti-${BADGES[b].icon} gold" title="${BADGES[b].name}"></i>`).join(' ');
+
+  // ---------- личные сообщения ----------
+  // Показываем по одному, когда нет других окон; отметка «показано» ставится сразу, поэтому второго раза не будет
+  function maybeMessage() {
+    if (!$('#modal').classList.contains('hidden')) return;
+    const m = PLAYER_MESSAGES.find(x => x.to === S.pid && !(S.msgSeen || []).includes(x.id));
+    if (!m) return;
+    (S.msgSeen = S.msgSeen || []).push(m.id);
+    save();
+    showModal(`<div class="drop"><div class="drop-icon" style="font-size:44px">${m.icon || '✉️'}</div>
+      <div class="drop-name">${m.title}</div><p style="margin-top:10px;font-size:17px">${m.text}</p>
+      <button class="btn full" style="margin-top:12px" data-action="close">Понял</button></div>`);
+    haptic('medium');
+  }
 
   // ---------- учёт игроков ----------
   // Отправка в таблицу Google: без ответа (no-cors), тихо, не чаще раза в REPORT_EVERY_H часов.
