@@ -98,6 +98,10 @@ const ITEMS = [
   // Только служебная — генералу (svc: true — не выпадает из кейсов и не считается в коллекции)
   { id: 'c_aurus', cat: 'car', name: 'Aurus Senat', icon: '🚘', rarity: 'mythic', bonus: 40, t: ['ru'], value: 60e6, svc: true,
     img: 'img/cars/c_aurus.png', credit: 'Alexander Migl · CC BY-SA 4.0' },
+  { id: 'c_maybach', cat: 'car', name: 'Mercedes-Maybach S 680', icon: '🚘', rarity: 'mythic', bonus: 40, t: ['de'], value: 45e6, svc: true,
+    img: 'img/cars/c_maybach.png', credit: 'Alexander Migl · CC BY-SA 4.0' },
+  { id: 'c_komendant', cat: 'car', name: 'Aurus Komendant', icon: '🚙', rarity: 'mythic', bonus: 40, t: ['ru'], value: 55e6, svc: true,
+    img: 'img/cars/c_komendant.png', credit: 'Retired electrician · CC0' },
   { id: 'c_lx', cat: 'car', name: 'Lexus LX 600', icon: '🚙', rarity: 'epic', bonus: 18, t: ['jp'], value: 22e6,
     img: 'img/cars/c_lx.png', credit: 'Kevauto · CC BY-SA 4.0' },
   { id: 'c_bentley', cat: 'car', name: 'Bentley Continental GT', icon: '🏎️', rarity: 'legendary', bonus: 32, value: 33e6,
@@ -416,7 +420,7 @@ const JOBS = [
   { id: 'holding',  name: 'Владелец холдинга',    icon: '🏦', pay: 25e6,  req: { biz: 40, cha: 30, int: 30 }, perk: 'bizBoost', v: 20 },
 ];
 
-const START_MONEY = 150e3;
+const START_MONEY = 600e3;
 
 const SKILL_MAX = 50;
 const SKILLS = [
@@ -426,7 +430,8 @@ const SKILLS = [
   { id: 'biz', name: 'Бизнес',    icon: '📈', desc: '+2% к аренде за уровень. Нужен для руководящих должностей.' },
 ];
 // Учёба без перерывов: прокачка ограничена только деньгами, каждый уровень на 30% дороже предыдущего
-const skillCost = lvl => Math.round(100e3 * Math.pow(1.3, lvl)); // курсы, тренер, MBA…
+// Курсы, тренер, MBA… Первые 5 уровней со скидкой (30% → 86%), чтобы старт шёл бодрее; дальше — полная цена.
+const skillCost = lvl => Math.round(100e3 * Math.pow(1.3, lvl) * (lvl < 5 ? 0.3 + 0.14 * lvl : 1));
 
 // ---------- подработки ----------
 // Разовые задания по таймеру: запустил — вернулся — забрал. Одна за раз, работе не мешает.
@@ -495,15 +500,15 @@ const LIFE_PATH = [
   { type: 'biz',       v: 1,     text: 'Открой свой бизнес',         reward: { money: 250000 } },
   { type: 'conn',      v: 3,     text: 'Заведи 3 полезные связи',     reward: { ticket: 'conn_district' } },
   { type: 'raceWins',  v: 5,     text: 'Выиграй 5 гонок',            reward: { money: 300e3 } },
-  { type: 'job',       v: 150e3, text: 'Зарплата от 150 тыс ₽/мес',  reward: { money: 500000 } },
+  { type: 'job',       v: 150e3, text: 'Зарплата от 1,2 млн ₽/ч',  reward: { money: 500000 } },
   { type: 'connLv',    v: 3,     text: 'Подними доверие любой связи до 3', reward: { ticket: 'home_dorm' } },
   { type: 'rank',      v: 3,     text: 'Стань «Средним классом»',    reward: { money: 1e06 } },
   { type: 'carRarity', v: 2,     text: 'Получи эпическую машину',    reward: { ticket: 'car_new' } },
   { type: 'home',      v: 5,     text: 'Собери 5 объектов недвижимости', reward: { money: 2.5e06 } },
   { type: 'rank',      v: 4,     text: 'Стань «Успешным»',           reward: { ticket: 'home_used' } },
-  { type: 'bizProfit', v: 1e6,   text: 'Прибыль бизнеса от 1 млн ₽/мес', reward: { ticket: 'car_new' } },
+  { type: 'bizProfit', v: 1e6,   text: 'Прибыль бизнеса от 8 млн ₽/ч', reward: { ticket: 'car_new' } },
   { type: 'connLv',    v: 5,     text: 'Доведи связь до полного доверия', reward: { money: 1e07 } },
-  { type: 'job',       v: 450e3, text: 'Зарплата от 450 тыс ₽/мес',  reward: { money: 1.5e07 } },
+  { type: 'job',       v: 450e3, text: 'Зарплата от 3,6 млн ₽/ч',  reward: { money: 1.5e07 } },
   { type: 'rank',      v: 5,     text: 'Стань «Богачом»',            reward: { ticket: 'car_new' } },
   { type: 'biz',       v: 4,     text: 'Владей четырьмя бизнесами',   reward: { money: 5e07 } },
   { type: 'conn',      v: 8,     text: 'Собери 8 разных связей',     reward: { ticket: 'conn_forum' } },
@@ -746,7 +751,7 @@ const CAR_HP = {
   c_camry: 200, c_rav4: 199, c_tiguan: 180, c_monjaro: 238, c_eclass: 245, c_lc300: 409, c_x5: 340, c_cayenne: 353,
   c_gtr: 565, c_m5: 600, c_rs6: 600, c_sclass: 367, c_lx: 409, c_911: 385, c_g63: 585, c_bentley: 659,
   c_mclaren: 720, c_ferrari: 830, c_urus: 666, c_aventador: 770, c_phantom: 571, c_cullinan: 571,
-  c_huayra: 730, c_jesko: 1600, c_chiron: 1500, c_aurus: 598,
+  c_huayra: 730, c_jesko: 1600, c_chiron: 1500, c_aurus: 598, c_maybach: 612, c_komendant: 598,
   c_moskvich: 75, c_lanos: 86, c_focus: 125, c_largus: 106, c_uaz: 150, c_corolla: 122, c_passat: 150, c_a4: 190, c_prado: 249, c_m3: 510, c_tesla: 1020, c_range: 400, c_amggt: 585, c_db11: 630, c_nevera: 1914, c_laferrari: 963,
 };
 // Ставки зависят от цены машины: единица ставки U = RACE_CAR_SHARE её стоимости (не меньше RACE_UNIT_MIN).
@@ -926,6 +931,7 @@ const ROOF_RATE = 0.0085;
 // в сутки их CHECKS_PER_DAY × 2^(−репутация/50): у взяточника 4 в сутки, у нейтрального 1, у честного одна за 4 дня.
 const REP_MAX = 100;
 const REP_HONEST = 8;                // честный выбор в задании
+const REP_GOOD_MULT = 1.5;           // хорошие дела поднимают репутацию в полтора раза сильнее, чем плохие роняют
 const REP_BRIBE = 8;                 // «взять деньги» — минус столько + 4 за каждый «месяц звания» в сумме
 const REP_ROOF = 10;                 // взять бизнес под «крышу» (отпустить — вернуть половину)
 const CHECKS_PER_DAY = 1;
@@ -942,26 +948,45 @@ const SVC_SAFE_MAX = 50;             // связи и звания снижаю�
 // Уволился — вернуться на службу можно через SERVICE_COOLDOWN_H часов, после суда — через SERVICE_JAIL_COOLDOWN_H.
 const SERVICE_COOLDOWN_H = 24;
 const SERVICE_JAIL_COOLDOWN_H = 72;
-// Мелкий бизнес (до BUSINESSES[SERVICE_BIZ_TIER] включительно) можно держать до звания SERVICE_BIZ_UNTIL (майор — уже нельзя).
+// Мелкий бизнес (до BUSINESSES[SERVICE_BIZ_TIER] включительно) можно держать до звания SERVICE_BIZ_UNTIL (капитан — уже нельзя).
 const SERVICE_BIZ_TIER = 2;
-const SERVICE_BIZ_UNTIL = 4;
+const SERVICE_BIZ_UNTIL = 3;
 // Гонки: до лейтенанта — на своих машинах («подпольные»), с капитана — только на служебной (ГИБДД не трогает),
 // с полковника (SERVICE_NO_RACE) — никаких гонок: слишком много внимания. Зато мигалка: события с машиной обходят стороной.
 const SERVICE_OWN_RACE_UNTIL = 3;
 const SERVICE_NO_RACE = 6;
 // Служебная машина и номер — со звания капитана, растут со званием. Продать нельзя; «списать на личное» —
 // после SVC_WRITEOFF_H часов на звании и с репутацией не ниже 0, за SVC_WRITEOFF_RATE стоимости машины и номера.
-// plate — шансы редкости служебного номера (%): номер выпадает случайно, но чем выше звание, тем он красивее.
-// Генералу номер не выпадает, а «бронируется»: А 003 МР 97.
+// Служебная машина — с сержанта; у каждой структуры своя линейка (как реально ездят в ведомствах),
+// на вершине — у МВД Maybach, у ФСБ Aurus Senat, у спецназа Aurus Komendant.
+// Служебные выдаются отдельными вещами (svc: true, см. ниже): из кейсов не выпадают и в коллекцию не идут.
 const SERVICE_CARS = {
-  3: { car: 'c_vesta',  plate: { common: 60, rare: 35, epic: 5 } },
-  4: { car: 'c_camry',  plate: { common: 30, rare: 55, epic: 15 } },
-  5: { car: 'c_eclass', plate: { rare: 50, epic: 45, legendary: 5 } },
-  6: { car: 'c_lc300',  plate: { rare: 25, epic: 60, legendary: 15 } },
-  7: { car: 'c_sclass', plate: { epic: 50, legendary: 45, mythic: 5 } },
-  8: { car: 'c_g63',    plate: { epic: 25, legendary: 60, mythic: 15 } },
-  9: { car: 'c_aurus',  plate: { a: 'А', d: '003', b: 'МР', r: '97', rar: 'mythic' } },
+  mvd: { 1: 'c_granta', 2: 'c_vesta', 3: 'c_camry', 4: 'c_k5',     5: 'c_eclass', 6: 'c_lc300', 7: 'c_sclass', 8: 'c_lx',    9: 'c_maybach' },
+  fsb: { 1: 'c_vesta',  2: 'c_k5',    3: 'c_camry', 4: 'c_a4',     5: 'c_eclass', 6: 'c_x5',    7: 'c_sclass', 8: 'c_lc300', 9: 'c_aurus' },
+  spn: { 1: 'c_niva',   2: 'c_uaz',   3: 'c_prado', 4: 'c_tiguan', 5: 'c_lc300',  6: 'c_g63',   7: 'c_range',  8: 'c_lx',    9: 'c_komendant' },
 };
+// Шансы редкости служебного номера (%): выпадает случайно, но чем выше звание, тем красивее.
+// gov — генеральский госномер: всегда серии АМР или ЕКХ, а номер случайный из «блатных» 001–099.
+const SERVICE_PLATES = {
+  1: { common: 80, rare: 20 },
+  2: { common: 60, rare: 35, epic: 5 },
+  3: { common: 40, rare: 45, epic: 15 },
+  4: { rare: 60, epic: 35, legendary: 5 },
+  5: { rare: 45, epic: 45, legendary: 10 },
+  6: { rare: 20, epic: 60, legendary: 18, mythic: 2 },
+  7: { epic: 45, legendary: 45, mythic: 10 },
+  8: { epic: 20, legendary: 60, mythic: 20 },
+  9: { gov: true },
+};
+// Служебная версия машины: такая же, но своя вещь — svc_<модель>. Модели только для службы (svc: true) остаются как есть.
+const svcCarId = base => (ITEMS.find(i => i.id === base).svc ? base : 'svc_' + base.slice(2));
+for (const line of Object.values(SERVICE_CARS)) for (const base of Object.values(line)) {
+  const id = svcCarId(base);
+  if (id === base || ITEMS.some(i => i.id === id)) continue;
+  const b = ITEMS.find(i => i.id === base);
+  ITEMS.push(Object.assign({}, b, { id, name: b.name + ' · служебная', svc: true }));
+  CAR_HP[id] = CAR_HP[base];
+}
 const SVC_WRITEOFF_H = 24;
 const SVC_WRITEOFF_RATE = 0.5;
 // Попался — можно позвонить связи: шанс «замять» = RESCUE_BASE по редкости связи + RESCUE_PER_LV за каждый уровень доверия выше первого.
