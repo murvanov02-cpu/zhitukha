@@ -331,8 +331,9 @@
     const sold = Math.min(cap, demand);
     const M = MANAGERS[b.mgr - 1];
     const eff = M ? M.eff : ownerEff();
-    const revenue = frozen(id) ? 0 : sold / d.perSlot * n.rev * eff * (1 + perk('bizBoost') / 100);
-    const wages = b.slots * n.salary, mgr = M ? d.price * M.salary : 0;
+    const nephew = (b.nephew || 0) > Date.now() ? FAVOR.f_nephew.drag : null;
+    const revenue = frozen(id) ? 0 : sold / d.perSlot * n.rev * eff * (1 + perk('bizBoost') / 100) * (nephew ? 1 - nephew.revCut : 1);
+    const wages = (b.slots + (nephew ? nephew.wages : 0)) * n.salary, mgr = M ? d.price * M.salary : 0;
     const pre = revenue - wages - n.rent - mgr;
     const tax = pre > 0 ? pre * taxRate() : 0;
     const neck = cap < demand ? 'slots' : cap > demand ? 'ads' : '';
@@ -2269,7 +2270,8 @@
       return `<div class="card ${frozen(d.id) ? 'danger' : ''}">
         <div class="biz-head"><div class="ico-box" style="font-size:22px">${d.icon}</div>
           <div class="grow"><div class="job-name">${d.name}</div>
-            <div class="small muted">${frozen(d.id) ? '🔒 Опечатан' : b.mgr ? `${MANAGERS[b.mgr - 1].icon} ${MANAGERS[b.mgr - 1].name}: ${Math.round(st.eff * 100)}%` : `Без управляющего: ${Math.round(st.eff * 100)}%`}</div></div>
+            <div class="small muted">${frozen(d.id) ? '🔒 Опечатан' : b.mgr ? `${MANAGERS[b.mgr - 1].icon} ${MANAGERS[b.mgr - 1].name}: ${Math.round(st.eff * 100)}%` : `Без управляющего: ${Math.round(st.eff * 100)}%`}</div>
+            ${(b.nephew || 0) > Date.now() ? `<div class="small bad">👦 Племянник в штате ещё <span data-timer="${b.nephew}">${fmtTime(b.nephew - Date.now())}</span> · выручка −${FAVOR.f_nephew.drag.revCut * 100}%</div>` : ''}</div>
           <div class="biz-profit ${st.profit < 0 ? 'bad' : ''}">${plus(ph(st.profit))}<div class="small muted">₽/ч</div></div></div>
         <div class="biz-grid">
           <div><span class="small muted">Мощность</span><b>${fmt(st.cap)}</b><span class="small muted">${b.slots} мест</span></div>
@@ -2332,6 +2334,7 @@
       favor = `<div class="card accent"><div class="label">${ic('hand-finger')} Просьба · ещё <span data-timer="${fv.until}">${fmtTime(fv.until - Date.now())}</span></div>
         <div class="big-text" style="margin-bottom:4px">${ITEM[fv.conn].icon} ${favorText(fv)}</div>
         <div class="small muted mb">Поможешь — +${f.xp} доверия. Откажешь — −${FAVOR_FAIL_XP}.</div>
+        ${f.drag && S.biz[fv.biz] ? `<div class="small bad mb">${ic('alert-triangle')} Минус: «${BIZ[fv.biz].name}» ${f.drag.hours} ч с племянником — выручка −${f.drag.revCut * 100}% и лишняя зарплата: ${fmt(ph(bizDelta(fv.biz, { nephew: Date.now() + 3600e3 })))} ₽/ч</div>` : ''}
         <div class="row"><button class="btn btn-sm grow" data-action="favor-yes">${cost ? `Помочь · ${fmt(cost)} ₽` : 'Помочь'}</button>
           <button class="btn btn-sm btn-ghost" data-action="favor-no">Отказать</button></div></div>`;
     }
@@ -3191,6 +3194,7 @@
       if (!fv) return;
       const f = FAVOR[fv.id];
       if (!pay(favorCost(f))) return;
+      if (f.drag && S.biz[fv.biz]) S.biz[fv.biz].nephew = Date.now() + f.drag.hours * 3600e3;
       S.favor = null;
       addXp(fv.conn, f.xp);
       progress('favor');
