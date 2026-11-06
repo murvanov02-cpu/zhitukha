@@ -104,6 +104,9 @@
     if (s.sil && s.sil.rep !== undefined && o.rep === undefined) s.rep = s.sil.rep;   // v30: репутация стала общей
     if (s.sil && !s.sil.rankAt) s.sil.rankAt = s.sil.since;
     if (s.lvl > LEVEL_MAX) { s.lvl = LEVEL_MAX; s.xp = 0; }
+    // v41: перерыв после увольнения стал 20 минут — старые «сутки» сокращаем (бан после суда, он дольше суток, не трогаем)
+    const banLeft = (s.silBan || 0) - Date.now();
+    if (banLeft > SERVICE_COOLDOWN_H * 3600e3 && banLeft <= 24 * 3600e3) s.silBan = Date.now() + SERVICE_COOLDOWN_H * 3600e3;
     // v31: пороги доверия выросли — пересчитываем, сохраняя уровень и долю до следующего
     if (!o.conn2) {
       const OLD = [0, 100, 250, 500, 1000];
@@ -1075,7 +1078,7 @@
     $('#modal').classList.toggle('sheet-mode', !!sheet);
     $('#modal').classList.remove('hidden');
   }
-  function closeModal() { $('#modal').classList.add('hidden'); }
+  function closeModal() { $('#modal').classList.add('hidden'); clearInterval(raidTimer); }
   const sheetHead = title => `<div class="sheet-head"><h3>${title}</h3><button class="icon-btn" data-action="close" aria-label="Закрыть">${ic('x')}</button></div>`;
 
   let toastTimer = 0;
@@ -1577,7 +1580,11 @@
   const STR = () => STRUCTURES.find(x => x.id === S.sil.s);
   const svcRank = () => SERVICE_RANKS[S.sil.r];
   const servicePay = () => Math.round(svcRank().pay * STR().payMult * (1 + S.skills.int * 0.01));
-  const roofIncome = () => (S.sil ? S.sil.roofs.reduce((a, id) => a + BIZ[id].price * ROOF_RATE, 0) : 0);
+  // Доход с одной «крыши»: цена бизнеса × ставка × его характер, у «профильного» для структуры — больше
+  const roofTrait = id => ROOF_TRAITS[id] || { rate: 1, risk: 1 };
+  const roofFits = id => !!S.sil && roofTrait(id).fit === S.sil.s;
+  const roofPay = id => BIZ[id].price * ROOF_RATE * roofTrait(id).rate * (roofFits(id) ? 1 + ROOF_FIT : 1);
+  const roofIncome = () => (S.sil ? S.sil.roofs.reduce((a, id) => a + roofPay(id), 0) : 0);
   // «Месяц звания» — мерило денег в заданиях: довольствие + самая дорогая доступная «крыша»
   const rankMonth = () => svcRank().pay * STR().payMult + (svcRank().tier >= 0 ? BUSINESSES[svcRank().tier].price * ROOF_RATE : 0);
   const serviceH = () => (Date.now() - S.sil.since) / 3600e3;
@@ -1638,7 +1645,7 @@
   function repAdd(n) { S.rep = Math.max(-REP_MAX, Math.min(REP_MAX, (S.rep || 0) + (n > 0 ? n * REP_GOOD_MULT : n))); }
   const checksPerDay = () => CHECKS_PER_DAY * Math.pow(2, -S.rep / 50) * (1 - perk('osbCut') / 100);
   const badRep = () => Math.max(0, -S.rep);
-  const findChance = () => Math.min(90, svcRisk(S.sil.roofs.length * OSB_PER_ROOF + badRep() * OSB_PER_REP));
+  const findChance = () => Math.min(90, svcRisk(S.sil.roofs.reduce((a, id) => a + OSB_PER_ROOF * roofTrait(id).risk, 0) + badRep() * OSB_PER_REP));
   const repBar = () => `<div class="rep-bar"><i style="left:${(S.rep + REP_MAX) / (2 * REP_MAX) * 100}%"></i></div>
         <div class="kv small"><span class="bad">Взяточник</span><b class="${S.rep < -20 ? 'bad' : S.rep > 20 ? 'good' : 'muted'}">${S.rep > 0 ? '+' : ''}${Math.round(S.rep)}</b><span class="good">Честный</span></div>`;
   function scheduleCheck() { S.sil.nextCheck = Date.now() + 24 / checksPerDay() * (0.6 + Math.random() * 0.8) * 3600e3; }
@@ -1718,7 +1725,7 @@
   const denyRisk = () => Math.min(90, svcRisk(OSB_DENY_JAIL + badRep() * OSB_PER_REP));
   function showOsb() {
     const pay = osbPayoff();
-    const top = S.sil.roofs.slice().sort((x, y) => BIZ[y].price - BIZ[x].price)[0];
+    const top = S.sil.roofs.slice().sort((x, y) => roofPay(y) - roofPay(x))[0];
     showModal(`<h3>🕴️ Служебная проверка</h3>
       <p>${S.sil.roofs.length ? 'Проверяющие заинтересовались, почему бизнесмены так тебя любят.' : 'Проверяющие нашли «нестыковки» в твоих делах.'} Нужно решать.</p>
       <div class="choice">
@@ -1737,11 +1744,12 @@
     const missionReady = S.sil && Date.now() >= S.sil.nextMission;
     return `<div class="seg seg-scroll">
         <button class="${v === 'jobs' ? 'active' : ''}" data-sub="career:jobs">${S.sil ? `Служба${missionReady ? ' <span class="dotty">•</span>' : ''}` : 'Работа'}</button>
+        ${S.sil ? `<button class="${v === 'spec' ? 'active' : ''}" data-sub="career:spec">Спецзадания${specReady() ? ' <span class="dotty">•</span>' : ''}</button>` : ''}
         <button class="${v === 'skills' ? 'active' : ''}" data-sub="career:skills">Учёба</button>
         ${S.sil ? '' : `<button class="${v === 'gigs' ? 'active' : ''}" data-sub="career:gigs">Подработки${gigReady ? ' <span class="dotty">•</span>' : ''}</button>`}
         <button class="${v === 'race' ? 'active' : ''}" data-sub="career:race">Гонки</button>
         <button class="${v === 'conn' ? 'active' : ''}" data-sub="career:conn">Связи${connAlert() ? ' <span class="dotty">•</span>' : ''}</button></div>
-      ${v === 'jobs' ? (S.sil ? renderService() : renderJobs()) : v === 'skills' ? renderSkills() : v === 'gigs' && !S.sil ? renderGigs() : v === 'race' ? renderRace() : renderConn()}`;
+      ${v === 'jobs' ? (S.sil ? renderService() : renderJobs()) : v === 'spec' && S.sil ? renderSpec() : v === 'skills' ? renderSkills() : v === 'gigs' && !S.sil ? renderGigs() : v === 'race' ? renderRace() : renderConn()}`;
   }
   const reqTags = (req, extra = []) => Object.entries(req || {})
     .map(([k, v]) => `<span class="req ${S.skills[k] >= v ? 'ok' : 'no'}">${SKILL[k].name} ${v}</span>`).concat(extra).join('');
@@ -1775,6 +1783,172 @@
       <button class="btn btn-sm btn-ghost full" style="margin-top:8px" data-action="svc-writeoff" ${block ? 'disabled' : ''}>
         Списать на личное · ${fmt(writeoffCost())} ₽${block ? ` <span class="small">(${block})</span>` : ''}</button></div>`;
   }
+  // ---------- спецзадания: расследование, перехват, штурм ----------
+  const specReady = () => !!S.sil && (!!S.sil.spec || Date.now() >= (S.sil.nextSpec || 0));
+  const pickOne = a => a[Math.floor(Math.random() * a.length)];
+  function renderSpec() {
+    const sv = S.sil;
+    if (!sv.spec && Date.now() >= (sv.nextSpec || 0) && !sv.specType) { sv.specType = pickOne(Object.keys(SPEC_TYPES)); save(); }
+    const T = SPEC_TYPES[(sv.spec && sv.spec.t) || sv.specType];
+    const main = sv.spec
+      ? `<div class="card accent"><div class="big-text">${T.icon} ${T.name}</div><p class="small" style="margin:6px 0 10px">Задание в процессе.</p>
+          <button class="btn full" data-action="spec-open">Продолжить</button></div>`
+      : Date.now() >= (sv.nextSpec || 0)
+      ? `<div class="card accent"><div class="big-text">${T.icon} ${T.name}</div><p class="small" style="margin:6px 0 10px">${T.desc}</p>
+          <div class="small muted mb">Награда: до ${fmt(round2(rankMonth() * SPEC_MONEY * 1.3))} ₽, служебный опыт и репутация.</div>
+          <button class="btn full" data-action="spec-start">Начать</button></div>`
+      : `<div class="card small muted">${ic('clock')} Следующее спецзадание через <span data-timer="${sv.nextSpec}">${fmtTime(sv.nextSpec - Date.now())}</span></div>`;
+    return `<p class="hint">Раз в ${SPEC_EVERY_MIN} минут — крупное задание. Без взяток: только работа головой и руками. Чем чище выполнишь, тем больше награда.</p>
+      ${main}
+      <div class="section">Какие бывают</div>
+      ${Object.values(SPEC_TYPES).map(x => `<div class="card small"><b>${x.icon} ${x.name}</b><div class="muted">${x.desc}</div></div>`).join('')}`;
+  }
+  // Расследование: подозреваемые с признаками; у каждого невиновного хотя бы один признак отличается от преступника
+  function genInv() {
+    const names = SUSPECT_NAMES.slice().sort(() => Math.random() - 0.5).slice(0, 5);
+    const rnd = () => Object.fromEntries(INV_ATTRS.map(a => [a.k, pickOne(a.vals)]));
+    const culprit = rnd(), sus = [], key = o => INV_ATTRS.map(a => o[a.k]).join('|');
+    const seen = new Set([key(culprit)]);
+    while (sus.length < 4) {
+      const o = rnd();
+      // похожие на преступника по 2–3 признакам — чтобы улики приходилось выбирать с умом
+      INV_ATTRS.forEach(a => { if (Math.random() < 0.55) o[a.k] = culprit[a.k]; });
+      if (seen.has(key(o))) continue;
+      seen.add(key(o)); sus.push(o);
+    }
+    const c = Math.floor(Math.random() * 5);
+    sus.splice(c, 0, culprit);
+    return { t: 'inv', sus: sus.map((a, i) => ({ n: names[i], a })), c, time: INV_TIME, known: {}, ruled: [] };
+  }
+  const invOut = (sp, i) => sp.ruled.includes(i) || Object.entries(sp.known).some(([k, v]) => sp.sus[i].a[k] !== v);
+  function viewInv(sp) {
+    const dots = Array.from({ length: INV_TIME }, (_, i) => `<i class="${i < sp.time ? 'on' : ''}"></i>`).join('');
+    const clues = INV_ATTRS.filter(a => sp.known[a.k]).map(a => `<div class="small">${ic('point')} ${a.clue(sp.known[a.k])}</div>`).join('')
+      + (sp.ruled.length ? `<div class="small">${ic('point')} ДНК исключила: ${sp.ruled.map(i => sp.sus[i].n).join(', ')}</div>` : '');
+    const acts = INV_ATTRS.map(a => `<button class="btn btn-sm btn-ghost" data-action="inv-act" data-id="${a.k}" ${sp.known[a.k] || sp.time < 1 ? 'disabled' : ''}>${ic(a.icon)} ${a.act}</button>`).join('')
+      + `<button class="btn btn-sm btn-ghost" data-action="inv-act" data-id="dna" ${sp.dna || sp.time < 2 ? 'disabled' : ''}>${ic('dna')} ДНК-экспертиза · 2 действия</button>`;
+    const cards = sp.sus.map((x, i) => `<div class="card sus ${invOut(sp, i) ? 'out' : ''}"><div class="row"><div class="grow"><b>${x.n}</b>
+        <div class="small muted">${INV_ATTRS.map(a => x.a[a.k]).join(' · ')}</div></div>
+        <button class="btn btn-sm ${invOut(sp, i) ? 'btn-ghost' : ''}" data-action="inv-arrest" data-id="${i}">Задержать</button></div></div>`).join('');
+    return `${sheetHead('🔎 Расследование')}
+      <p class="small">Ночью обчистили сейф ювелирного. Подозреваемых пятеро. До утра — ${INV_TIME} следственных действия. Чем меньше потратишь, тем выше награда.</p>
+      <div class="kv small"><span>Время до утра</span><span class="tank inv-time">${dots}</span></div>
+      ${clues ? `<div class="card">${clues}</div>` : ''}
+      <div class="inv-acts">${acts}</div>
+      <div class="section">Подозреваемые</div>${cards}`;
+  }
+  // Перехват: беглец идёт к краю по кратчайшему пути, ты ставишь по одному посту за ход
+  function genChase() {
+    const N = CHASE_SIZE, g = new Array(N * N).fill(0), mid = Math.floor(N * N / 2);
+    let placed = 0;
+    while (placed < CHASE_BLOCKS) {
+      const i = Math.floor(Math.random() * N * N), x = i % N, y = Math.floor(i / N);
+      if (g[i] || Math.abs(x - 4) + Math.abs(y - 4) < 2) continue;
+      g[i] = 1; placed++;
+    }
+    return { t: 'chase', g, x: mid, turns: 0 };
+  }
+  const chaseNb = i => { const N = CHASE_SIZE, x = i % N, y = Math.floor(i / N); return [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => [x + dx, y + dy]).filter(([a, b]) => a >= 0 && b >= 0 && a < N && b < N).map(([a, b]) => b * N + a); };
+  const chaseEdge = i => { const N = CHASE_SIZE, x = i % N, y = Math.floor(i / N); return x === 0 || y === 0 || x === N - 1 || y === N - 1; };
+  // Расстояние от каждой клетки до края (через свободные клетки)
+  function chaseDist(g) {
+    const d = new Array(g.length).fill(Infinity), q = [];
+    g.forEach((v, i) => { if (!v && chaseEdge(i)) { d[i] = 0; q.push(i); } });
+    while (q.length) { const i = q.shift(); for (const j of chaseNb(i)) if (!g[j] && d[j] === Infinity) { d[j] = d[i] + 1; q.push(j); } }
+    return d;
+  }
+  function viewChase(sp) {
+    const cells = sp.g.map((v, i) => i === sp.x ? '<span class="cc target">🚗</span>'
+      : v === 1 ? '<span class="cc block"></span>' : v === 2 ? '<span class="cc post">🚓</span>'
+      : `<button class="cc free ${chaseEdge(i) ? 'edge' : ''}" data-action="ch-cell" data-id="${i}"></button>`).join('');
+    return `${sheetHead('🚓 Перехват')}
+      <p class="small">Беглец на 🚗 рвётся к краю карты. Каждый ход ставь пост 🚓 на свободный перекрёсток — потом он делает шаг. Отрежь все пути — и он твой.<br><span class="muted">Совет: пост прямо перед машиной она просто объедет — перекрывай на шаг-два вперёд.</span></p>
+      <div class="kv small"><span>Постов выставлено</span><b>${sp.turns}</b></div>
+      <div class="chase-grid" style="--n:${CHASE_SIZE}">${cells}</div>`;
+  }
+  // Штурм: комнаты с угрозами, разведка с ошибками, таймер на решение
+  function genRaid() {
+    const acc = Math.min(0.9, 0.55 + S.skills.int * 0.015), types = Object.keys(RAID_THREATS);
+    const roll = () => { let x = Math.random() * types.reduce((a, k) => a + RAID_THREATS[k].w, 0); for (const k of types) if ((x -= RAID_THREATS[k].w) < 0) return k; return 'single'; };
+    const rooms = Array.from({ length: RAID_ROOMS }, () => { const type = roll(); return { type, hint: Math.random() < acc ? type : pickOne(types.filter(k => k !== type)) }; });
+    return { t: 'raid', rooms, i: 0, hp: RAID_HP, lost: 0, saved: 0, uses: {}, log: [], acc };
+  }
+  const raidOdds = (k, type) => {
+    let p = RAID_ACTIONS[k].odds[type];
+    if (type !== 'empty' && (k === 'quiet' || k === 'storm')) p += S.skills.fit * 0.005;
+    if (type !== 'empty' && STR().force) p += 0.1;
+    return Math.min(type === 'empty' ? 1 : 0.97, p);
+  };
+  let raidTimer = null;
+  function viewRaid(sp) {
+    const room = sp.rooms[sp.i];
+    const hearts = Array.from({ length: RAID_HP }, (_, i) => i < sp.hp ? '❤️' : '🖤').join('');
+    const acts = Object.entries(RAID_ACTIONS).map(([k, A]) => {
+      const left = A.limit ? A.limit - (sp.uses[k] || 0) : null;
+      return `<button class="btn ${k === 'storm' ? '' : 'btn-ghost'}" data-action="raid-act" data-id="${k}" ${left === 0 ? 'disabled' : ''}>${ic(A.icon)} ${A.name}${left !== null ? ` <span class="small">×${left}</span>` : ''}</button>`;
+    }).join('');
+    return `${sheetHead('🛡️ Штурм')}
+      <div class="kv small"><span>Комната ${sp.i + 1} из ${RAID_ROOMS}</span><span>${hearts}</span></div>
+      <div class="card accent"><div class="small muted">Разведка (точность ≈ ${Math.round(sp.acc * 100)}%)</div>
+        <div class="big-text">${RAID_THREATS[room.hint].hint}</div></div>
+      <div class="raid-timer"><i id="raid-bar"></i></div>
+      <div class="raid-acts">${acts}</div>
+      ${sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : ''}
+      <p class="small muted">Не успеешь за ${RAID_SECONDS} с — группа пойдёт на штурм сама. Заложники: спасено ${sp.saved}, потеряно ${sp.lost}.</p>`;
+  }
+  function openSpec() {
+    const sp = S.sil && S.sil.spec;
+    clearInterval(raidTimer);
+    if (!sp) return;
+    if (sp.t === 'inv') showModal(viewInv(sp), true);
+    else if (sp.t === 'chase') showModal(viewChase(sp), true);
+    else {
+      if (!sp.deadline || sp.deadline < Date.now()) sp.deadline = Date.now() + RAID_SECONDS * 1000;
+      showModal(viewRaid(sp), true);
+      raidTimer = setInterval(() => {
+        const bar = $('#raid-bar');
+        if (!bar || !S.sil || S.sil.spec !== sp) { clearInterval(raidTimer); return; }
+        const left = sp.deadline - Date.now();
+        bar.style.width = Math.max(0, left / (RAID_SECONDS * 1000) * 100) + '%';
+        if (left <= 0) { clearInterval(raidTimer); raidStep(sp, 'storm', true); }
+      }, 150);
+    }
+  }
+  function raidStep(sp, k, auto) {
+    const room = sp.rooms[sp.i], A = RAID_ACTIONS[k];
+    if (A.limit && (sp.uses[k] || 0) >= A.limit) return;
+    sp.uses[k] = (sp.uses[k] || 0) + 1;
+    const ok = Math.random() < raidOdds(k, room.type);
+    const what = { empty: 'пусто', single: 'один вооружённый', group: 'группа', hostage: 'заложник', trap: 'растяжка' }[room.type];
+    if (ok) { if (room.type === 'hostage') sp.saved++; sp.log.push(`✅ ${auto ? 'Время вышло — штурм' : A.name}: ${what}, чисто`); }
+    else if (room.type === 'hostage') { sp.lost++; sp.log.push(`❌ ${A.name}: заложника не уберегли`); }
+    else { sp.hp--; sp.log.push(`🩸 ${A.name}: ${what}, боец ранен`); }
+    sp.i++; sp.deadline = 0;
+    haptic(ok ? 'light' : 'err');
+    if (sp.hp <= 0) return finishSpec(0.15, 'Группа понесла потери — штурм сорван.');
+    if (sp.i >= RAID_ROOMS) return finishSpec(Math.max(0.3, 0.5 + 0.5 * sp.hp / RAID_HP + 0.15 * sp.saved - 0.2 * sp.lost),
+      `Здание зачищено. Раненых ${RAID_HP - sp.hp}, заложников спасено ${sp.saved}${sp.lost ? `, потеряно ${sp.lost}` : ''}.`);
+    save(); openSpec();
+  }
+  // Итог спецзадания: quality 0…1,3 — деньги, служебный опыт, репутация
+  function finishSpec(quality, text) {
+    const sv = S.sil, ok = quality >= 0.6;
+    clearInterval(raidTimer);
+    const money = round2(rankMonth() * SPEC_MONEY * quality), xp = Math.round(SPEC_XP * quality);
+    sv.spec = null;
+    sv.xp += xp;
+    earn(money);
+    repAdd(ok ? SPEC_REP : -2);
+    gainXP(5 + Math.round(xp / 6));
+    progress('mission');
+    haptic(ok ? 'ok' : 'err'); save(); render();
+    showModal(`<div class="drop"><div class="drop-name">${ok ? '🏅 Задание выполнено' : '😬 Не вышло'}</div>
+      <p style="margin-top:8px">${text}</p>
+      <div class="big">+${fmt(money)} ₽ · +${xp} опыта</div>
+      <p class="small muted">Репутация ${ok ? '+' + SPEC_REP * REP_GOOD_MULT : '−2'}. Следующее спецзадание — через ${SPEC_EVERY_MIN} мин.</p>
+      <button class="btn full" data-action="close">Дальше</button></div>`);
+  }
+
   function renderService() {
     const sv = S.sil, st = STR(), rk = svcRank(), reqs = promoReqs();
     if (!sv.mission) nextMission();
@@ -1795,7 +1969,9 @@
       : `<div class="card small muted">${ic('clock')} Новое задание через <span data-timer="${sv.nextMission}">${fmtTime(sv.nextMission - Date.now())}</span></div>`;
     const free = rk.roofs - sv.roofs.length;
     const roofRow = (d, act) => `<div class="list-row" style="margin-top:8px"><div class="ico-box" style="font-size:20px">${d.icon}</div>
-        <div class="grow"><div class="val">${d.name}</div><div class="small good">+${fmt(ph(d.price * ROOF_RATE))} ₽/ч</div></div>${act}</div>`;
+        <div class="grow"><div class="val">${d.name}</div>
+          <div class="small"><span class="good">+${fmt(ph(roofPay(d.id)))} ₽/ч</span> · <span class="${roofTrait(d.id).risk > 1 ? 'bad' : 'muted'}">риск ×${String(roofTrait(d.id).risk).replace('.', ',')}</span>${roofFits(d.id) ? ` · <span class="gold">профильный +${ROOF_FIT * 100}%</span>` : ''}</div>
+          ${roofTrait(d.id).note ? `<div class="small muted">${roofTrait(d.id).note}</div>` : ''}</div>${act}</div>`;
     const mine = sv.roofs.map(id => roofRow(BIZ[id], `<button class="btn btn-sm btn-ghost" data-action="roof-drop" data-id="${id}">Отпустить</button>`)).join('');
     const can = free > 0 ? BUSINESSES.filter((d, i) => i <= rk.tier && !sv.roofs.includes(d.id)).reverse()
       .map(d => roofRow(d, `<button class="btn btn-sm" data-action="roof-take" data-id="${d.id}">Взять</button>`)).join('') : '';
@@ -1821,7 +1997,7 @@
       ${mission}
       <div class="section">«Крыша» · ${sv.roofs.length} из ${rk.roofs}</div>
       <div class="card">
-        <div class="small muted">Бизнес платит тебе за спокойствие ${(ROOF_RATE * MONTHS_PER_HOUR * 100).toFixed(1).replace('.', ',')}% своей цены в час. Чем больше «крыш», тем чаще интересуется ОСБ.</div>
+        <div class="small muted">Бизнес платит за спокойствие около ${(ROOF_RATE * MONTHS_PER_HOUR * 100).toFixed(1).replace('.', ',')}% своей цены в час — у каждого свой характер и риск. «Профильные» для ${STR().name} платят больше. Чем больше «крыш», тем чаще интересуется ОСБ.</div>
         ${mine}${can ? `<div class="small" style="margin-top:10px">Можно взять:</div>${can}` : ''}
         ${!rk.roofs ? '<div class="small muted" style="margin-top:6px">«Крыша» — с сержанта.</div>' : ''}
       </div>
@@ -2688,7 +2864,7 @@
       sub.career = 'jobs';
       closeModal(); haptic('ok'); toast(`${STR().icon} Ты на службе: ${svcRank().name} ${STR().name}`); save(); render();
     },
-    'sil-quit': () => askConfirm(`Уволиться со службы? Звание, выслуга, «крыша» и служебная машина сгорят. Вернуться можно через ${SERVICE_COOLDOWN_H} ч и только с нуля.`, () => {
+    'sil-quit': () => askConfirm(`Уволиться со службы? Звание, выслуга, «крыша» и служебная машина сгорят. Вернуться можно через ${Math.round(SERVICE_COOLDOWN_H * 60)} мин и только с нуля.`, () => {
       dropSvcCar();
       S.sil = null;
       S.silBan = Date.now() + SERVICE_COOLDOWN_H * 3600e3;
@@ -2751,6 +2927,49 @@
           <button class="btn full" data-action="close">Фух</button></div>`);
       } else goToJail(`${why} ${ITEM[id].name} не смог помочь.`);
     },
+    'spec-start': () => {
+      const sv = S.sil;
+      if (!sv || sv.spec || Date.now() < (sv.nextSpec || 0)) return;
+      const t = sv.specType || pickOne(Object.keys(SPEC_TYPES));
+      sv.spec = t === 'inv' ? genInv() : t === 'chase' ? genChase() : genRaid();
+      sv.specType = null;
+      sv.nextSpec = Date.now() + SPEC_EVERY_MIN * 60e3;
+      haptic('medium'); save(); render(); openSpec();
+    },
+    'spec-open': () => openSpec(),
+    'inv-act': k => {
+      const sp = S.sil && S.sil.spec;
+      if (!sp || sp.t !== 'inv') return;
+      if (k === 'dna') {
+        if (sp.dna || sp.time < 2) return;
+        const pool = sp.sus.map((_, i) => i).filter(i => i !== sp.c && !invOut(sp, i)).sort(() => Math.random() - 0.5);
+        sp.ruled.push(...pool.slice(0, 2)); sp.dna = true; sp.time -= 2;
+      } else {
+        if (sp.known[k] || sp.time < 1) return;
+        sp.known[k] = sp.sus[sp.c].a[k]; sp.time--;
+      }
+      haptic('light'); save(); openSpec();
+    },
+    'inv-arrest': i => {
+      const sp = S.sil && S.sil.spec;
+      if (!sp || sp.t !== 'inv') return;
+      if (+i === sp.c) finishSpec(1 + 0.1 * sp.time, `Задержан ${sp.sus[sp.c].n} — он во всём признался. ${sp.time ? `Сэкономлено действий: ${sp.time}.` : ''}`);
+      else finishSpec(0.2, `${sp.sus[+i].n} оказался ни при чём. Настоящий преступник — ${sp.sus[sp.c].n} — успел скрыться.`);
+    },
+    'ch-cell': i => {
+      const sp = S.sil && S.sil.spec;
+      i = +i;
+      if (!sp || sp.t !== 'chase' || sp.g[i] || i === sp.x) return;
+      sp.g[i] = 2; sp.turns++;
+      const d = chaseDist(sp.g);
+      if (d[sp.x] === Infinity) return finishSpec(1 + Math.max(0, 10 - sp.turns) * 0.04, `Беглец заперт — постов понадобилось ${sp.turns}.`);
+      const best = chaseNb(sp.x).filter(j => !sp.g[j]).sort((a, b) => d[a] - d[b] || Math.random() - 0.5)[0];
+      sp.x = best;
+      haptic('light');
+      if (chaseEdge(sp.x)) return finishSpec(0.2, 'Беглец вырвался из города. Ориентировка разослана по области.');
+      save(); openSpec();
+    },
+    'raid-act': k => { const sp = S.sil && S.sil.spec; if (sp && sp.t === 'raid') raidStep(sp, k, false); },
     'svc-writeoff': () => {
       if (!svcCar() || writeoffBlock()) return;
       const cost = writeoffCost(), id = S.sil.car;
@@ -2786,7 +3005,7 @@
         repAdd(-5);
         toast('Вопрос закрыт');
       } else if (how === 'give') {
-        const top = sv.roofs.slice().sort((x, y) => BIZ[y].price - BIZ[x].price)[0];
+        const top = sv.roofs.slice().sort((x, y) => roofPay(y) - roofPay(x))[0];
         if (!top) { sv.osb = true; return; }
         sv.roofs = sv.roofs.filter(x => x !== top);
         repAdd(5);
