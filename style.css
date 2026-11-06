@@ -466,3 +466,11 @@ details.more-card .card { background: var(--card2); }
 .tiles > div:not(.tile) > .tile { flex: 1; }
 .tile-name { min-height: 2.4em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tile-note { margin-top: auto; }
+
+/* картинка вещи целиком: высота фиксирована, ничего не обрезается */
+.tile-icon .pic { height: 48px; width: 100%; object-fit: contain; }
+/* галочка выбора — только у выбранных, картинку не закрывает */
+.pick-wrap .pick-mark { display: none; }
+.pick-wrap.picked .pick-mark { display: grid; }
+.sell-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.sell-row .btn { flex: 1 1 140px; min-width: 0; white-space: normal; font-size: 13px; padding: 10px 8px; }
