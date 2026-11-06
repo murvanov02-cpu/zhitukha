@@ -674,6 +674,7 @@
     const hash = await sha256(code);
     const p = PROMO_CODES.find(x => x.hash === hash);
     if (!p) { toast('Такого промокода нет'); haptic('err'); return; }
+    if (p.only && !(user && user.username && user.username.toLowerCase() === p.only)) { toast('Этот промокод не для тебя'); haptic('err'); return; }
     if (S.promo.includes(hash)) { toast('Этот промокод уже активирован'); haptic('err'); return; }
     if (p.until && new Date() > new Date(p.until + 'T23:59:59')) { toast('Срок действия промокода истёк'); haptic('err'); return; }
     S.promo.push(hash);

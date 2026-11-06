@@ -676,12 +676,15 @@ const EVENTS = [
 // так их не подсмотреть в файлах игры. Хэш для нового кода выдаёт тестовая панель (?debug → профиль).
 // reward: money — рубли; tickets — { id кейса: сколько }; items — вещи сразу в имущество; badge — значок из BADGES;
 // message — личное сообщение в окне активации.
-// until — до какой даты (включительно) код работает; без until — бессрочно. Каждый код срабатывает на телефоне один раз.
+// only — код только для этого Telegram-тега (без @, регистр не важен); until — до какой даты (включительно) код работает; без until — бессрочно. Каждый код срабатывает на телефоне один раз.
 const PROMO_CODES = [
   { hash: 'c37c4ebb553abdd981090aa5a9b0b1b557afe1cca78b302a54b9fc1634514f5f', label: 'Для первых игроков',
     until: '2026-11-30', reward: { money: 5e6, tickets: { car_new: 1, conn_forum: 1 }, badge: 'first' } },
   { hash: 'e6ce4116699e55cc3bab95ed51b9d3865ef609c0a771d3295ef249ff713f6a13', label: 'Подарок',
     reward: { money: 10e6, items: ['c_x5', 'h_newflat'], message: 'Моей хорошей девушке Кате ❤️' } },
+  // Именной код: only — Telegram-тег (без @), только он может его ввести. Сработает один раз на его телефоне.
+  { hash: 'a3d82fcbbbf379a4e78360aa63317ca9cc68e1c453375dd8a85e1bd97ebf17c4', label: 'Для тестера', only: 'rustyk10',
+    reward: { money: 10e6, tickets: { home_new: 1 } } },
 ];
 const BADGES = {
   first: { name: 'Первый игрок', icon: 'crown' },
