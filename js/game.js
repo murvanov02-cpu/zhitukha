@@ -144,6 +144,7 @@
         p.collect = Math.round((PLATE_97_COLLECT[0] + Math.random() * (PLATE_97_COLLECT[1] - PLATE_97_COLLECT[0])) / 1e6) * 1e6;
       }
     }
+    if (o.tut === -1 && o.tutPaid === undefined) s.tutPaid = true;   // подарок за обучение — один раз, даже если пройти заново
     if (o.news === undefined) s.news = '';   // старым игрокам — показать «Что нового»
     // v51: мусорные иномарки убраны из игры — возвращаем их рыночную цену; билеты «Битых тачек» — в «Гаражный кооператив»
     for (const id of ['c_matiz', 'c_lanos']) {
@@ -1526,6 +1527,7 @@
         <div class="kv"><span>Открыто кейсов</span><b>${S.opened}</b></div>
         <div class="kv"><span>Коллекция</span><b>${Object.keys(S.inv).filter(id => ITEM[id] && !ITEM[id].svc).length} из ${ITEMS.filter(i => i.cat !== 'conn' && !i.svc).length}</b></div>
       </div>
+      <button class="btn btn-line btn-sm full" style="margin-bottom:8px" data-action="tut-restart">${ic('school')} Пройти обучение заново</button>
       <div class="row"><button class="btn btn-ghost btn-sm grow" data-action="credits">${ic('camera')} Авторы фото</button>
         <button class="btn btn-danger btn-sm grow" data-action="reset">Начать заново</button></div>
       ${isDebug() ? debugPanel() : ''}`;
@@ -2907,8 +2909,8 @@
   }
 
   const VIEWS = { home: renderHome, inv: renderInv, cases: renderCases, career: renderCareer, biz: renderBiz, casino: renderCasino };
-  // ---------- обучение: подсказка внизу, подсветка нужной кнопки; шаг засчитывается, когда игрок сделал действие ----------
-  let tutBase = null, tutProfile = false;
+  // ---------- обучение: слайды «в чём суть», потом экскурсия с прожектором; шаг засчитывается действием или кнопкой «Понятно» ----------
+  let tutBase = null, tutProfile = false, tutRaf = 0, tutShown = '';
   const TUT_DONE = {
     cases: () => tab === 'cases',
     free: () => cdLeft(CASE.free) > 0,
@@ -2918,43 +2920,109 @@
     jobs: () => tab === 'career' && sub.career === 'jobs',
     profile: () => tutProfile,
   };
+  const tutOn = () => S.tut > 0 && S.tut <= TUTORIAL.length;
   function tutTick() {
-    document.querySelectorAll('.tut-glow').forEach(el => el.classList.remove('tut-glow'));
-    const bubble = $('#tut');
-    if (S.tut < 1 || S.tut > TUTORIAL.length) { if (bubble) bubble.remove(); return; }
+    if (!tutOn()) { tutClear(); return; }
     const step = TUTORIAL[S.tut - 1];
     if (step.id === 'skill' && tutBase === null) tutBase = Object.values(S.skills).reduce((a, b) => a + b, 0);
-    if (TUT_DONE[step.id]()) {
-      S.tut++;
-      save();
-      if (S.tut > TUTORIAL.length) return finishTutorial();
-      return tutTick();
+    if (!step.info && TUT_DONE[step.id]()) return tutNext();
+    if (step.go && tab !== step.go) { tab = step.go; render(); return; }
+    let bubble = $('#tut'), hole = $('#tut-hole');
+    if (!hole) { hole = document.createElement('div'); hole.id = 'tut-hole'; document.body.appendChild(hole); }
+    if (!bubble) { bubble = document.createElement('div'); bubble.id = 'tut'; document.body.appendChild(bubble); }
+    if (tutShown !== step.id) {
+      tutShown = step.id;
+      const pct = (S.tut - 1) / TUTORIAL.length * 100;
+      bubble.innerHTML = `<i class="tut-arrow"></i>
+        <div class="tut-top"><span class="tut-step">${S.tut} из ${TUTORIAL.length}</span><div class="tut-bar"><i style="width:${pct}%"></i></div>
+          <button class="tut-skip" data-action="tut-skip">Пропустить</button></div>
+        <div class="tut-title">${step.title}</div><div class="tut-text">${step.text}</div>
+        ${step.info ? '<button class="btn btn-sm full" style="margin-top:10px" data-action="tut-next">Понятно</button>' : `<div class="tut-act">${ic('hand-finger')} Нажми на подсвеченное</div>`}`;
+      bubble.classList.remove('in'); void bubble.offsetWidth; bubble.classList.add('in');
+      const el = document.querySelector(step.sel);
+      if (el) { const r = el.getBoundingClientRect(); if (r.top < 70 || r.bottom > innerHeight - 90) el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     }
-    const el = document.querySelector(step.sel);
-    if (el) el.classList.add('tut-glow');
-    const html = `<div class="tut-step">${S.tut} / ${TUTORIAL.length}</div><div class="grow">${step.text}</div>
-      <button class="tut-skip" data-action="tut-skip">Пропустить</button>`;
-    if (!bubble) { const b = document.createElement('div'); b.id = 'tut'; b.innerHTML = html; document.body.appendChild(b); }
-    else if (bubble.dataset.step !== step.id) bubble.innerHTML = html;
-    $('#tut').dataset.step = step.id;
+    if (!tutRaf) tutRaf = requestAnimationFrame(tutPlace);
   }
-  function startTutorial() {
-    showModal(`<div class="drop"><div class="drop-name">👋 Добро пожаловать в «Житуху»</div>
-      <p style="margin-top:8px">Это игра про жизнь: начинаешь раздатчиком листовок, а дальше — бизнес, связи, гонки или служба в погонах. Доход капает даже без тебя.</p>
-      <p class="small muted">Короткое обучение — 7 шагов, в конце подарок.</p>
-      <button class="btn full" data-action="tut-go">Поехали</button>
-      <button class="btn btn-ghost full" style="margin-top:8px" data-action="tut-skip">Я сам разберусь</button></div>`);
+  // Каждый кадр: прожектор — вокруг нужного места, подсказка — над ним или под ним, стрелка смотрит на цель
+  function tutPlace() {
+    tutRaf = 0;
+    if (!tutOn()) return tutClear();
+    const step = TUTORIAL[S.tut - 1], hole = $('#tut-hole'), bubble = $('#tut');
+    if (!hole || !bubble) return;
+    const covered = !$('#modal').classList.contains('hidden') || !$('#roulette').classList.contains('hidden');
+    hole.style.display = bubble.style.display = covered ? 'none' : '';
+    const el = !covered && document.querySelector(step.sel);
+    if (el && el.offsetParent !== null) {
+      const r = el.getBoundingClientRect(), pad = 6, br = Math.min(18, r.height / 2 + pad);
+      Object.assign(hole.style, { left: r.left - pad + 'px', top: r.top - pad + 'px', width: r.width + pad * 2 + 'px', height: r.height + pad * 2 + 'px', borderRadius: br + 'px', opacity: 1 });
+      const bw = bubble.offsetWidth, bh = bubble.offsetHeight, below = r.top + r.height / 2 < innerHeight / 2;
+      const left = Math.max(12, Math.min(innerWidth - bw - 12, r.left + r.width / 2 - bw / 2));
+      const top = below ? r.bottom + pad + 14 : r.top - pad - 14 - bh;
+      Object.assign(bubble.style, { left: left + 'px', top: Math.max(12, Math.min(innerHeight - bh - 12, top)) + 'px' });
+      bubble.classList.toggle('up', !below);
+      bubble.style.setProperty('--ax', Math.max(18, Math.min(bw - 18, r.left + r.width / 2 - left)) + 'px');
+      bubble.classList.remove('free');
+    } else if (!covered) {
+      // цели на экране нет — подсказка по центру, без прожектора
+      Object.assign(hole.style, { left: '50%', top: '50%', width: '0px', height: '0px', opacity: 1 });
+      Object.assign(bubble.style, { left: Math.max(12, (innerWidth - bubble.offsetWidth) / 2) + 'px', top: (innerHeight - bubble.offsetHeight) / 2 + 'px' });
+      bubble.classList.add('free');
+    }
+    tutRaf = requestAnimationFrame(tutPlace);
   }
+  function tutClear() {
+    if (tutRaf) cancelAnimationFrame(tutRaf);
+    tutRaf = 0; tutShown = '';
+    $('#tut') && $('#tut').remove();
+    $('#tut-hole') && $('#tut-hole').remove();
+  }
+  function tutNext() {
+    S.tut++;
+    save();
+    if (S.tut > TUTORIAL.length) return finishTutorial();
+    haptic('light');
+    tutTick();
+  }
+  // Вступительные слайды: картинки собраны из того, что есть в игре
+  let introI = 0;
+  function introArt(i) {
+    const car = id => `<img src="${ITEM[id].img}" alt="">`;
+    return [
+      `<div class="ia ia-hero">${car('c_chiron')}<div class="ia-logo">ЖИТУХА</div></div>`,
+      `<div class="ia ia-flow"><div><b>📄</b><span>листовки</span><i>${fmt(ph(JOBS[0].pay))}/ч</i></div><em>→</em><div><b>💼</b><span>директор</span><i>${fmt(ph(JOB.director.pay))}/ч</i></div><em>→</em><div><b>🏢</b><span>бизнес</span><i>млн/ч</i></div></div>`,
+      `<div class="ia ia-cards"><div class="ia-c">${car('c_supra')}<span>машины</span></div><div class="ia-c"><img src="${ITEM.h_monaco.img}" alt="" class="cover"><span>жильё</span></div><div class="ia-c"><b>🤝</b><span>связи</span></div></div>`,
+      `<div class="ia ia-paths"><div><b>👔</b><span>Гражданский</span><i>работа · бизнес</i></div><div class="vs">или</div><div><img src="img/ranks/a6.png" alt="" class="pogon"><span>Силовик</span><i>звания · «крыша»</i></div></div>`,
+      `<div class="ia ia-risk"><b>🐀</b><b>🚓</b><b>🦈</b><b>🎰</b><b>📜</b></div>`,
+    ][i];
+  }
+  function showIntro() {
+    let box = $('#intro');
+    if (!box) { box = document.createElement('div'); box.id = 'intro'; document.body.appendChild(box); }
+    const sl = TUT_SLIDES[introI], last = introI === TUT_SLIDES.length - 1;
+    box.innerHTML = `<div class="intro-card">
+        <div class="intro-art">${introArt(introI)}</div>
+        <div class="intro-body"><div class="intro-title">${sl.title}</div><p>${sl.text}</p></div>
+        <div class="intro-dots">${TUT_SLIDES.map((_, i) => `<i class="${i === introI ? 'on' : ''}"></i>`).join('')}</div>
+        <div class="intro-btns">${introI ? `<button class="btn btn-ghost" data-action="intro-prev">${ic('chevron-left')}</button>` : ''}
+          <button class="btn grow" data-action="${last ? 'intro-start' : 'intro-next'}">${last ? 'Покажи, что где' : 'Дальше'}</button></div>
+        <button class="intro-skip" data-action="tut-skip">Я сам разберусь</button></div>`;
+  }
+  function startTutorial() { introI = 0; showIntro(); }
   function finishTutorial() {
     S.tut = -1;
-    earn(TUTORIAL_REWARD.money);
-    giveTicket(TUTORIAL_REWARD.ticket);
-    $('#tut') && $('#tut').remove();
+    tutClear();
+    const first = !S.tutPaid;
+    if (first) { S.tutPaid = true; earn(TUTORIAL_REWARD.money); giveTicket(TUTORIAL_REWARD.ticket); }
     save(); render();
-    showModal(`<div class="drop"><div class="drop-name">🎓 Обучение пройдено</div>
-      <p style="margin-top:8px">Подарок: <b>+${fmt(TUTORIAL_REWARD.money)} ₽</b> и ${ticketName(TUTORIAL_REWARD.ticket)}.</p>
-      <p class="small muted">Дальше — сам: следи за «Следующей целью» на главной, выполняй задания дня, копи на бизнес. Удачи!</p>
-      <button class="btn full" data-action="close">Спасибо</button></div>`);
+    showModal(`<div class="drop"><div class="drop-icon" style="font-size:48px">🎓</div><div class="drop-name">Обучение пройдено!</div>
+      ${first ? `<p style="margin-top:8px">Подарок на старт: <b>+${fmt(TUTORIAL_REWARD.money)} ₽</b> и ${ticketName(TUTORIAL_REWARD.ticket)}.</p>` : ''}
+      <div class="card" style="text-align:left;margin-top:10px">
+        <div class="small">${ic('route')} Следи за «Следующей целью» на главной</div>
+        <div class="small" style="margin-top:4px">${ic('checklist')} Делай задания дня в профиле</div>
+        <div class="small" style="margin-top:4px">${ic('school')} Учись — навыки открывают работу и бизнес</div>
+        <div class="small" style="margin-top:4px">${ic('shield')} С 5-го уровня можно пойти на службу</div></div>
+      <button class="btn full" style="margin-top:12px" data-action="close">Погнали</button></div>`);
   }
 
   function render() {
@@ -3465,8 +3533,12 @@
       else toast(S.pid);
     },
     'inc-toggle': () => toast('Сколько ты зарабатываешь за реальный час: работа, аренда, бизнес и «крыша»'),
-    'tut-go': () => { S.tut = 1; closeModal(); save(); tab = 'home'; render(); },
-    'tut-skip': () => { S.tut = -1; closeModal(); $('#tut') && $('#tut').remove(); document.querySelectorAll('.tut-glow').forEach(el => el.classList.remove('tut-glow')); save(); },
+    'intro-next': () => { introI = Math.min(TUT_SLIDES.length - 1, introI + 1); haptic('light'); showIntro(); },
+    'intro-prev': () => { introI = Math.max(0, introI - 1); showIntro(); },
+    'intro-start': () => { $('#intro') && $('#intro').remove(); S.tut = 1; tutBase = null; tutProfile = false; save(); tab = 'home'; render(); },
+    'tut-next': () => { if (tutOn() && TUTORIAL[S.tut - 1].info) tutNext(); },
+    'tut-skip': () => { S.tut = -1; $('#intro') && $('#intro').remove(); tutClear(); save(); },
+    'tut-restart': () => { closeModal(); S.tut = 0; save(); tab = 'home'; render(); startTutorial(); },
     'coll-claim': id => {
       const c = COLLECTIONS.find(x => x.id === id);
       if (!c || S.coll[id] || !collState(c).done) return;
