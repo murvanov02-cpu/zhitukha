@@ -1145,7 +1145,7 @@
     }
     closeModal();
     const results = [];
-    for (let i = 0; i < n; i++) results.push(addItem(rollItem(c, true)));
+    for (let i = 0; i < n; i++) results.push(addItem(rollItem(c, true), c));
     S.opened += n;
     progress('open', n);
     gainXP(n * (XP_CASE[c.tier] || XP_CASE.cheap));
@@ -1158,12 +1158,13 @@
   }
 
   // Кладёт выпавшее; возвращает, что с ним случилось
-  function addItem(it) {
+  // src — кейс, из которого выпало: подарок за лишнюю связь считается от его цены, а не от дохода (иначе кейс становится фармилкой)
+  function addItem(it, src) {
     S.got[it.id] = 1;
     if (it.cat === 'conn') {
       if (!S.conn[it.id]) { S.conn[it.id] = newConn(0); return { it, isNew: true }; }
       if (S.conn[it.id].xp >= cxp(it.id, CONN_MAX_LV - 1)) {
-        const v = monthsMoney(2, 50e3);
+        const v = Math.max(DUP_CONN_GIFT_MIN, Math.round((src && src.price > 0 ? src.price : 0) * DUP_CONN_GIFT / 1000) * 1000);
         earn(v);
         return { it, gift: v };
       }
