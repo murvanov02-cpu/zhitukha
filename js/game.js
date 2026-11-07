@@ -26,7 +26,7 @@
     return {
       money: START_MONEY, total: 0, eco: ECO,
       skills: { int: 0, cha: 0, fit: 0, biz: 0 },
-      inv: {}, got: {}, bizV: 61, car: null, job: 'flyers',
+      inv: {}, got: {}, bizV: 61, p97: {}, car: null, job: 'flyers',
       lastTick: Date.now(), cd: {}, opened: 0,  // cd: id кейса → когда открыт бесплатно
       pity: 0, fast: false, autoSell: false,
       gig: null,                  // идущая подработка: { id, until }
@@ -126,6 +126,23 @@
         b.inv = inv;
       }
       s.bizV = 61;
+    }
+    // v65: свой госномер 97 — один раз за игру в каждом ведомстве. Уже выкупленный 97-й засчитываем по серии и даём ему цену коллекционера
+    if (!o.p97) {
+      s.p97 = {};
+      const bySer = { 'АМР': 'mvd', 'ЕКХ': 'fsb', 'РМР': 'spn' };
+      for (const p of s.plates || []) {
+        const st = bySer[(p.a || '') + (p.b || '')];
+        if (p.svc || p.r !== '97' || !st || s.p97[st]) continue;
+        s.p97[st] = true;
+        p.collect = Math.round((PLATE_97_COLLECT[0] + Math.random() * (PLATE_97_COLLECT[1] - PLATE_97_COLLECT[0])) / 1e6) * 1e6;
+      }
+      // номер 97 на нынешней служебной генерала — в серию своего ведомства и с ценой коллекционера
+      const st = s.sil && STRUCTURES.find(x => x.id === s.sil.s);
+      for (const p of s.plates || []) if (st && p.svc && p.r === '97' && !s.p97[st.id]) {
+        p.a = st.series[0]; p.b = st.series.slice(1);
+        p.collect = Math.round((PLATE_97_COLLECT[0] + Math.random() * (PLATE_97_COLLECT[1] - PLATE_97_COLLECT[0])) / 1e6) * 1e6;
+      }
     }
     if (o.news === undefined) s.news = '';   // старым игрокам — показать «Что нового»
     // v51: мусорные иномарки убраны из игры — возвращаем их рыночную цену; билеты «Битых тачек» — в «Гаражный кооператив»
@@ -1038,7 +1055,7 @@
   // Шансы редкостей набора в регионе: госномер в Москве и Питере реже
   const boxW = (box, reg) => Object.fromEntries(Object.entries(box.w).map(([rar, w]) => [rar, rar === 'mythic' ? w * (reg.gov || 1) : w]));
   const plateOf = carId => S.plates.find(p => p.car === carId);
-  const plateSell = p => Math.round(p.v * PLATE_SELL_RATE);
+  const plateSell = p => p.collect || Math.round(p.v * PLATE_SELL_RATE);   // collect — цена коллекционера за единственный 97-й
   const isGov = carId => { const p = plateOf(carId); return !!p && p.rar === 'mythic'; };
   // Редкость по виду номера (см. PLATE_RARITY в data.js)
   function plateRarity(a, d, b) {
@@ -1795,7 +1812,7 @@
       if (t) giveTicket(t);
       haptic('ok');
       toast(`⭐ Уровень ${S.lvl}! +${fmt(v)} ₽${t ? ' и ' + ticketName(t) : ''}`);
-      if (S.lvl === SERVICE_MIN_LEVEL && !S.sil) setTimeout(() => toast('Открыта служба: МВД, ФСБ, спецназ — в «Карьере»'), 2500);
+      if (S.lvl === SERVICE_MIN_LEVEL && !S.sil) setTimeout(() => toast('Открыта служба: МВД, ФСБ, прокуратура — в «Карьере»'), 2500);
     }
   }
 
@@ -1817,7 +1834,7 @@
   function svcXpAdd(n) { const got = Math.max(0, Math.min(n, svcXpCap() - S.sil.xp)); S.sil.xp += got; return got; }
   const xpText = (got, want) => got >= want ? `+${got} опыта` : got > 0 ? `+${got} опыта (лимит звания)` : 'опыт на этом звании набран';
   const rankH = () => (Date.now() - (S.sil.rankAt || S.sil.since)) / 3600e3;   // выслуга на текущем звании
-  // Погоны звания: у МВД — полицейские, у ФСБ и спецназа — армейские
+  // Погоны звания: у МВД — полицейские, у ФСБ и прокуратуры — армейские (свои у прокуратуры пока не нарисованы)
   const boardImg = (r, cls = '') => `<img class="pogon ${cls}" src="img/ranks/${S.sil.s === 'mvd' ? 'p' : 'a'}${r}.png" alt="${SERVICE_RANKS[r].name}">`;
   // Что нужно до следующего звания: [{ text, ok }]
   function promoReqs() {
@@ -1862,9 +1879,13 @@
     S.sil.carAt = Date.now();
     let p;
     if (plate.gov) {
+      // своя серия у ведомства; 97-й регион — пока свой не выкуплен (один раз за игру), потом другие московские
+      const ser = STR().series, first = !(S.p97 || {})[S.sil.s];
       p = makePlate('mythic', PLATE_REGIONS[0]);
+      p.a = ser[0]; p.b = ser.slice(1);
       p.d = '0' + String(1 + Math.floor(Math.random() * 99)).padStart(2, '0');   // «блатной» номер 001–099
-      p.r = PLATE_SVC_CODE;                                                     // 97-й регион — только служебный
+      p.r = first ? PLATE_SVC_CODE : pick(PLATE_SVC_REGIONS);
+      if (first) p.collect = Math.round((PLATE_97_COLLECT[0] + Math.random() * (PLATE_97_COLLECT[1] - PLATE_97_COLLECT[0])) / 1e6) * 1e6;
     } else p = makePlate(rollPlateRarity({ w: plate }), PLATE_REGIONS[0]);
     for (const x of S.plates) if (x.car === id) x.car = null;
     p.car = id; p.svc = true;
@@ -1872,7 +1893,22 @@
     S.raceCar = id;
     return id;
   }
-  const writeoffCost = () => Math.round((ITEM[S.sil.car].value * SVC_WRITEOFF_RATE + (svcPlate() ? svcPlate().v * SVC_WRITEOFF_PLATE_RATE : 0)) / 1000) * 1000;
+  // Выкуп служебной: машина — от 70% (сержант) до 50% цены (генерал с хорошей репутацией); номер — по цене продажи,
+  // а единственный 97-й — по своей цене (коллекционер даст за него миллиард)
+  const svcBuyRate = () => SVC_BUY_MAX - (SVC_BUY_MAX - SVC_BUY_MIN - 0.03) * Math.max(0, S.sil.r - 1) / (SERVICE_RANKS.length - 2) - (S.rep >= SVC_BUY_REP ? 0.03 : 0);
+  const plateBuy = p => (p.collect ? p.v : Math.round(p.v * PLATE_SELL_RATE));
+  const writeoffCost = () => Math.round((ITEM[S.sil.car].value * svcBuyRate() + (svcPlate() ? plateBuy(svcPlate()) : 0)) / 1000) * 1000;
+  function doWriteoff(cost, id) {
+    if (!svcCar() || S.sil.car !== id || !pay(cost)) return;
+    const p = svcPlate(), until = Date.now() + SVC_SELL_LOCK_MIN * 60e3;
+    S.lock = S.lock || {};
+    S.lock['i:' + id] = until;
+    if (p) { p.svc = false; S.lock['p:' + p.id] = until; if (p.collect) (S.p97 = S.p97 || {})[S.sil.s] = true; }
+    S.sil.car = null;
+    S.sil.lastCar = id;
+    S.sil.reissueAt = Date.now() + SVC_REISSUE_H * 3600e3;
+    haptic('ok'); toast(`${ITEM[id].name} теперь твоя`); save(); render();
+  }
   const sellLock = key => Math.max(0, ((S.lock || {})[key] || 0) - Date.now());
   // Автобаза выдала новую служебную после списания
   function maybeReissue() {
@@ -2026,11 +2062,12 @@
         <div class="grow"><div class="val">${ITEM[id].name}${top ? ' · кортеж' : ''}</div><div>${svcPlate() ? plateHTML(svcPlate(), 'sm') : ''}</div>
           <div class="small muted">${race}</div></div></div>
       <button class="btn btn-sm btn-ghost full" style="margin-top:8px" data-action="svc-writeoff" ${block ? 'disabled' : ''}>
-        Списать на личное · ${fmt(writeoffCost())} ₽${block ? ` <span class="small">(${block})</span>` : ''}</button></div>`;
+        Выкупить себе · ${fmt(writeoffCost())} ₽${block ? ` <span class="small">(${block})</span>` : ''}</button></div>`;
   }
-  // ---------- спецзадания: расследование, перехват, штурм ----------
+  // ---------- спецзадания: расследование для всех; перехват и штурм у МВД и ФСБ, суд и проверка у прокуратуры ----------
   const specLeft = t => Math.max(0, ((S.sil.specCd || {})[t] || 0) - Date.now());
-  const specReady = () => !!S.sil && (!!S.sil.spec || Object.keys(SPEC_TYPES).some(t => !specLeft(t)));
+  const specList = () => Object.entries(SPEC_TYPES).filter(([, T]) => !T.only || T.only.includes(S.sil.s));   // у каждого ведомства свои
+  const specReady = () => !!S.sil && (!!S.sil.spec || specList().some(([t]) => !specLeft(t)));
   const pickOne = a => a[Math.floor(Math.random() * a.length)];
   const specPrize = () => round2(servicePay() * SPEC_MONEY);
   function renderSpec() {
@@ -2043,9 +2080,9 @@
       return `<div class="card ${!left && !sv.spec || (cur && sv.spec.t === t) ? 'accent' : ''}"><div class="big-text">${T.icon} ${T.name}</div>
         <p class="small" style="margin:6px 0 10px">${T.desc}</p>${btn}</div>`;
     };
-    return `<p class="hint">Три вида заданий, у каждого свой откат — ${SPEC_COOLDOWN_MIN} мин. Без взяток: только голова и руки.
+    return `<p class="hint">Три вида заданий своего ведомства, у каждого свой откат — ${SPEC_COOLDOWN_MIN} мин. Без взяток: только голова и руки.
         Справился — премия до ${fmt(round2(specPrize() * 1.3))} ₽ (${SPEC_MONEY} оклада × качество), служебный опыт и репутация +${SPEC_REP * REP_GOOD_MULT}. Провалил — ничего.</p>
-      ${Object.entries(SPEC_TYPES).map(([t, T]) => card(t, T)).join('')}`;
+      ${specList().map(([t, T]) => card(t, T)).join('')}`;
   }
   // Расследование: подозреваемые с признаками; у каждого невиновного хотя бы один признак отличается от преступника
   function genInv() {
@@ -2121,7 +2158,7 @@
       if (type === 'trap' && rooms.some(r => r.type === 'trap')) continue;   // растяжка одна — сапёр тоже один
       rooms.push({ type, hint: Math.random() < acc ? type : RAID_CONFUSE[type], sure: false });
     }
-    const uses = { flash: RAID_ACTIONS.flash.limit + (STR().force ? 1 : 0), sapper: RAID_ACTIONS.sapper.limit };
+    const uses = { flash: RAID_ACTIONS.flash.limit, sapper: RAID_ACTIONS.sapper.limit };
     return { t: 'raid', v: 2, rooms, i: 0, hp: RAID_HP, lost: 0, saved: 0, drones: RAID_DRONES, uses, log: [], acc };
   }
   function viewRaid(sp) {
@@ -2142,10 +2179,75 @@
         Разведка путает похожее: тишину и растяжку, банду и заложника, одного бандита с бандой.</p>
       ${sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : ''}`;
   }
+  // Суд: пять раундов, у адвоката уловка — помощник подсказывает (иногда путает похожие), ты выбираешь ответ
+  function genCourt() {
+    const acc = Math.min(0.9, 0.6 + S.skills.int * 0.015), types = Object.keys(COURT_TRICKS);
+    const rounds = Array.from({ length: COURT_ROUNDS }, () => { const t = pickOne(types); return { t, hint: Math.random() < acc ? t : COURT_CONFUSE[t] }; });
+    return { t: 'court', rounds, i: 0, win: 0, lose: 0, obj: COURT_OBJECTIONS, acc, log: [] };
+  }
+  function viewCourt(sp) {
+    const r = sp.rounds[sp.i];
+    const moves = Object.entries(COURT_MOVES).map(([k, M]) => `<button class="btn" data-action="court-move" data-id="${k}">${ic(M.icon)} ${M.name}
+        <span class="small" style="display:block;opacity:.75">бьёт: ${Object.values(COURT_TRICKS).find(x => x.beat === k).name}</span></button>`).join('');
+    return `${sheetHead('⚖️ Суд')}
+      <div class="kv small"><span>Раунд ${sp.i + 1} из ${COURT_ROUNDS}</span><span>Присяжные за тебя: ${sp.win} · против: ${sp.lose}</span></div>
+      <div class="card accent"><div class="small muted">Помощник шепчет (прав примерно в ${Math.round(sp.acc * 100)}% случаев):</div>
+        <div class="big-text">${COURT_TRICKS[r.hint].hint}</div></div>
+      <div class="raid-acts">${moves}
+        <button class="btn btn-line" data-action="court-move" data-id="obj" ${sp.obj ? '' : 'disabled'}>${ic('hand-stop')} «Протест!» ×${sp.obj}
+          <span class="small" style="display:block;opacity:.75">бьёт любую уловку</span></button></div>
+      <p class="small muted">Нужно убедить присяжных хотя бы в ${COURT_WIN} раундах из ${COURT_ROUNDS}. Помощник путает похожее: жалость и «тётю-свидетеля», «эксперта» и затягивание.</p>
+      ${sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : ''}`;
+  }
+  function courtStep(sp, k) {
+    const r = sp.rounds[sp.i], T = COURT_TRICKS[r.t];
+    if (k === 'obj') { if (!sp.obj) return; sp.obj--; }
+    else if (!COURT_MOVES[k]) return;
+    const ok = k === 'obj' || T.beat === k;
+    if (ok) sp.win++; else sp.lose++;
+    sp.log.push(ok ? `✅ Раунд ${sp.i + 1}: адвокат ${T.name} — ${k === 'obj' ? '«Протест принят!»' : COURT_MOVES[k].name.toLowerCase() + ' разбила его довод'}`
+      : `❌ Раунд ${sp.i + 1}: адвокат ${T.name}, а ты — ${COURT_MOVES[k].name.toLowerCase()}. Присяжные зевнули`);
+    sp.i++;
+    haptic(ok ? 'light' : 'err');
+    if (sp.win >= COURT_WIN) return finishSpec(0.8 + 0.15 * (sp.win - sp.lose) / COURT_ROUNDS + 0.1 * sp.obj + (sp.i < COURT_ROUNDS ? 0.1 : 0),
+      `Виновен! Присяжные на твоей стороне (${sp.win}:${sp.lose}). Адвокат уже пишет апелляцию на салфетке.`);
+    if (sp.lose > COURT_ROUNDS - COURT_WIN) return finishSpec(0, `Оправдан. Подсудимый ушёл из зала под ручку с тётей-свидетельницей (${sp.win}:${sp.lose}).`);
+    save(); openSpec();
+  }
+  // Проверка компании: девять документов, в трёх нарушения; метка аналитика верна не всегда; пять проверок
+  function genAudit() {
+    const acc = Math.min(0.9, AUDIT_ACC + S.skills.int * 0.005);
+    const titles = AUDIT_TITLES.slice().sort(() => Math.random() - 0.5).slice(0, AUDIT_DOCS);
+    const bad = new Set(Array.from({ length: AUDIT_DOCS }, (_, i) => i).sort(() => Math.random() - 0.5).slice(0, AUDIT_BAD));
+    const docs = titles.map((t, i) => ({ t, bad: bad.has(i), flag: Math.random() < acc ? bad.has(i) : !bad.has(i), open: false }));
+    return { t: 'audit', docs, checks: AUDIT_CHECKS, found: 0, acc };
+  }
+  function viewAudit(sp) {
+    const cards = sp.docs.map((d, i) => `<div class="card sus ${d.open && !d.bad ? 'out' : ''}"><div class="row"><div class="grow">
+        <b>${d.open ? (d.bad ? '🚩 ' : '✔️ ') : d.flag ? '⚠️ ' : ''}${d.t}</b>
+        <div class="small muted">${d.open ? d.note : d.flag ? 'аналитик: подозрительно' : 'аналитик: вроде чисто'}</div></div>
+        ${d.open ? '' : `<button class="btn btn-sm" data-action="audit-open" data-id="${i}" ${sp.checks ? '' : 'disabled'}>Проверить</button>`}</div></div>`).join('');
+    return `${sheetHead('📂 Проверка компании')}
+      <div class="kv small"><span>Проверок осталось: ${sp.checks}</span><span>Нарушений найдено: ${sp.found} из ${AUDIT_BAD}</span></div>
+      <p class="small">Аналитик пометил подозрительное ⚠️, но прав примерно в ${Math.round(sp.acc * 100)}% случаев. Найди все ${AUDIT_BAD} нарушения за ${AUDIT_CHECKS} проверок — чем меньше потратишь, тем больше премия. Найдёшь два — тоже засчитают, но скромнее.</p>
+      ${cards}`;
+  }
+  function auditStep(sp, i) {
+    const d = sp.docs[i];
+    if (!d || d.open || !sp.checks) return;
+    d.open = true; sp.checks--;
+    d.note = pickOne(d.bad ? AUDIT_BAD_TEXT : AUDIT_OK_TEXT);
+    if (d.bad) sp.found++;
+    haptic(d.bad ? 'light' : 'err');
+    if (sp.found >= AUDIT_BAD) return finishSpec(1 + 0.1 * sp.checks, `Все ${AUDIT_BAD} нарушения в деле. Директор говорит, что «это всё бухгалтер», бухгалтер — что «это всё Мальдивы».`);
+    if (!sp.checks) return sp.found >= AUDIT_BAD - 1 ? finishSpec(0.6, `Нашёл ${sp.found} нарушения из ${AUDIT_BAD}. Компанию оштрафовали, но третье они успели прогнать через шредер.`)
+      : finishSpec(0, `Нашёл только ${sp.found}. Компания отделалась лёгким испугом и прислала тебе открытку «Спасибо за проверку!».`);
+    save(); openSpec();
+  }
   function openSpec() {
     const sp = S.sil && S.sil.spec;
     if (!sp) return;
-    showModal(sp.t === 'inv' ? viewInv(sp) : sp.t === 'chase' ? viewChase(sp) : viewRaid(sp), true);
+    showModal(({ inv: viewInv, chase: viewChase, raid: viewRaid, court: viewCourt, audit: viewAudit })[sp.t](sp), true);
   }
   function raidStep(sp, k) {
     const room = sp.rooms[sp.i], A = RAID_ACTIONS[k];
@@ -2264,9 +2366,9 @@
       ? `<div class="card small muted">${ic('clock')} На службу снова можно через <span data-timer="${S.silBan}">${fmtTime(S.silBan - Date.now())}</span></div>`
       : S.lvl >= SERVICE_MIN_LEVEL
       ? `<button class="card tap accent" data-action="sil-join"><div class="list-row"><div class="ico-box">${ic('shield')}</div>
-          <div class="grow"><div class="val">Пойти на службу</div><div class="small muted">МВД, ФСБ или спецназ: звания, «крыша», задания — и риск сесть</div></div>
+          <div class="grow"><div class="val">Пойти на службу</div><div class="small muted">МВД, ФСБ или прокуратура: звания, «крыша», задания — и риск сесть</div></div>
           <span class="chev">${ic('chevron-right')}</span></div></button>`
-      : `<div class="card small muted">${ic('lock')} Служба в МВД, ФСБ или спецназе — с ${SERVICE_MIN_LEVEL} уровня (сейчас ${S.lvl})</div>`;
+      : `<div class="card small muted">${ic('lock')} Служба в МВД, ФСБ или прокуратуре — с ${SERVICE_MIN_LEVEL} уровня (сейчас ${S.lvl})</div>`;
     return `<p class="hint">Кроме зарплаты каждая профессия даёт свою пользу ${ic('star', 'gold')} — пока ты на ней работаешь.</p>
       ${service}
       ${focus}
@@ -3167,8 +3269,8 @@
     },
     'spec-start': t => {
       const sv = S.sil;
-      if (!sv || sv.spec || !SPEC_TYPES[t] || specLeft(t)) return;
-      sv.spec = t === 'inv' ? genInv() : t === 'chase' ? genChase() : genRaid();
+      if (!sv || sv.spec || !specList().some(([k]) => k === t) || specLeft(t)) return;
+      sv.spec = ({ inv: genInv, chase: genChase, raid: genRaid, court: genCourt, audit: genAudit })[t]();
       sv.specCd = Object.assign(sv.specCd || {}, { [t]: Date.now() + SPEC_COOLDOWN_MIN * 60e3 });
       haptic('medium'); save(); render(); openSpec();
     },
@@ -3205,6 +3307,8 @@
       if (chaseEdge(sp.x)) return finishSpec(0, 'Беглец вырвался из города. Ориентировка разослана по области.');
       save(); openSpec();
     },
+    'court-move': k => { const sp = S.sil && S.sil.spec; if (sp && sp.t === 'court') courtStep(sp, k); },
+    'audit-open': i => { const sp = S.sil && S.sil.spec; if (sp && sp.t === 'audit') auditStep(sp, +i); },
     'raid-act': k => { const sp = S.sil && S.sil.spec; if (sp && sp.t === 'raid') raidStep(sp, k); },
     'raid-drone': () => {
       const sp = S.sil && S.sil.spec, room = sp && sp.t === 'raid' && sp.rooms[sp.i];
@@ -3214,18 +3318,9 @@
     },
     'svc-writeoff': () => {
       if (!svcCar() || writeoffBlock()) return;
-      const cost = writeoffCost(), id = S.sil.car;
-      askConfirm(`Списать «${ITEM[id].name}» со служебным номером на себя за ${fmt(cost)} ₽? Это дороже, чем дадут при продаже, — смысл, только если хочешь оставить её себе. Продать машину и номер можно будет не раньше чем через ${SVC_SELL_LOCK_MIN} мин. Новую служебную автобаза выдаст через ${SVC_REISSUE_H} ч.`, () => {
-        if (!pay(cost)) return;
-        const p = svcPlate(), until = Date.now() + SVC_SELL_LOCK_MIN * 60e3;
-        S.lock = S.lock || {};
-        S.lock['i:' + id] = until;
-        if (p) { p.svc = false; S.lock['p:' + p.id] = until; }
-        S.sil.car = null;
-        S.sil.lastCar = id;
-        S.sil.reissueAt = Date.now() + SVC_REISSUE_H * 3600e3;
-        haptic('ok'); toast(`${ITEM[id].name} теперь твоя`); save(); render();
-      });
+      const cost = writeoffCost(), id = S.sil.car, p0 = svcPlate(), uniq = p0 && p0.collect;
+      if (uniq) return askConfirm(`Выкупить «${ITEM[id].name}» с номером ${p0.a}${p0.d}${p0.b} ${p0.r} за ${fmt(cost)} ₽?\n\n⚠️ Это твой единственный номер 97 региона в ведомстве «${STR().name}». Государство больше такой не выдаст — на следующей служебной будет номер другой серии. Коллекционер даст за него ${fmt(p0.collect)} ₽.`, () => doWriteoff(cost, id));
+      askConfirm(`Выкупить «${ITEM[id].name}»${p0 ? ' со служебным номером' : ''} за ${fmt(cost)} ₽? Перекупщик даст за машину ${fmt(sellPrice(ITEM[id]))} ₽${p0 ? ` и за номер ${fmt(plateSell(p0))} ₽` : ''}. Продать можно будет через ${SVC_SELL_LOCK_MIN} мин, новую служебную выдадут через ${SVC_REISSUE_H} ч.`, () => doWriteoff(cost, id));
     },
     'roof-take': id => {
       const sv = S.sil, rk = sv && svcRank(), i = BUSINESSES.findIndex(d => d.id === id);
