@@ -126,9 +126,18 @@ button { font: inherit; color: inherit; border: 0; background: none; cursor: poi
 .chance-bar { display: flex; height: 8px; border-radius: 6px; overflow: hidden; margin: 8px 0 6px; }
 .chance-bar i { display: block; height: 100%; }
 .chance-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; }
-.open-row { display: flex; gap: 8px; margin-top: 12px; }
-.open-row .btn { flex: 1; padding: 9px 4px; display: flex; flex-direction: column; align-items: center; line-height: 1.25; }
+.open-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.open-row .btn { min-width: 0; padding: 9px 4px; display: flex; flex-direction: column; align-items: center; line-height: 1.25; }
 .open-row .btn s { text-decoration: none; color: var(--green); }
+.open-row .btn s.save { display: block; font-size: 10px; font-weight: 600; }
+.peek-head { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 8px; }
+.peek-head b { font-size: 18px; }
+.rar-chip { color: #111; font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 10px; }
+.totals { margin-top: 10px; }
+.news-row { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.news-row:last-of-type { border-bottom: 0; }
+.news-ico { font-size: 24px; line-height: 1; flex: none; width: 30px; text-align: center; }
+.totals .kv b { font-size: 15px; }
 .pity { font-size: 12px; color: var(--muted); }
 
 /* ---------- предметы ---------- */
