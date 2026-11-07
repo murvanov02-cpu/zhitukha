@@ -332,9 +332,9 @@
     let r = 0;
     for (const [id, n] of Object.entries(S.inv)) {
       const it = ITEM[id];
-      if (it && it.cat === 'home') r += it.bonus * n;
+      if (it && it.cat === 'home') r += it.bonus;   // каждое жильё сдаётся один раз: копии не складываются
     }
-    return r * (1 + S.skills.biz * 0.02 + perk('rentUp') / 100);
+    return r * (1 + S.skills.biz * 0.01 + perk('rentUp') / 100);
   }
 
   const frozen = id => !!(S.event && EV[S.event.id].freeze && S.event.biz === id);
@@ -1461,7 +1461,7 @@
         <div class="grow"><div class="inv-name">${it.name}</div>
           ${cat === 'car' && plateOf(it.id) ? `<div>${plateHTML(plateOf(it.id), 'sm')}</div>` : ''}
           <div class="small" style="color:${RARITIES[it.rarity].color}">${RARITIES[it.rarity].name}</div>
-          <div class="small muted">${bonusText(it)}${cat === 'home' && n > 1 ? ' × ' + n : ''} · ${fmt(it.value)} ₽</div></div>
+          <div class="small muted">${bonusText(it)}${cat === 'home' && n > 1 ? ' · ×' + n + ', сдаётся одно' : ''} · ${fmt(it.value)} ₽</div></div>
         <div class="inv-actions">${equip}${isSvcCar(it.id) && n <= 1 ? '<span class="tag">Служебная</span>'
           : `<button class="btn btn-sm btn-ghost" data-action="sell" data-id="${it.id}">Продать ${fmt(sellPrice(it) + (n === 1 ? carExtra(it.id) : 0))}</button>`}</div></div>`;
     }).join('');
@@ -1473,7 +1473,7 @@
       if (cat === 'car' && plateOf(it.id)) worth += plateOf(it.id).v;
     }
     return `${invTabs(cat)}
-      <p class="hint">${cat === 'car' ? 'Машина, на которой ездишь, прибавляет к зарплате.' : 'Всё жильё сдаётся и приносит аренду.'} Собрано ${list.filter(i => !i.svc).length} из ${ITEMS.filter(i => i.cat === cat && !i.svc).length}.</p>
+      <p class="hint">${cat === 'car' ? 'Машина, на которой ездишь, прибавляет к зарплате.' : 'Каждое жильё сдаётся один раз — лишние копии лучше продать.'} Собрано ${list.filter(i => !i.svc).length} из ${ITEMS.filter(i => i.cat === cat && !i.svc).length}.</p>
       ${rows || `<div class="empty">${ic(cat === 'car' ? 'car' : 'home')}Пока пусто<br><br><button class="btn btn-sm" data-goto="cases" data-sub="cases:${cat}">К кейсам</button></div>`}
       ${cnt ? totalsCard(cnt, worth, sale, cat === 'car' ? 'Номера на машинах и тюнинг входят в цену продажи. Служебная не считается.' : '') : ''}`;
   }
