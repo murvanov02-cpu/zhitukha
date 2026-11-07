@@ -145,6 +145,7 @@
       }
     }
     if (o.tut === -1 && o.tutPaid === undefined) s.tutPaid = true;   // подарок за обучение — один раз, даже если пройти заново
+    if (s.sil && s.sil.spec && ((s.sil.spec.t === 'raid' && s.sil.spec.v !== 3) || (s.sil.spec.t === 'court' && s.sil.spec.v !== 2))) s.sil.spec = null;   // v68: штурм и суд переделаны
     if (o.news === undefined) s.news = '';   // старым игрокам — показать «Что нового»
     // v51: мусорные иномарки убраны из игры — возвращаем их рыночную цену; билеты «Битых тачек» — в «Гаражный кооператив»
     for (const id of ['c_matiz', 'c_lanos']) {
@@ -1836,8 +1837,8 @@
   function svcXpAdd(n) { const got = Math.max(0, Math.min(n, svcXpCap() - S.sil.xp)); S.sil.xp += got; return got; }
   const xpText = (got, want) => got >= want ? `+${got} опыта` : got > 0 ? `+${got} опыта (лимит звания)` : 'опыт на этом звании набран';
   const rankH = () => (Date.now() - (S.sil.rankAt || S.sil.since)) / 3600e3;   // выслуга на текущем звании
-  // Погоны звания: у МВД — полицейские, у ФСБ и прокуратуры — армейские (свои у прокуратуры пока не нарисованы)
-  const boardImg = (r, cls = '') => `<img class="pogon ${cls}" src="img/ranks/${S.sil.s === 'mvd' ? 'p' : 'a'}${r}.png" alt="${SERVICE_RANKS[r].name}">`;
+  // Погоны звания: у МВД — полицейские, у ФСБ — армейские, у прокуратуры — свои (k0–k9). Без гербов и эмблем
+  const boardImg = (r, cls = '') => `<img class="pogon ${cls}" src="img/ranks/${({ mvd: 'p', spn: 'k' })[S.sil.s] || 'a'}${r}.png?v=2" alt="${SERVICE_RANKS[r].name}">`;
   // Что нужно до следующего звания: [{ text, ok }]
   function promoReqs() {
     const nx = SERVICE_RANKS[S.sil.r + 1];
@@ -2150,70 +2151,161 @@
       <div class="kv small"><span>Постов выставлено</span><b>${sp.turns}</b></div>
       <div class="chase-grid" style="--n:${CHASE_SIZE}">${cells}</div>`;
   }
-  // Штурм: пять дверей, разведка иногда путает похожее, дрон показывает точно. Исход зависит только от выбора.
+  // Штурм (ФСБ): здание из комнат-веток, три канала разведки, своё снаряжение и шум
   function genRaid() {
-    const acc = Math.min(0.9, 0.6 + S.skills.int * 0.015), types = Object.keys(RAID_THREATS);
+    const acc = Math.min(0.88, 0.62 + S.skills.int * 0.012), types = Object.keys(RAID_THREATS);
     const roll = () => { let x = Math.random() * types.reduce((a, k) => a + RAID_THREATS[k].w, 0); for (const k of types) if ((x -= RAID_THREATS[k].w) < 0) return k; return 'single'; };
-    const rooms = [];
-    while (rooms.length < RAID_ROOMS) {
-      const type = roll();
-      if (type === 'trap' && rooms.some(r => r.type === 'trap')) continue;   // растяжка одна — сапёр тоже один
-      rooms.push({ type, hint: Math.random() < acc ? type : RAID_CONFUSE[type], sure: false });
+    const names = RAID_ROOM_NAMES.slice().sort(() => Math.random() - 0.5), rooms = [];
+    let gear = Object.keys(RAID_GEAR).filter(k => k !== 'sapper').sort(() => Math.random() - 0.5).filter((k, i, a) => !(k === 'flash1' && a.includes('flash'))).slice(0, 3);
+    for (let i = 0; i < RAID_ROOMS; i++) {
+      let type = roll();
+      if (type === 'trap' && rooms.some(r => r.type === 'trap')) type = 'empty';
+      if (type === 'hostage' && rooms.filter(r => r.type === 'hostage').length >= 2) type = 'single';
+      const fake = () => RAID_THREATS[pickOne(types.filter(t => t !== type))];
+      const ch = k => (Math.random() < acc ? RAID_THREATS[type] : fake())[k];
+      rooms.push({ n: names[i], type, from: i ? Math.floor(Math.random() * i) : -1, done: false, res: '',
+        sound: ch('sound'), heat: ch('heat'), door: ch('door'), show: ['sound', 'heat', 'door'].sort(() => Math.random() - 0.5).slice(0, 2) });
     }
-    const uses = { flash: RAID_ACTIONS.flash.limit, sapper: RAID_ACTIONS.sapper.limit };
-    return { t: 'raid', v: 2, rooms, i: 0, hp: RAID_HP, lost: 0, saved: 0, drones: RAID_DRONES, uses, log: [], acc };
+    if (rooms.some(r => r.type === 'trap')) gear = ['sapper', ...gear.slice(0, 2)];
+    const uses = {}, sp = { t: 'raid', v: 3, rooms, cur: null, hp: RAID_HP, lost: 0, saved: 0, noise: 0, drones: 0, thermal: false, uses, gear, acc, log: [] };
+    for (const g of gear) { const G = RAID_GEAR[g]; if (G.act) uses[G.act] = (uses[G.act] || 0) + G.n; if (G.drone) sp.drones += G.drone; if (G.thermal) sp.thermal = true; }
+    if (sp.thermal) rooms.forEach(r => { r.heat = RAID_THREATS[r.type].heat; if (!r.show.includes('heat')) r.show.push('heat'); });
+    return sp;
+  }
+  const raidOpen = (sp, i) => !sp.rooms[i].done && (sp.rooms[i].from < 0 || sp.rooms[sp.rooms[i].from].done);
+  function raidClues(r) {
+    const T = RAID_THREATS[r.type];
+    const v = r.sure ? { sound: T.sound, heat: T.heat, door: T.door } : r;
+    const heat = h => (h >= 3 ? '3 и больше' : h);
+    return `${r.sure ? `<div class="small good">${ic('drone')} Дрон: ${T.name}</div>` : ''}
+      <div class="small">${ic('ear')} ${r.sure || r.show.includes('sound') ? v.sound : '<span class="muted">не слышно</span>'}</div>
+      <div class="small">${ic('temperature')} ${r.sure || r.show.includes('heat') ? `людей: ${heat(v.heat)}` : '<span class="muted">тепловизора нет</span>'}</div>
+      <div class="small">${ic('door')} ${r.sure || r.show.includes('door') ? v.door : '<span class="muted">к двери не подобраться</span>'}</div>`;
   }
   function viewRaid(sp) {
-    const room = sp.rooms[sp.i];
-    const wounds = `${RAID_HP - sp.hp} из ${RAID_HP}`;
-    const acts = Object.entries(RAID_ACTIONS).map(([k, A]) => {
-      const left = A.limit ? sp.uses[k] : null;
-      return `<button class="btn ${left === 0 ? 'btn-ghost' : ''}" data-action="raid-act" data-id="${k}" ${left === 0 ? 'disabled' : ''}>${ic(A.icon)} ${A.name}${left !== null ? ` ×${left}` : ''}
-        <span class="small" style="display:block;opacity:.75">Подходит: ${A.ok.length === 4 ? 'всё, кроме растяжки' : A.ok.map(t => RAID_THREATS[t].name).join(', ')}</span></button>`;
+    if (sp.v !== 3) return `${sheetHead('🛡️ Штурм')}<p>Это задание устарело.</p>`;
+    const noise = Array.from({ length: RAID_ALARM }, (_, i) => `<i class="${i < sp.noise ? 'on' : ''}"></i>`).join('');
+    const gear = `<div class="small muted" style="margin:4px 0 8px">${ic('backpack')} ${sp.gear.map(g => RAID_GEAR[g].name).join(' · ')}</div>`;
+    const head = `${sheetHead('🛡️ Штурм')}
+      <div class="kv small"><span>Ранено: ${RAID_HP - sp.hp} из ${RAID_HP} · спасено: ${sp.saved}${sp.lost ? ` · погибло: ${sp.lost}` : ''}</span>
+        <span>Шум <span class="tank inv-time raid-noise">${noise}</span></span></div>${gear}`;
+    const log = sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : '';
+    if (sp.cur !== null) {
+      const r = sp.rooms[sp.cur];
+      const acts = Object.entries(RAID_ACTIONS).filter(([k]) => k === 'quiet' || k === 'storm' || sp.uses[k] !== undefined).map(([k, A]) => {
+        const left = sp.uses[k];
+        return `<button class="btn ${left === 0 ? 'btn-ghost' : ''}" data-action="raid-act" data-id="${k}" ${left === 0 ? 'disabled' : ''}>${ic(A.icon)} ${A.name}${left !== undefined ? ` ×${left}` : ''}
+          <span class="small" style="display:block;opacity:.75">${A.loud ? 'громко · ' : ''}подходит: ${A.ok.map(t => RAID_THREATS[t].name).join(', ')}</span></button>`;
+      }).join('');
+      return `${head}<div class="card accent"><div class="big-text">${r.n}</div>${raidClues(r)}
+          ${r.sure || !sp.gear.includes('drone') ? '' : `<button class="btn btn-sm btn-ghost full" style="margin-top:8px" data-action="raid-drone" ${sp.drones ? '' : 'disabled'}>${ic('drone')} Пустить дрон · ${sp.drones}</button>`}</div>
+        <div class="raid-acts">${acts}</div>
+        <button class="btn btn-ghost btn-sm full" data-action="raid-pick" data-id="-1">${ic('arrow-left')} К плану здания</button>
+        <p class="small muted" style="margin-top:8px">Разведка верна примерно в ${Math.round(sp.acc * 100)}% случаев по каждому каналу. ${sp.noise >= RAID_ALARM ? '<b class="bad">Тревога: бандиты настороже — тихо к заложникам уже не пройти, одиночки собрались в банды.</b>' : `Громкие способы поднимают шум: на ${RAID_ALARM}-м бандиты насторожатся.`}</p>${log}`;
+    }
+    const cards = sp.rooms.map((r, i) => {
+      const open = raidOpen(sp, i);
+      if (r.done) return `<div class="card sus out"><b>${r.n}</b><div class="small">${r.res}</div></div>`;
+      if (!open) return `<div class="card sus out"><b>${r.n}</b><div class="small muted">${ic('lock')} проход через «${sp.rooms[r.from].n}»</div></div>`;
+      return `<div class="card"><div class="row"><div class="grow"><b>${r.n}</b>${raidClues(r)}</div>
+        <button class="btn btn-sm" data-action="raid-pick" data-id="${i}">Войти</button></div></div>`;
     }).join('');
-    return `${sheetHead('🛡️ Штурм')}
-      <div class="kv small"><span>Дверь ${sp.i + 1} из ${RAID_ROOMS}</span><span>Ранено: ${wounds} · заложников спасено ${sp.saved}${sp.lost ? `, погибло ${sp.lost}` : ''}</span></div>
-      <div class="card accent"><div class="small muted">${room.sure ? 'Дрон заглянул внутрь — точно' : `Разведка (верна примерно в ${Math.round(sp.acc * 100)}% случаев)`}</div>
-        <div class="big-text">${RAID_THREATS[room.hint].hint}</div>
-        ${room.sure ? '' : `<button class="btn btn-sm btn-ghost full" style="margin-top:8px" data-action="raid-drone" ${sp.drones ? '' : 'disabled'}>${ic('eye')} Пустить дрон · осталось ${sp.drones}</button>`}</div>
-      <div class="raid-acts">${acts}</div>
-      <p class="small muted">Под каждой кнопкой — с чем она справляется. Не тот способ: заложник погибнет, в остальных случаях ранят бойца. ${RAID_HP} раненых — штурм сорван.
-        Разведка путает похожее: тишину и растяжку, банду и заложника, одного бандита с бандой.</p>
-      ${sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : ''}`;
+    return `${head}<p class="small">Здание — как дерево: открыты только комнаты рядом с зачищенными. Выбирай порядок с умом.</p>${cards}${log}`;
   }
-  // Суд: пять раундов, у адвоката уловка — помощник подсказывает (иногда путает похожие), ты выбираешь ответ
+  // Суд: дело собрано случайно, в папке улики; уловку бьёт улика, которая её опровергает по смыслу
+  const ctrick = id => COURT_TRICKS.find(x => x.id === id);
+  const ccard = id => COURT_CARDS.find(x => x.id === id);
   function genCourt() {
-    const acc = Math.min(0.9, 0.6 + S.skills.int * 0.015), types = Object.keys(COURT_TRICKS);
-    const rounds = Array.from({ length: COURT_ROUNDS }, () => { const t = pickOne(types); return { t, hint: Math.random() < acc ? t : COURT_CONFUSE[t] }; });
-    return { t: 'court', rounds, i: 0, win: 0, lose: 0, obj: COURT_OBJECTIONS, acc, log: [] };
+    const tricks = COURT_TRICKS.slice().sort(() => Math.random() - 0.5).slice(0, COURT_ROUNDS).map(t => ({ id: t.id, line: pickOne(t.text) }));
+    const pool = COURT_CARDS.slice().sort(() => Math.random() - 0.5), hand = [];
+    tricks.slice().sort(() => Math.random() - 0.5).slice(0, COURT_WIN + 1).forEach(t => {
+      const need = ctrick(t.id).need, c = pool.find(c => !hand.includes(c.id) && c.tags.some(g => need.includes(g)));
+      if (c) hand.push(c.id);
+    });
+    for (const c of pool) if (hand.length < COURT_HAND && !hand.includes(c.id)) hand.push(c.id);
+    hand.sort(() => Math.random() - 0.5);
+    return { t: 'court', v: 2, charge: pickOne(COURT_CHARGES), who: pickOne(COURT_DEFENDANTS), lawyer: pickOne(COURT_LAWYERS), tricks, hand, i: 0, win: 0, lose: 0, obj: COURT_OBJECTIONS, log: [] };
   }
   function viewCourt(sp) {
-    const r = sp.rounds[sp.i];
-    const moves = Object.entries(COURT_MOVES).map(([k, M]) => `<button class="btn" data-action="court-move" data-id="${k}">${ic(M.icon)} ${M.name}
-        <span class="small" style="display:block;opacity:.75">бьёт: ${Object.values(COURT_TRICKS).find(x => x.beat === k).name}</span></button>`).join('');
+    if (sp.v !== 2) return `${sheetHead('⚖️ Суд')}<p>Это задание устарело.</p>`;
+    const r = sp.tricks[sp.i], next = sp.tricks[sp.i + 1];
+    const cards = sp.hand.map(id => { const c = ccard(id); return `<button class="btn btn-ghost court-card" data-action="court-move" data-id="${id}"><b>${c.name}</b><span class="small">${c.text}</span></button>`; }).join('');
     return `${sheetHead('⚖️ Суд')}
-      <div class="kv small"><span>Раунд ${sp.i + 1} из ${COURT_ROUNDS}</span><span>Присяжные за тебя: ${sp.win} · против: ${sp.lose}</span></div>
-      <div class="card accent"><div class="small muted">Помощник шепчет (прав примерно в ${Math.round(sp.acc * 100)}% случаев):</div>
-        <div class="big-text">${COURT_TRICKS[r.hint].hint}</div></div>
-      <div class="raid-acts">${moves}
-        <button class="btn btn-line" data-action="court-move" data-id="obj" ${sp.obj ? '' : 'disabled'}>${ic('hand-stop')} «Протест!» ×${sp.obj}
-          <span class="small" style="display:block;opacity:.75">бьёт любую уловку</span></button></div>
-      <p class="small muted">Нужно убедить присяжных хотя бы в ${COURT_WIN} раундах из ${COURT_ROUNDS}. Помощник путает похожее: жалость и «тётю-свидетеля», «эксперта» и затягивание.</p>
+      <p class="small">Подсудимый — <b>${sp.who}</b>, обвинение: ${sp.charge}. Защищает — <b>${sp.lawyer}</b>.</p>
+      <div class="kv small"><span>Раунд ${sp.i + 1} из ${COURT_ROUNDS}</span><span>Присяжные: ${sp.win} за тебя · ${sp.lose} против</span></div>
+      <div class="card accent"><div class="small muted">${sp.lawyer}:</div><div class="big-text">${r.line}</div></div>
+      ${next ? `<p class="small muted">${ic('eye')} Следом адвокат готовит: ${next.line}</p>` : ''}
+      <div class="section">Твоя папка — какая улика это опровергнет?</div>
+      <div class="court-hand">${cards}</div>
+      <div class="row" style="margin-top:8px"><button class="btn btn-line btn-sm grow" data-action="court-move" data-id="obj" ${sp.obj ? '' : 'disabled'}>${ic('hand-stop')} «Протест!» ×${sp.obj}</button>
+        <button class="btn btn-ghost btn-sm grow" data-action="court-move" data-id="pass">Уступить раунд</button></div>
+      <p class="small muted" style="margin-top:6px">Улика тратится. Нужно выиграть ${COURT_WIN} раунда из ${COURT_ROUNDS}. «Протест!» бьёт что угодно, но он один.</p>
       ${sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : ''}`;
   }
   function courtStep(sp, k) {
-    const r = sp.rounds[sp.i], T = COURT_TRICKS[r.t];
-    if (k === 'obj') { if (!sp.obj) return; sp.obj--; }
-    else if (!COURT_MOVES[k]) return;
-    const ok = k === 'obj' || T.beat === k;
+    if (sp.v !== 2) return;
+    const r = sp.tricks[sp.i], need = ctrick(r.id).need;
+    let ok = false, txt = '';
+    if (k === 'obj') { if (!sp.obj) return; sp.obj--; ok = true; txt = '«Протест принят!» — судья стучит молотком'; }
+    else if (k === 'pass') txt = 'Ты промолчал. Присяжные решили, что адвокат прав';
+    else {
+      if (!sp.hand.includes(k)) return;
+      const c = ccard(k); sp.hand = sp.hand.filter(x => x !== k);
+      ok = c.tags.some(g => need.includes(g));
+      txt = ok ? `«${c.name}» — ${pickOne(['адвокат покраснел', 'зал ахнул', 'присяжные закивали', 'подсудимый сполз под стол'])}` : `«${c.name}» — не в тему, присяжные зевнули`;
+    }
     if (ok) sp.win++; else sp.lose++;
-    sp.log.push(ok ? `✅ Раунд ${sp.i + 1}: адвокат ${T.name} — ${k === 'obj' ? '«Протест принят!»' : COURT_MOVES[k].name.toLowerCase() + ' разбила его довод'}`
-      : `❌ Раунд ${sp.i + 1}: адвокат ${T.name}, а ты — ${COURT_MOVES[k].name.toLowerCase()}. Присяжные зевнули`);
+    sp.log.push(`${ok ? '✅' : '❌'} Раунд ${sp.i + 1}: ${txt}`);
     sp.i++;
     haptic(ok ? 'light' : 'err');
-    if (sp.win >= COURT_WIN) return finishSpec(0.8 + 0.15 * (sp.win - sp.lose) / COURT_ROUNDS + 0.1 * sp.obj + (sp.i < COURT_ROUNDS ? 0.1 : 0),
-      `Виновен! Присяжные на твоей стороне (${sp.win}:${sp.lose}). Адвокат уже пишет апелляцию на салфетке.`);
-    if (sp.lose > COURT_ROUNDS - COURT_WIN) return finishSpec(0, `Оправдан. Подсудимый ушёл из зала под ручку с тётей-свидетельницей (${sp.win}:${sp.lose}).`);
+    if (sp.win >= COURT_WIN) return finishSpec(0.8 + 0.12 * (sp.win - sp.lose) + 0.05 * sp.hand.length + 0.1 * sp.obj,
+      `Виновен! ${sp.who} отправляется подумать о жизни (${sp.win}:${sp.lose}). ${sp.lawyer} уже пишет апелляцию на салфетке.`);
+    if (sp.lose > COURT_ROUNDS - COURT_WIN) return finishSpec(0, `Оправдан. ${sp.who} уходит из зала под ручку с тётей-свидетельницей (${sp.win}:${sp.lose}).`);
+    save(); openSpec();
+  }
+  // Допрос (МВД): половина рассказа — враньё; три запроса проверяют темы; два противоречия — признание
+  function genQuiz() {
+    const acc = Math.min(0.85, 0.6 + S.skills.int * 0.012);
+    const lies = new Set(INT_TOPICS.map((_, i) => i).sort(() => Math.random() - 0.5).slice(0, INT_LIES));
+    const st = INT_TOPICS.map((T, i) => {
+      const said = pickOne(T.vals), lie = lies.has(i);
+      return { said, truth: lie ? pickOne(T.vals.filter(v => v !== said)) : said, lie, checked: false, caught: false,
+        tell: Math.random() < (lie ? acc : 1 - acc) ? pickOne(INT_TELLS) : '' };
+    });
+    return { t: 'quiz', crime: pickOne(INT_CRIMES), who: pickOne(INT_SUSPECTS), st, req: INT_REQUESTS, found: 0, acc };
+  }
+  function viewQuiz(sp) {
+    const rows = sp.st.map((x, i) => {
+      const T = INT_TOPICS[i];
+      const fact = x.checked ? (x.lie ? `<div class="small bad">${ic('file-alert')} ${T.req}: на самом деле — ${x.truth}</div>` : `<div class="small good">${ic('file-check')} ${T.req}: подтверждается</div>`) : '';
+      const btn = x.caught ? `<span class="tag good">${ic('check')} уличён</span>`
+        : x.checked && x.lie ? `<button class="btn btn-sm btn-danger" data-action="quiz-catch" data-id="${i}">Уличить</button>`
+        : x.checked ? '' : `<button class="btn btn-sm btn-ghost" data-action="quiz-check" data-id="${i}" ${sp.req ? '' : 'disabled'}>Проверить</button>`;
+      return `<div class="card sus ${x.checked && !x.lie ? 'out' : ''}"><div class="row"><div class="grow">
+          <div class="small muted">${T.q}</div><b>«${x.said}»</b>${x.tell ? ` <span class="small gold">— ${x.tell}</span>` : ''}${fact}</div>${btn}</div></div>`;
+    }).join('');
+    return `${sheetHead('🗣️ Допрос')}
+      <p class="small">Подозреваемый — ${sp.who}, дело про ${sp.crime}. Рассказывает складно, но половина — враньё.</p>
+      <div class="kv small"><span>Запросов осталось: ${sp.req}</span><span>Противоречий: ${sp.found} из ${INT_NEED}</span></div>
+      <p class="small muted">Следи, где он нервничает — это подсказка, но не всегда честная (верна примерно в ${Math.round(sp.acc * 100)}% случаев).</p>
+      ${rows}`;
+  }
+  function quizStep(sp, kind, i) {
+    const x = sp.st[i];
+    if (!x) return;
+    if (kind === 'check') {
+      if (x.checked || !sp.req) return;
+      x.checked = true; sp.req--;
+      haptic(x.lie ? 'light' : 'err');
+    } else {
+      if (!x.checked || !x.lie || x.caught) return;
+      x.caught = true; sp.found++;
+      haptic('ok');
+      if (sp.found >= INT_NEED) return finishSpec(1 + 0.12 * sp.req + (sp.st.filter(y => y.lie && y.checked).length > INT_NEED ? 0.1 : 0),
+        `${sp.who} поплыл: «Ладно, ладно, это был я! Только маме не говорите».`);
+    }
+    const canWin = sp.found + sp.st.filter(y => y.lie && y.checked && !y.caught).length + sp.req >= INT_NEED;
+    if (!canWin) return finishSpec(0, `Запросы кончились, а ${sp.who} держится. Адвокат уводит его со словами «до новых встреч».`);
     save(); openSpec();
   }
   // Проверка компании: девять документов, в трёх нарушения; метка аналитика верна не всегда; пять проверок
@@ -2249,24 +2341,35 @@
   function openSpec() {
     const sp = S.sil && S.sil.spec;
     if (!sp) return;
-    showModal(({ inv: viewInv, chase: viewChase, raid: viewRaid, court: viewCourt, audit: viewAudit })[sp.t](sp), true);
+    showModal(({ inv: viewInv, chase: viewChase, raid: viewRaid, court: viewCourt, audit: viewAudit, quiz: viewQuiz })[sp.t](sp), true);
   }
   function raidStep(sp, k) {
-    const room = sp.rooms[sp.i], A = RAID_ACTIONS[k];
-    if (!A || (A.limit && !sp.uses[k])) return;
-    if (A.limit) sp.uses[k]--;
-    const ok = A.ok.includes(room.type), what = RAID_THREATS[room.type].name;
-    const n = `Комната ${sp.i + 1}`, done = { empty: 'пусто, вошли без потерь', single: 'бандит задержан, потерь нет', group: 'банда задержана, потерь нет', hostage: 'заложник спасён', trap: 'растяжка обезврежена' }[room.type];
-    if (ok) { if (room.type === 'hostage') sp.saved++; sp.log.push(`✅ ${n}: ${A.name.toLowerCase()} — ${done}`); }
-    else if (room.type === 'hostage') { sp.lost++; sp.log.push(`❌ ${n}: ${A.name.toLowerCase()} — внутри был заложник, спасти не удалось`); }
-    else { sp.hp--; sp.log.push(`🩸 ${n}: ${A.name.toLowerCase()} — там ${what}, боец ранен (осталось ${sp.hp} из ${RAID_HP})`); }
-    sp.i++;
+    const room = sp.cur !== null && sp.rooms[sp.cur], A = RAID_ACTIONS[k];
+    if (!room || !A || room.done) return;
+    if (sp.uses[k] !== undefined) { if (!sp.uses[k]) return; sp.uses[k]--; }
+    else if (k !== 'quiet' && k !== 'storm') return;
+    const alarm = sp.noise >= RAID_ALARM;
+    const ok = A.ok.includes(room.type) && !(alarm && room.type === 'hostage' && k === 'quiet');
+    const what = RAID_THREATS[room.type].name;
+    if (ok) { if (room.type === 'hostage') sp.saved++; room.res = `✅ ${A.name.toLowerCase()} — ${room.type === 'hostage' ? 'заложник спасён' : room.type === 'empty' ? 'пусто, чисто' : what + ' — обезврежено'}`; }
+    else if (room.type === 'hostage') { sp.lost++; room.res = `❌ ${A.name.toLowerCase()} — заложника спасти не удалось`; }
+    else { sp.hp--; room.res = `🩸 ${A.name.toLowerCase()} — там ${what}, боец ранен`; }
+    sp.log.push(`${room.n}: ${room.res}`);
+    room.done = true; sp.cur = null;
+    if (A.loud) {
+      sp.noise++;
+      if (sp.noise === RAID_ALARM) {
+        sp.rooms.forEach(r => { if (!r.done && r.type === 'single') r.type = 'group'; });
+        sp.log.push('🚨 Шум услышали: бандиты настороже и собираются вместе');
+      }
+    }
     haptic(ok ? 'light' : 'err');
-    if (sp.hp <= 0) return finishSpec(0, `Трое раненых — группу отозвали, штурм сорван.`);
-    if (sp.i >= RAID_ROOMS) {
+    if (sp.hp <= 0) return finishSpec(0, 'Трое раненых — группу отозвали, штурм сорван.');
+    if (sp.rooms.every(r => r.done)) {
       if (sp.lost >= 2) return finishSpec(0, `Здание взяли, но погибли ${sp.lost} заложника. Операцию признали проваленной.`);
-      return finishSpec(Math.max(0.5, 1.1 - 0.15 * (RAID_HP - sp.hp) - 0.3 * sp.lost + 0.05 * sp.drones),
-        `Здание зачищено. Раненых ${RAID_HP - sp.hp}, заложников спасено ${sp.saved}${sp.lost ? `, погиб ${sp.lost}` : ''}.`);
+      const spare = Object.values(sp.uses).reduce((a, b) => a + b, 0) + sp.drones;
+      return finishSpec(Math.max(0.5, 1.15 - 0.15 * (RAID_HP - sp.hp) - 0.3 * sp.lost + 0.04 * spare - 0.05 * Math.max(0, sp.noise - 1)),
+        `Здание зачищено. Раненых ${RAID_HP - sp.hp}, заложников спасено ${sp.saved}${sp.lost ? `, погиб ${sp.lost}` : ''}. Шума: ${sp.noise}.`);
     }
     save(); openSpec();
   }
@@ -3338,7 +3441,7 @@
     'spec-start': t => {
       const sv = S.sil;
       if (!sv || sv.spec || !specList().some(([k]) => k === t) || specLeft(t)) return;
-      sv.spec = ({ inv: genInv, chase: genChase, raid: genRaid, court: genCourt, audit: genAudit })[t]();
+      sv.spec = ({ inv: genInv, chase: genChase, raid: genRaid, court: genCourt, audit: genAudit, quiz: genQuiz })[t]();
       sv.specCd = Object.assign(sv.specCd || {}, { [t]: Date.now() + SPEC_COOLDOWN_MIN * 60e3 });
       haptic('medium'); save(); render(); openSpec();
     },
@@ -3379,11 +3482,20 @@
     'audit-open': i => { const sp = S.sil && S.sil.spec; if (sp && sp.t === 'audit') auditStep(sp, +i); },
     'raid-act': k => { const sp = S.sil && S.sil.spec; if (sp && sp.t === 'raid') raidStep(sp, k); },
     'raid-drone': () => {
-      const sp = S.sil && S.sil.spec, room = sp && sp.t === 'raid' && sp.rooms[sp.i];
+      const sp = S.sil && S.sil.spec, room = sp && sp.t === 'raid' && sp.cur !== null && sp.rooms[sp.cur];
       if (!room || room.sure || !sp.drones) return;
-      sp.drones--; room.hint = room.type; room.sure = true;
+      sp.drones--; room.sure = true;
       haptic('light'); save(); openSpec();
     },
+    'raid-pick': i => {
+      const sp = S.sil && S.sil.spec;
+      if (!sp || sp.t !== 'raid') return;
+      i = +i;
+      if (i < 0) sp.cur = null; else if (raidOpen(sp, i)) sp.cur = i; else return;
+      save(); openSpec();
+    },
+    'quiz-check': i => { const sp = S.sil && S.sil.spec; if (sp && sp.t === 'quiz') quizStep(sp, 'check', +i); },
+    'quiz-catch': i => { const sp = S.sil && S.sil.spec; if (sp && sp.t === 'quiz') quizStep(sp, 'catch', +i); },
     'svc-writeoff': () => {
       if (!svcCar() || writeoffBlock()) return;
       const cost = writeoffCost(), id = S.sil.car, p0 = svcPlate(), uniq = p0 && p0.collect;
