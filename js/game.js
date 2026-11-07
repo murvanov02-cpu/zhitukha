@@ -1213,7 +1213,7 @@
     const sellable = sorted.some(r => !r.sold && r.it.cat !== 'conn');
     showModal(`<h3>${c.name} ×${results.length}</h3>
       <div class="tiles mb">${tiles}</div>
-      <p class="small">Лучшее: <b style="color:${RARITIES[best.rarity].color}">${best.name}</b>${soldSum ? ` · автопродажа +${fmt(soldSum)} ₽` : ''}</p>
+      ${soldSum ? `<p class="small">Автопродажа +${fmt(soldSum)} ₽</p>` : ''}
       ${sellable ? `<p class="small muted">Нажми на вещи, чтобы выбрать, что продать.</p>
         <div class="sell-row"><button class="btn btn-ghost" data-action="multi-sell" data-id="all">Продать всё · ${fmt(multiSum(true))} ₽</button>
           <button class="btn btn-line" id="multi-sel" data-action="multi-sell" data-id="sel" disabled>Продать выбранное</button></div>` : ''}
