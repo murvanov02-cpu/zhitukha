@@ -914,7 +914,7 @@
   // С локального адреса и в тестовом режиме не шлём, чтобы тесты не засоряли таблицу.
   function reportPlayer() {
     const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
-    if (!STATS_URL || DEBUG || (local && !window.__forceReport)) return;
+    if (!STATS_URL || isDebug() || (local && !window.__forceReport)) return;
     if (Date.now() - (S.lastReport || 0) < REPORT_EVERY_H * 3600e3) return;
     S.lastReport = Date.now();
     try {
@@ -1339,7 +1339,7 @@
       <div class="drop-name">${it.name}</div>
       <div class="small muted">${sub}</div>
       <div class="drop-bonus">${bonusText(it)}</div>
-      <div class="small muted drop-price">${it.value ? `Рыночная цена: ${fmt(it.value)} ₽` : '&nbsp;'}</div>
+      <div class="small muted drop-price">${it.value ? `Стоит ${fmt(it.value)} ₽ · перекупщик даст ${Math.round(sellRate() * 100)}%` : '&nbsp;'}</div>
       <div class="row">${actions}</div></div>`);
     haptic(rarIdx(it.rarity) >= 2 ? 'ok' : 'medium');
   }
@@ -1403,14 +1403,14 @@
         <div class="small" style="margin-top:8px">${ic('star', 'gold')} На полном доверии: ${specialText(it)}</div>
         ${EVENTS.some(e => e.via === id) ? `<div class="small muted" style="margin-top:6px">Помогает звонком: ${EVENTS.filter(e => e.via === id).map(e => e.title.toLowerCase()).join(', ')}</div>` : ''}`;
     } else if (it.cat === 'car') {
-      body = `<div class="kv small"><span>Рыночная цена</span><b>${fmt(it.value)} ₽</b></div>
-        <div class="kv small"><span>Продать можно за</span><b>${fmt(sellPrice(it))} ₽</b></div>
+      body = `<div class="kv small"><span>Стоит</span><b>${fmt(it.value)} ₽</b></div>
+        <div class="kv small"><span>Перекупщик даст (${Math.round(sellRate() * 100)}%)</span><b>${fmt(sellPrice(it))} ₽</b></div>
         <div class="kv small"><span>К зарплате</span><b>+${it.bonus}%</b></div>
         <div class="kv small"><span>Мощность · класс</span><b>${CAR_HP[id] || '—'} л.с. · ${RACE_CLASSES[it.rarity].name}</b></div>
         <div class="kv small"><span>Ставки в гонках</span><b>от ${fmt(round2(Math.max(RACE_UNIT_MIN, it.value * RACE_CAR_SHARE) * RACE_LEVELS[4].prize))} ₽ за победу</b></div>`;
     } else {
-      body = `<div class="kv small"><span>Рыночная цена</span><b>${fmt(it.value)} ₽</b></div>
-        <div class="kv small"><span>Продать можно за</span><b>${fmt(sellPrice(it))} ₽</b></div>
+      body = `<div class="kv small"><span>Стоит</span><b>${fmt(it.value)} ₽</b></div>
+        <div class="kv small"><span>Перекупщик даст (${Math.round(sellRate() * 100)}%)</span><b>${fmt(sellPrice(it))} ₽</b></div>
         <div class="kv small"><span>Аренда</span><b>+${fmt(ph(it.bonus))} ₽/ч</b></div>`;
     }
     showModal(`${sheetHead(it.name)}
@@ -1511,7 +1511,7 @@
       </div>
       <div class="row"><button class="btn btn-ghost btn-sm grow" data-action="credits">${ic('camera')} Авторы фото</button>
         <button class="btn btn-danger btn-sm grow" data-action="reset">Начать заново</button></div>
-      ${DEBUG ? debugPanel() : ''}`;
+      ${isDebug() ? debugPanel() : ''}`;
     showModal(`${sheetHead('Профиль')}
       <div class="card prof" style="--lc:${lc}"><div class="row">
         <div class="ava-wrap"><div class="ava">${$('#ava').textContent}</div><span class="lvl">${S.lvl}</span></div>
@@ -1526,7 +1526,8 @@
   }
 
   // ---------- тестовая панель: только при адресе с ?debug ----------
-  const DEBUG = /[?&]debug/.test(location.search);
+  // Режим разработчика: ?debug в адресе или личный ID из DEV_IDS (data.js) — для игры через Telegram
+  const isDebug = () => /[?&]debug/.test(location.search) || (typeof S !== 'undefined' && S && DEV_IDS.includes(S.pid));
   function debugPanel() {
     const evBtn = e => `<button class="btn btn-sm ${e.good ? 'btn-green' : 'btn-ghost'}" data-action="dbg-event" data-id="${e.id}"
       ${eventOk(e) ? '' : 'disabled'}>${e.icon} ${e.title}</button>`;
@@ -1626,8 +1627,8 @@
   // Итог под списком имущества: рыночная стоимость и сколько дадут, если продать всё сразу
   const totalsCard = (cnt, worth, sale, note) => `<div class="card totals">
       <div class="kv"><span>Всего</span><b>${cnt} шт.</b></div>
-      <div class="kv"><span>Рыночная стоимость</span><b>${fmt(worth)} ₽</b></div>
-      <div class="kv"><span>Если продать всё</span><b class="good">${fmt(sale)} ₽</b></div>
+      <div class="kv"><span>Всё стоит</span><b>${fmt(worth)} ₽</b></div>
+      <div class="kv"><span>Перекупщик даст за всё</span><b class="good">${fmt(sale)} ₽</b></div>
       ${note ? `<div class="small muted">${note}</div>` : ''}</div>`;
   const invTabs = cat => `<button class="back" data-goto="home">${ic('chevron-left')} Главная</button>
       <div class="seg">
@@ -2946,10 +2947,11 @@
     },
     'gig-claim': () => {
       if (!S.gig || Date.now() < S.gig.until) return;
-      const v = gigPay(GIG[S.gig.id]);
+      const id0 = S.gig.id, v = gigPay(GIG[S.gig.id]);
       S.gig = null;
       earn(v, 'work');
       progress('gig');
+      gainXP(Math.max(1, Math.round(GIG[id0].h * GIG_XP_PER_H)));
       haptic('ok'); toast(`Подработка: +${fmt(v)} ₽`);
       save(); render();
     },
@@ -3470,15 +3472,15 @@
       earn(r);
       haptic('ok'); toast(`Сделка закрыта: +${fmt(r)} ₽`); save(); render();
     },
-    'dbg-event': id => { if (!DEBUG || !eventOk(EV[id])) return; S.event = null; closeModal(); startEvent(EV[id]); },
-    'dbg-money': v => { if (!DEBUG) return; S.money += +v; save(); render(); showProfile(); toast(`+${fmt(+v)} ₽`); },
+    'dbg-event': id => { if (!isDebug() || !eventOk(EV[id])) return; S.event = null; closeModal(); startEvent(EV[id]); },
+    'dbg-money': v => { if (!isDebug()) return; S.money += +v; save(); render(); showProfile(); toast(`+${fmt(+v)} ₽`); },
     'dbg-favor': () => {
-      if (!DEBUG) return;
+      if (!isDebug()) return;
       if (!Object.keys(S.conn).length) { toast('Сначала нужна хотя бы одна связь'); return; }
       S.favor = null; S.nextFavor = 0; maybeFavor(); closeModal(); tab = 'conn'; render();
     },
     'dbg-free': () => {
-      if (!DEBUG) return;
+      if (!isDebug()) return;
       S.cd = {}; if (S.gig) S.gig.until = 0;
       for (const c of Object.values(S.conn)) { c.cd = {}; c.sp = 0; }
       // всё, что ждёт реального времени: служба, гонки, сделка, номера, бизнес
@@ -3495,7 +3497,7 @@
     },
     promo: () => redeem(($('#promo-input') || {}).value),
     'dbg-hash': async () => {
-      if (!DEBUG) return;
+      if (!isDebug()) return;
       const code = normCode(($('#dbg-code') || {}).value || '');
       if (!code) { toast('Введи код'); return; }
       const h = await sha256(code);
