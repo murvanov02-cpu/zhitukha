@@ -97,11 +97,15 @@ const ITEMS = [
     img: 'img/cars/c_sclass.png', credit: 'Alexander Migl · CC BY-SA 4.0' },
   // Только служебная — генералу (svc: true — не выпадает из кейсов и не считается в коллекции)
   { id: 'c_aurus', cat: 'car', name: 'Aurus Senat', icon: '🚘', rarity: 'mythic', bonus: 40, t: ['ru'], value: 60e6, svc: true,
-    img: 'img/cars/c_aurus.png', credit: 'Alexander Migl · CC BY-SA 4.0' },
-  { id: 'c_maybach', cat: 'car', name: 'Mercedes-Maybach S 680', icon: '🚘', rarity: 'mythic', bonus: 40, t: ['de'], value: 45e6, svc: true,
-    img: 'img/cars/c_maybach.png', credit: 'Alexander Migl · CC BY-SA 4.0' },
+    img: 'img/cars/c_aurus_2.png' },
+  { id: 'c_maybach', cat: 'car', name: 'Mercedes S 600 Pullman Guard', icon: '🚘', rarity: 'mythic', bonus: 40, t: ['de'], value: 45e6, svc: true,
+    img: 'img/cars/c_pullman.png' },
+  { id: 'c_arsenal', cat: 'car', name: 'Aurus Arsenal', icon: '🚐', rarity: 'legendary', bonus: 30, t: ['ru'], value: 35e6, svc: true,
+    img: 'img/cars/c_arsenal.png' },
+  { id: 'c_bmw7', cat: 'car', name: 'BMW 7 серии', icon: '🚘', rarity: 'epic', bonus: 17, t: ['de'], value: 14e6, svc: true,
+    img: 'img/cars/c_bmw7.png' },
   { id: 'c_komendant', cat: 'car', name: 'Aurus Komendant', icon: '🚙', rarity: 'mythic', bonus: 40, t: ['ru'], value: 55e6, svc: true,
-    img: 'img/cars/c_komendant.png', credit: 'Retired electrician · CC0' },
+    img: 'img/cars/c_komendant_2.png' },
   { id: 'c_lx', cat: 'car', name: 'Lexus LX 600', icon: '🚙', rarity: 'epic', bonus: 18, t: ['jp'], value: 22e6,
     img: 'img/cars/c_lx.png', credit: 'Kevauto · CC BY-SA 4.0' },
   { id: 'c_bentley', cat: 'car', name: 'Bentley Continental GT', icon: '🏎️', rarity: 'legendary', bonus: 32, value: 33e6,
@@ -787,7 +791,7 @@ const CAR_HP = {
   c_camry: 200, c_rav4: 199, c_tiguan: 180, c_monjaro: 238, c_eclass: 245, c_lc300: 409, c_x5: 340, c_cayenne: 353,
   c_gtr: 565, c_m5: 600, c_rs6: 600, c_sclass: 367, c_lx: 409, c_911: 385, c_g63: 585, c_bentley: 659,
   c_mclaren: 720, c_ferrari: 830, c_urus: 666, c_aventador: 770, c_phantom: 571, c_cullinan: 571,
-  c_huayra: 730, c_jesko: 1600, c_chiron: 1500, c_zaz: 40, c_oka: 33, c_izh: 75, c_2101: 64, c_aurus: 598, c_maybach: 612, c_komendant: 598,
+  c_huayra: 730, c_jesko: 1600, c_chiron: 1500, c_zaz: 40, c_oka: 33, c_izh: 75, c_2101: 64, c_aurus: 598, c_maybach: 517, c_komendant: 598, c_arsenal: 598, c_bmw7: 449,
   c_moskvich: 75, c_lanos: 86, c_focus: 125, c_largus: 106, c_uaz: 150, c_corolla: 122, c_passat: 150, c_a4: 190, c_prado: 249, c_m3: 510, c_tesla: 1020, c_range: 400, c_amggt: 585, c_db11: 630, c_nevera: 1914, c_laferrari: 963,
 };
 // Ставки зависят от цены машины: единица ставки U = RACE_CAR_SHARE её стоимости (не меньше RACE_UNIT_MIN).
@@ -987,7 +991,7 @@ const REP_MAX = 100;
 const REP_HONEST = 8;                // честный выбор в задании
 const REP_GOOD_MULT = 1.5;           // хорошие дела поднимают репутацию в полтора раза сильнее, чем плохие роняют
 const REP_BRIBE = 8;                 // «взять деньги» — минус столько + 4 за каждый «месяц звания» в сумме
-const REP_ROOF = 10;                 // взять бизнес под «крышу» (отпустить — вернуть половину)
+const REP_ROOF = 5;                  // взять бизнес под «крышу» (отпустить — вернуть столько же)
 const CHECKS_PER_DAY = 1;
 // Проверка находит нарушения с шансом: «крыши» × OSB_PER_ROOF + |плохая репутация| × OSB_PER_REP (%).
 // Чисто — плюс служебный опыт и репутация. Нашли — занести, отдать «крышу» или пойти в отказ.
@@ -1012,11 +1016,11 @@ const SERVICE_NO_RACE = 6;
 // Служебная машина и номер — со звания капитана, растут со званием. Продать нельзя; «списать на личное» —
 // после SVC_WRITEOFF_H часов на звании и с репутацией не ниже 0, за SVC_WRITEOFF_RATE стоимости машины и номера.
 // Служебная машина — с сержанта; у каждой структуры своя линейка (как реально ездят в ведомствах),
-// на вершине — у МВД Maybach, у ФСБ Aurus Senat, у спецназа Aurus Komendant.
+// на вершине — у МВД Mercedes Pullman с флажками, у ФСБ Aurus Senat, у спецназа Aurus Komendant.
 // Служебные выдаются отдельными вещами (svc: true, см. ниже): из кейсов не выпадают и в коллекцию не идут.
 const SERVICE_CARS = {
-  mvd: { 1: 'c_granta', 2: 'c_vesta', 3: 'c_camry', 4: 'c_k5',     5: 'c_eclass', 6: 'c_lc300', 7: 'c_sclass', 8: 'c_lx',    9: 'c_maybach' },
-  fsb: { 1: 'c_vesta',  2: 'c_k5',    3: 'c_camry', 4: 'c_a4',     5: 'c_eclass', 6: 'c_x5',    7: 'c_sclass', 8: 'c_lc300', 9: 'c_aurus' },
+  mvd: { 1: 'c_granta', 2: 'c_vesta', 3: 'c_camry', 4: 'c_k5',     5: 'c_eclass', 6: 'c_bmw7',  7: 'c_sclass', 8: 'c_lx',    9: 'c_maybach' },
+  fsb: { 1: 'c_vesta',  2: 'c_k5',    3: 'c_camry', 4: 'c_a4',     5: 'c_eclass', 6: 'c_x5',    7: 'c_sclass', 8: 'c_arsenal', 9: 'c_aurus' },
   spn: { 1: 'c_niva',   2: 'c_uaz',   3: 'c_prado', 4: 'c_tiguan', 5: 'c_lc300',  6: 'c_g63',   7: 'c_range',  8: 'c_lx',    9: 'c_komendant' },
 };
 // Шансы редкости служебного номера (%): выпадает случайно, но чем выше звание, тем красивее.
@@ -1033,12 +1037,14 @@ const SERVICE_PLATES = {
   9: { gov: true },
 };
 // Служебная версия машины: такая же, но своя вещь — svc_<модель>. Модели только для службы (svc: true) остаются как есть.
+// Свой вид у служебной версии (с мигалками), если он отличается от обычной машины
+const SVC_LOOK = { svc_sclass: { img: 'img/cars/svc_sclass.png', credit: undefined } };
 const svcCarId = base => (ITEMS.find(i => i.id === base).svc ? base : 'svc_' + base.slice(2));
 for (const line of Object.values(SERVICE_CARS)) for (const base of Object.values(line)) {
   const id = svcCarId(base);
   if (id === base || ITEMS.some(i => i.id === id)) continue;
   const b = ITEMS.find(i => i.id === base);
-  ITEMS.push(Object.assign({}, b, { id, name: b.name + ' · служебная', svc: true }));
+  ITEMS.push(Object.assign({}, b, { id, name: b.name + ' · служебная', svc: true }, SVC_LOOK[id] || {}));
   CAR_HP[id] = CAR_HP[base];
 }
 const SVC_WRITEOFF_H = 24;
@@ -1056,16 +1062,18 @@ const JAIL_SKILLS = 0.25;
 // xp — служебный опыт; money — деньги; risk — шанс сесть, %; need — проверка навыка (fail — что будет при провале).
 const MISSION_EVERY_MIN = 20;
 // ---------- спецзадания (вкладка «Спецзадания», только на службе) ----------
-// Раз в SPEC_EVERY_MIN минут — крупное задание одного из трёх видов, на 3–5 минут игры. Всё честно, без взяток:
-// награда — SPEC_MONEY «месяцев звания» × качество выполнения, служебный опыт и репутация.
-const SPEC_EVERY_MIN = 30;
-const SPEC_MONEY = 3;
+// Три вида заданий, у каждого свой откат SPEC_COOLDOWN_MIN минут: можно пройти все три подряд, потом ждать.
+// Всё честно, без взяток. Справился — премия SPEC_MONEY окладов × качество выполнения, служебный опыт и репутация.
+// Провалил — ни денег, ни опыта (а за задержанного невиновного или сорванный штурм — ещё и минус к репутации).
+const SPEC_COOLDOWN_MIN = 20;
+const SPEC_MONEY = 2;            // окладов (довольствие за «месяц») — премия, а не доход с «крыш»
 const SPEC_XP = 90;
-const SPEC_REP = 6;
+const SPEC_REP = 8;
+const SPEC_FAIL_REP = { inv: -3, chase: 0, raid: -3 };
 const SPEC_TYPES = {
   inv:   { name: 'Расследование', icon: '🔎', desc: 'Пять подозреваемых, до утра — четыре следственных действия. Собери улики и задержи того, кто это сделал.' },
   chase: { name: 'Перехват',      icon: '🚓', desc: 'Беглец мчит к выезду из города. Ставь посты на перекрёстках, пока он не прорвался к краю карты.' },
-  raid:  { name: 'Штурм',         icon: '🛡️', desc: 'Пять комнат, у каждой своя угроза. Разведка подсказывает, но может ошибаться. Решай быстро — 12 секунд на дверь.' },
+  raid:  { name: 'Штурм',         icon: '🛡️', desc: 'Пять дверей. Разведка говорит, что за каждой, но иногда путает. Под каждую угрозу — свой способ входа; сомневаешься — пусти дрон.' },
 };
 // Расследование: признаки подозреваемых и следственные действия, которые раскрывают признак преступника
 const SUSPECT_NAMES = ['Гоша Шнырь', 'Валера Кабан', 'Стас Белый', 'Рустам Хан', 'Олег Монтана', 'Витя Пакет', 'Денис Ревизор', 'Лёха Бур',
@@ -1080,23 +1088,25 @@ const INV_TIME = 4;          // следственных действий до �
 // Перехват: сетка города, посты на перекрёстках
 const CHASE_SIZE = 9;
 const CHASE_BLOCKS = 10;     // дома и тупики на старте
-// Штурм: комнаты, разведка, действия
+// Штурм: пять дверей, за каждой одна угроза. Разведка (точность растёт с интеллектом) иногда путает похожее:
+// пусто ↔ растяжка, группа ↔ заложник, одиночка → группа. Дрон показывает точно.
+// Каждый способ входа справляется с определёнными угрозами (ok). Не тот способ: заложник гибнет, иначе — боец ранен.
 const RAID_ROOMS = 5;
-const RAID_HP = 3;
-const RAID_SECONDS = 12;
+const RAID_HP = 3;               // раненых до срыва штурма
+const RAID_DRONES = 2;
 const RAID_THREATS = {
-  empty:   { w: 20, hint: 'Тишина. Похоже, пусто' },
-  single:  { w: 25, hint: 'Слышен один голос' },
-  group:   { w: 25, hint: 'Несколько голосов, звон бутылок' },
-  hostage: { w: 20, hint: 'Плач и крики — там заложник' },
-  trap:    { w: 10, hint: 'У двери странный провод' },
+  empty:   { w: 20, name: 'пусто',            hint: 'Тишина — похоже, пусто' },
+  single:  { w: 25, name: 'один вооружённый', hint: 'Слышен один голос' },
+  group:   { w: 25, name: 'группа',           hint: 'Несколько голосов, звон бутылок' },
+  hostage: { w: 20, name: 'заложник',         hint: 'Плач и крики — там заложник' },
+  trap:    { w: 10, name: 'растяжка',         hint: 'У двери странный провод' },
 };
-// Шанс успеха действия против угрозы; limit — сколько раз за штурм можно
+const RAID_CONFUSE = { empty: 'trap', trap: 'empty', group: 'hostage', hostage: 'group', single: 'group' };
 const RAID_ACTIONS = {
-  flash:  { name: 'Светошумовая', icon: 'bolt',    limit: 2, odds: { empty: 1, single: 0.9,  group: 0.9,  hostage: 0.85, trap: 0.3 } },
-  quiet:  { name: 'Тихий вход',   icon: 'shoe',              odds: { empty: 1, single: 0.9,  group: 0.35, hostage: 0.6,  trap: 0.4 } },
-  storm:  { name: 'Штурм',        icon: 'shield',            odds: { empty: 1, single: 0.75, group: 0.6,  hostage: 0.45, trap: 0.5 } },
-  sapper: { name: 'Сапёр',        icon: 'tool',    limit: 1, odds: { empty: 1, single: 0.6,  group: 0.4,  hostage: 0.3,  trap: 1 } },
+  quiet:  { name: 'Тихий вход',   icon: 'shoe',            ok: ['empty', 'single', 'hostage'] },
+  storm:  { name: 'Штурм',        icon: 'shield',          ok: ['empty', 'single', 'group'] },
+  flash:  { name: 'Светошумовая', icon: 'bolt',  limit: 2, ok: ['empty', 'single', 'group', 'hostage'] },
+  sapper: { name: 'Сапёр',        icon: 'tool',  limit: 1, ok: ['empty', 'trap'] },
 };
 const MISSIONS = [
   { id: 'm_pocket', who: ['mvd'], title: 'Карманник в метро', text: 'Взяли карманника с чужим кошельком. Он шепчет, что «может решить вопрос на месте».',

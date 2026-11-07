@@ -103,6 +103,9 @@
     if (s.sil && s.sil.rep === undefined) { s.sil.rep = 0; s.sil.nextCheck = 0; }
     if (s.sil && s.sil.rep !== undefined && o.rep === undefined) s.rep = s.sil.rep;   // v30: репутация стала общей
     if (s.sil && !s.sil.rankAt) s.sil.rankAt = s.sil.since;
+    // v49: у каждого спецзадания свой откат; штурм старого образца (с таймером) отменяем
+    if (s.sil && !s.sil.specCd) { s.sil.specCd = {}; delete s.sil.nextSpec; delete s.sil.specType; }
+    if (s.sil && s.sil.spec && s.sil.spec.t === 'raid' && s.sil.spec.v !== 2) s.sil.spec = null;
     if (s.lvl > LEVEL_MAX) { s.lvl = LEVEL_MAX; s.xp = 0; }
     // v41: перерыв после увольнения стал 20 минут — старые «сутки» сокращаем (бан после суда, он дольше суток, не трогаем)
     const banLeft = (s.silBan || 0) - Date.now();
@@ -1080,7 +1083,7 @@
     $('#modal').classList.toggle('sheet-mode', !!sheet);
     $('#modal').classList.remove('hidden');
   }
-  function closeModal() { $('#modal').classList.add('hidden'); clearInterval(raidTimer); }
+  function closeModal() { $('#modal').classList.add('hidden'); }
   const sheetHead = title => `<div class="sheet-head"><h3>${title}</h3><button class="icon-btn" data-action="close" aria-label="Закрыть">${ic('x')}</button></div>`;
 
   let toastTimer = 0;
@@ -1781,31 +1784,30 @@
     }
     const block = writeoffBlock();
     const top = r >= 9;
-    return `<div class="card"><div class="row"><div class="inv-icon svc-car">${visual(ITEM[id])}${top ? '<span class="svc-flag">🇷🇺</span><span class="svc-light">🚨</span>' : ''}</div>
+    return `<div class="card"><div class="row"><div class="inv-icon svc-car">${visual(ITEM[id])}</div>
         <div class="grow"><div class="val">${ITEM[id].name}${top ? ' · кортеж' : ''}</div><div>${svcPlate() ? plateHTML(svcPlate(), 'sm') : ''}</div>
           <div class="small muted">${race}</div></div></div>
       <button class="btn btn-sm btn-ghost full" style="margin-top:8px" data-action="svc-writeoff" ${block ? 'disabled' : ''}>
         Списать на личное · ${fmt(writeoffCost())} ₽${block ? ` <span class="small">(${block})</span>` : ''}</button></div>`;
   }
   // ---------- спецзадания: расследование, перехват, штурм ----------
-  const specReady = () => !!S.sil && (!!S.sil.spec || Date.now() >= (S.sil.nextSpec || 0));
+  const specLeft = t => Math.max(0, ((S.sil.specCd || {})[t] || 0) - Date.now());
+  const specReady = () => !!S.sil && (!!S.sil.spec || Object.keys(SPEC_TYPES).some(t => !specLeft(t)));
   const pickOne = a => a[Math.floor(Math.random() * a.length)];
+  const specPrize = () => round2(servicePay() * SPEC_MONEY);
   function renderSpec() {
-    const sv = S.sil;
-    if (!sv.spec && Date.now() >= (sv.nextSpec || 0) && !sv.specType) { sv.specType = pickOne(Object.keys(SPEC_TYPES)); save(); }
-    const T = SPEC_TYPES[(sv.spec && sv.spec.t) || sv.specType];
-    const main = sv.spec
-      ? `<div class="card accent"><div class="big-text">${T.icon} ${T.name}</div><p class="small" style="margin:6px 0 10px">Задание в процессе.</p>
-          <button class="btn full" data-action="spec-open">Продолжить</button></div>`
-      : Date.now() >= (sv.nextSpec || 0)
-      ? `<div class="card accent"><div class="big-text">${T.icon} ${T.name}</div><p class="small" style="margin:6px 0 10px">${T.desc}</p>
-          <div class="small muted mb">Награда: до ${fmt(round2(rankMonth() * SPEC_MONEY * 1.3))} ₽, служебный опыт и репутация.</div>
-          <button class="btn full" data-action="spec-start">Начать</button></div>`
-      : `<div class="card small muted">${ic('clock')} Следующее спецзадание через <span data-timer="${sv.nextSpec}">${fmtTime(sv.nextSpec - Date.now())}</span></div>`;
-    return `<p class="hint">Раз в ${SPEC_EVERY_MIN} минут — крупное задание. Без взяток: только работа головой и руками. Чем чище выполнишь, тем больше награда.</p>
-      ${main}
-      <div class="section">Какие бывают</div>
-      ${Object.values(SPEC_TYPES).map(x => `<div class="card small"><b>${x.icon} ${x.name}</b><div class="muted">${x.desc}</div></div>`).join('')}`;
+    const sv = S.sil, cur = sv.spec && SPEC_TYPES[sv.spec.t];
+    const card = (t, T) => {
+      const left = specLeft(t);
+      const btn = sv.spec ? (sv.spec.t === t ? `<button class="btn full" data-action="spec-open">Продолжить</button>` : `<div class="small muted">Сначала закончи текущее задание</div>`)
+        : left ? `<div class="small muted">${ic('clock')} Снова через <span data-timer="${sv.specCd[t]}">${fmtTime(left)}</span></div>`
+        : `<button class="btn full" data-action="spec-start" data-id="${t}">Начать</button>`;
+      return `<div class="card ${!left && !sv.spec || (cur && sv.spec.t === t) ? 'accent' : ''}"><div class="big-text">${T.icon} ${T.name}</div>
+        <p class="small" style="margin:6px 0 10px">${T.desc}</p>${btn}</div>`;
+    };
+    return `<p class="hint">Три вида заданий, у каждого свой откат — ${SPEC_COOLDOWN_MIN} мин. Без взяток: только голова и руки.
+        Справился — премия до ${fmt(round2(specPrize() * 1.3))} ₽ (${SPEC_MONEY} оклада × качество), служебный опыт и репутация +${SPEC_REP * REP_GOOD_MULT}. Провалил — ничего.</p>
+      ${Object.entries(SPEC_TYPES).map(([t, T]) => card(t, T)).join('')}`;
   }
   // Расследование: подозреваемые с признаками; у каждого невиновного хотя бы один признак отличается от преступника
   function genInv() {
@@ -1870,86 +1872,78 @@
       <div class="kv small"><span>Постов выставлено</span><b>${sp.turns}</b></div>
       <div class="chase-grid" style="--n:${CHASE_SIZE}">${cells}</div>`;
   }
-  // Штурм: комнаты с угрозами, разведка с ошибками, таймер на решение
+  // Штурм: пять дверей, разведка иногда путает похожее, дрон показывает точно. Исход зависит только от выбора.
   function genRaid() {
-    const acc = Math.min(0.9, 0.55 + S.skills.int * 0.015), types = Object.keys(RAID_THREATS);
+    const acc = Math.min(0.9, 0.6 + S.skills.int * 0.015), types = Object.keys(RAID_THREATS);
     const roll = () => { let x = Math.random() * types.reduce((a, k) => a + RAID_THREATS[k].w, 0); for (const k of types) if ((x -= RAID_THREATS[k].w) < 0) return k; return 'single'; };
-    const rooms = Array.from({ length: RAID_ROOMS }, () => { const type = roll(); return { type, hint: Math.random() < acc ? type : pickOne(types.filter(k => k !== type)) }; });
-    return { t: 'raid', rooms, i: 0, hp: RAID_HP, lost: 0, saved: 0, uses: {}, log: [], acc };
+    const rooms = [];
+    while (rooms.length < RAID_ROOMS) {
+      const type = roll();
+      if (type === 'trap' && rooms.some(r => r.type === 'trap')) continue;   // растяжка одна — сапёр тоже один
+      rooms.push({ type, hint: Math.random() < acc ? type : RAID_CONFUSE[type], sure: false });
+    }
+    const uses = { flash: RAID_ACTIONS.flash.limit + (STR().force ? 1 : 0), sapper: RAID_ACTIONS.sapper.limit };
+    return { t: 'raid', v: 2, rooms, i: 0, hp: RAID_HP, lost: 0, saved: 0, drones: RAID_DRONES, uses, log: [], acc };
   }
-  const raidOdds = (k, type) => {
-    let p = RAID_ACTIONS[k].odds[type];
-    if (type !== 'empty' && (k === 'quiet' || k === 'storm')) p += S.skills.fit * 0.005;
-    if (type !== 'empty' && STR().force) p += 0.1;
-    return Math.min(type === 'empty' ? 1 : 0.97, p);
-  };
-  let raidTimer = null;
   function viewRaid(sp) {
     const room = sp.rooms[sp.i];
-    const hearts = Array.from({ length: RAID_HP }, (_, i) => i < sp.hp ? '❤️' : '🖤').join('');
+    const wounds = `${RAID_HP - sp.hp} из ${RAID_HP}`;
     const acts = Object.entries(RAID_ACTIONS).map(([k, A]) => {
-      const left = A.limit ? A.limit - (sp.uses[k] || 0) : null;
-      return `<button class="btn ${k === 'storm' ? '' : 'btn-ghost'}" data-action="raid-act" data-id="${k}" ${left === 0 ? 'disabled' : ''}>${ic(A.icon)} ${A.name}${left !== null ? ` <span class="small">×${left}</span>` : ''}</button>`;
+      const left = A.limit ? sp.uses[k] : null;
+      return `<button class="btn ${left === 0 ? 'btn-ghost' : ''}" data-action="raid-act" data-id="${k}" ${left === 0 ? 'disabled' : ''}>${ic(A.icon)} ${A.name}${left !== null ? ` ×${left}` : ''}
+        <span class="small" style="display:block;opacity:.75">${A.ok.length === 4 ? 'всё, кроме растяжки' : A.ok.filter(t => t !== 'empty').map(t => RAID_THREATS[t].name).join(', ')}</span></button>`;
     }).join('');
     return `${sheetHead('🛡️ Штурм')}
-      <div class="kv small"><span>Комната ${sp.i + 1} из ${RAID_ROOMS}</span><span>${hearts}</span></div>
-      <div class="card accent"><div class="small muted">Разведка (точность ≈ ${Math.round(sp.acc * 100)}%)</div>
-        <div class="big-text">${RAID_THREATS[room.hint].hint}</div></div>
-      <div class="raid-timer"><i id="raid-bar"></i></div>
+      <div class="kv small"><span>Дверь ${sp.i + 1} из ${RAID_ROOMS}</span><span>Ранено: ${wounds} · заложников спасено ${sp.saved}${sp.lost ? `, погибло ${sp.lost}` : ''}</span></div>
+      <div class="card accent"><div class="small muted">${room.sure ? 'Дрон заглянул внутрь — точно' : `Разведка (верна примерно в ${Math.round(sp.acc * 100)}% случаев)`}</div>
+        <div class="big-text">${RAID_THREATS[room.hint].hint}</div>
+        ${room.sure ? '' : `<button class="btn btn-sm btn-ghost full" style="margin-top:8px" data-action="raid-drone" ${sp.drones ? '' : 'disabled'}>${ic('eye')} Пустить дрон · осталось ${sp.drones}</button>`}</div>
       <div class="raid-acts">${acts}</div>
-      ${sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : ''}
-      <p class="small muted">Не успеешь за ${RAID_SECONDS} с — группа пойдёт на штурм сама. Заложники: спасено ${sp.saved}, потеряно ${sp.lost}.</p>`;
+      <p class="small muted">Под каждой кнопкой — с чем она справляется. Не тот способ: заложник погибнет, в остальных случаях ранят бойца. ${RAID_HP} раненых — штурм сорван.
+        Разведка путает похожее: тишину и растяжку, группу и заложника, одиночку с группой.</p>
+      ${sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : ''}`;
   }
   function openSpec() {
     const sp = S.sil && S.sil.spec;
-    clearInterval(raidTimer);
     if (!sp) return;
-    if (sp.t === 'inv') showModal(viewInv(sp), true);
-    else if (sp.t === 'chase') showModal(viewChase(sp), true);
-    else {
-      if (!sp.deadline || sp.deadline < Date.now()) sp.deadline = Date.now() + RAID_SECONDS * 1000;
-      showModal(viewRaid(sp), true);
-      raidTimer = setInterval(() => {
-        const bar = $('#raid-bar');
-        if (!bar || !S.sil || S.sil.spec !== sp) { clearInterval(raidTimer); return; }
-        const left = sp.deadline - Date.now();
-        bar.style.width = Math.max(0, left / (RAID_SECONDS * 1000) * 100) + '%';
-        if (left <= 0) { clearInterval(raidTimer); raidStep(sp, 'storm', true); }
-      }, 150);
-    }
+    showModal(sp.t === 'inv' ? viewInv(sp) : sp.t === 'chase' ? viewChase(sp) : viewRaid(sp), true);
   }
-  function raidStep(sp, k, auto) {
+  function raidStep(sp, k) {
     const room = sp.rooms[sp.i], A = RAID_ACTIONS[k];
-    if (A.limit && (sp.uses[k] || 0) >= A.limit) return;
-    sp.uses[k] = (sp.uses[k] || 0) + 1;
-    const ok = Math.random() < raidOdds(k, room.type);
-    const what = { empty: 'пусто', single: 'один вооружённый', group: 'группа', hostage: 'заложник', trap: 'растяжка' }[room.type];
-    if (ok) { if (room.type === 'hostage') sp.saved++; sp.log.push(`✅ ${auto ? 'Время вышло — штурм' : A.name}: ${what}, чисто`); }
-    else if (room.type === 'hostage') { sp.lost++; sp.log.push(`❌ ${A.name}: заложника не уберегли`); }
-    else { sp.hp--; sp.log.push(`🩸 ${A.name}: ${what}, боец ранен`); }
-    sp.i++; sp.deadline = 0;
+    if (!A || (A.limit && !sp.uses[k])) return;
+    if (A.limit) sp.uses[k]--;
+    const ok = A.ok.includes(room.type), what = RAID_THREATS[room.type].name;
+    if (ok) { if (room.type === 'hostage') sp.saved++; sp.log.push(`✅ ${A.name}: ${what} — чисто`); }
+    else if (room.type === 'hostage') { sp.lost++; sp.log.push(`❌ ${A.name}: там был заложник — не уберегли`); }
+    else { sp.hp--; sp.log.push(`🩸 ${A.name}: там ${what} — боец ранен`); }
+    sp.i++;
     haptic(ok ? 'light' : 'err');
-    if (sp.hp <= 0) return finishSpec(0.15, 'Группа понесла потери — штурм сорван.');
-    if (sp.i >= RAID_ROOMS) return finishSpec(Math.max(0.3, 0.5 + 0.5 * sp.hp / RAID_HP + 0.15 * sp.saved - 0.2 * sp.lost),
-      `Здание зачищено. Раненых ${RAID_HP - sp.hp}, заложников спасено ${sp.saved}${sp.lost ? `, потеряно ${sp.lost}` : ''}.`);
+    if (sp.hp <= 0) return finishSpec(0, `Трое раненых — группу отозвали, штурм сорван.`);
+    if (sp.i >= RAID_ROOMS) {
+      if (sp.lost >= 2) return finishSpec(0, `Здание взяли, но погибли ${sp.lost} заложника. Операцию признали проваленной.`);
+      return finishSpec(Math.max(0.5, 1.1 - 0.15 * (RAID_HP - sp.hp) - 0.3 * sp.lost + 0.05 * sp.drones),
+        `Здание зачищено. Раненых ${RAID_HP - sp.hp}, заложников спасено ${sp.saved}${sp.lost ? `, погиб ${sp.lost}` : ''}.`);
+    }
     save(); openSpec();
   }
-  // Итог спецзадания: quality 0…1,3 — деньги, служебный опыт, репутация
+  // Итог спецзадания. quality 0 — провал: ни денег, ни опыта. Иначе 0,5…1,3: премия, служебный опыт, репутация.
   function finishSpec(quality, text) {
-    const sv = S.sil, ok = quality >= 0.6;
-    clearInterval(raidTimer);
-    const money = round2(rankMonth() * SPEC_MONEY * quality), xp = Math.round(SPEC_XP * quality);
+    const sv = S.sil, t = sv.spec.t, ok = quality > 0;
+    const money = ok ? round2(specPrize() * quality) : 0, xp = ok ? Math.round(SPEC_XP * quality) : 0;
+    const rep = ok ? SPEC_REP * REP_GOOD_MULT : SPEC_FAIL_REP[t];
     sv.spec = null;
-    sv.xp += xp;
-    earn(money);
-    repAdd(ok ? SPEC_REP : -2);
-    gainXP(5 + Math.round(xp / 6));
-    progress('mission');
+    if (ok) {
+      sv.xp += xp;
+      earn(money);
+      gainXP(5 + Math.round(xp / 6));
+      progress('mission');
+    }
+    repAdd(ok ? SPEC_REP : SPEC_FAIL_REP[t]);
     haptic(ok ? 'ok' : 'err'); save(); render();
-    showModal(`<div class="drop"><div class="drop-name">${ok ? '🏅 Задание выполнено' : '😬 Не вышло'}</div>
+    showModal(`<div class="drop"><div class="drop-name">${ok ? '🏅 Задание выполнено' : '😬 Провал'}</div>
       <p style="margin-top:8px">${text}</p>
-      <div class="big">+${fmt(money)} ₽ · +${xp} опыта</div>
-      <p class="small muted">Репутация ${ok ? '+' + SPEC_REP * REP_GOOD_MULT : '−2'}. Следующее спецзадание — через ${SPEC_EVERY_MIN} мин.</p>
+      ${ok ? `<div class="big">+${fmt(money)} ₽ · +${xp} опыта</div>` : '<div class="big muted">Без премии и опыта</div>'}
+      <p class="small muted">${rep ? `Репутация ${rep > 0 ? '+' : '−'}${Math.abs(rep)}. ` : ''}${SPEC_TYPES[t].name} — снова через ${SPEC_COOLDOWN_MIN} мин.</p>
       <button class="btn full" data-action="close">Дальше</button></div>`);
   }
 
@@ -2933,13 +2927,11 @@
           <button class="btn full" data-action="close">Фух</button></div>`);
       } else goToJail(`${why} ${ITEM[id].name} не смог помочь.`);
     },
-    'spec-start': () => {
+    'spec-start': t => {
       const sv = S.sil;
-      if (!sv || sv.spec || Date.now() < (sv.nextSpec || 0)) return;
-      const t = sv.specType || pickOne(Object.keys(SPEC_TYPES));
+      if (!sv || sv.spec || !SPEC_TYPES[t] || specLeft(t)) return;
       sv.spec = t === 'inv' ? genInv() : t === 'chase' ? genChase() : genRaid();
-      sv.specType = null;
-      sv.nextSpec = Date.now() + SPEC_EVERY_MIN * 60e3;
+      sv.specCd = Object.assign(sv.specCd || {}, { [t]: Date.now() + SPEC_COOLDOWN_MIN * 60e3 });
       haptic('medium'); save(); render(); openSpec();
     },
     'spec-open': () => openSpec(),
@@ -2959,8 +2951,8 @@
     'inv-arrest': i => {
       const sp = S.sil && S.sil.spec;
       if (!sp || sp.t !== 'inv') return;
-      if (+i === sp.c) finishSpec(1 + 0.1 * sp.time, `Задержан ${sp.sus[sp.c].n} — он во всём признался. ${sp.time ? `Сэкономлено действий: ${sp.time}.` : ''}`);
-      else finishSpec(0.2, `${sp.sus[+i].n} оказался ни при чём. Настоящий преступник — ${sp.sus[sp.c].n} — успел скрыться.`);
+      if (+i === sp.c) finishSpec(1 + 0.075 * sp.time, `Задержан ${sp.sus[sp.c].n} — он во всём признался. ${sp.time ? `Сэкономлено действий: ${sp.time}.` : ''}`);
+      else finishSpec(0, `${sp.sus[+i].n} оказался ни при чём. Настоящий преступник — ${sp.sus[sp.c].n} — успел скрыться.`);
     },
     'ch-cell': i => {
       const sp = S.sil && S.sil.spec;
@@ -2972,10 +2964,16 @@
       const best = chaseNb(sp.x).filter(j => !sp.g[j]).sort((a, b) => d[a] - d[b] || Math.random() - 0.5)[0];
       sp.x = best;
       haptic('light');
-      if (chaseEdge(sp.x)) return finishSpec(0.2, 'Беглец вырвался из города. Ориентировка разослана по области.');
+      if (chaseEdge(sp.x)) return finishSpec(0, 'Беглец вырвался из города. Ориентировка разослана по области.');
       save(); openSpec();
     },
-    'raid-act': k => { const sp = S.sil && S.sil.spec; if (sp && sp.t === 'raid') raidStep(sp, k, false); },
+    'raid-act': k => { const sp = S.sil && S.sil.spec; if (sp && sp.t === 'raid') raidStep(sp, k); },
+    'raid-drone': () => {
+      const sp = S.sil && S.sil.spec, room = sp && sp.t === 'raid' && sp.rooms[sp.i];
+      if (!room || room.sure || !sp.drones) return;
+      sp.drones--; room.hint = room.type; room.sure = true;
+      haptic('light'); save(); openSpec();
+    },
     'svc-writeoff': () => {
       if (!svcCar() || writeoffBlock()) return;
       const cost = writeoffCost(), id = S.sil.car;
@@ -3241,7 +3239,7 @@
       // всё, что ждёт реального времени: служба, гонки, сделка, номера, бизнес
       S.silBan = 0;
       if (S.sil) {
-        S.sil.nextMission = 0; S.sil.nextSpec = 0;
+        S.sil.nextMission = 0; S.sil.specCd = {};
         S.sil.since -= 7 * 86400e3; S.sil.rankAt = 0; S.sil.carAt = 0;   // выслуга +7 суток: хватит на любое звание
       }
       S.pool = { n: RACE_POOL, ts: Date.now() };
