@@ -356,8 +356,9 @@
     const wages = (b.slots + (nephew ? nephew.wages : 0)) * n.salary, mgr = M ? d.price * M.salary : 0;
     const pre = revenue - wages - n.rent - mgr;
     const tax = pre > 0 ? pre * taxRate() : 0;
-    const neck = cap < demand ? 'slots' : cap > demand ? 'ads' : '';
-    return { cap, demand, sold, eff, revenue, wages, mgr, rent: n.rent, tax, profit: pre - tax, neck };
+    const raw = pre - tax, ceil = bizCap(d.price), capped = raw > ceil;
+    const neck = capped ? 'cap' : cap < demand ? 'slots' : cap > demand ? 'ads' : '';
+    return { cap, demand, sold, eff, revenue, wages, mgr, rent: n.rent, tax, profit: capped ? ceil : raw, neck };
   }
   const bizProfit = () => Object.keys(S.biz).reduce((a, id) => a + (BIZ[id] ? bizStats(id).profit : 0), 0);
   const slotCost = id => Math.round(BIZ[id].price * BIZ_SLOT_COST * Math.pow(BIZ_GROWTH, S.biz[id].slots - BIZ_START));
@@ -2348,7 +2349,8 @@
       const b = S.biz[d.id], st = bizStats(d.id), n = bizNum(d);
       const fullS = b.slots >= BIZ_MAX, fullA = b.ads >= BIZ_MAX - BIZ_START;
       const dS = bizDelta(d.id, { slots: b.slots + 1 }), dA = bizDelta(d.id, { ads: b.ads + 1 });
-      const neck = st.neck === 'slots' ? `Клиентов больше, чем мест — добавь рабочее место`
+      const neck = st.neck === 'cap' ? `Потолок прибыли: рынок насыщен, дальше прокачка не даёт дохода`
+        : st.neck === 'slots' ? `Клиентов больше, чем мест — добавь рабочее место`
         : st.neck === 'ads' ? `Места простаивают — нужна реклама`
         : `Места и клиенты в балансе — расширяйся: место, потом реклама`;
       return `<div class="card ${frozen(d.id) ? 'danger' : ''}">
@@ -2361,7 +2363,7 @@
           <div><span class="small muted">Мощность</span><b>${fmt(st.cap)}</b><span class="small muted">${b.slots} мест</span></div>
           <div><span class="small muted">Клиенты</span><b>${fmt(st.demand)}</b><span class="small muted">${d.unit}</span></div>
           <div><span class="small muted">Обслужено</span><b>${fmt(st.sold)}</b><span class="small muted">${d.unit}</span></div></div>
-        <div class="small ${st.neck ? 'gold' : 'good'}" style="margin-bottom:10px">${ic(st.neck ? 'bulb' : 'check')} ${neck}</div>
+        <div class="small ${st.neck && st.neck !== 'cap' ? 'gold' : 'good'}" style="margin-bottom:10px">${ic(st.neck && st.neck !== 'cap' ? 'bulb' : 'check')} ${neck}</div>
         <div class="acts" style="grid-template-columns:1fr 1fr">
           <button class="act" data-action="biz-slot" data-id="${d.id}" ${fullS ? 'disabled' : ''}>${ic('user-plus')}
             <span class="act-name">Рабочее место</span><span class="act-sub">${d.slot} · ${b.slots}/${BIZ_MAX}</span>
