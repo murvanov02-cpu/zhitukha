@@ -1659,10 +1659,11 @@
   // Доход с одной «крыши»: цена бизнеса × ставка × его характер, у «профильного» для структуры — больше
   const roofTrait = id => ROOF_TRAITS[id] || { rate: 1, risk: 1 };
   const roofFits = id => !!S.sil && roofTrait(id).fit === S.sil.s;
-  const roofPay = id => BIZ[id].price * ROOF_RATE * roofTrait(id).rate * (roofFits(id) ? 1 + ROOF_FIT : 1);
+  const roofCap = () => svcRank().pay * ROOF_CAP;   // без payMult: «крыша» — деньги бизнеса, а не довольствие, во всех структурах одинаково
+  const roofPay = id => Math.min(roofCap(), BIZ[id].price * ROOF_RATE * roofTrait(id).rate * (roofFits(id) ? 1 + ROOF_FIT : 1));
   const roofIncome = () => (S.sil ? S.sil.roofs.reduce((a, id) => a + roofPay(id), 0) : 0);
   // «Месяц звания» — мерило денег в заданиях: довольствие + самая дорогая доступная «крыша»
-  const rankMonth = () => svcRank().pay * STR().payMult + (svcRank().tier >= 0 ? BUSINESSES[svcRank().tier].price * ROOF_RATE : 0);
+  const rankMonth = () => svcRank().pay * STR().payMult + (svcRank().tier >= 0 ? Math.min(roofCap(), BUSINESSES[svcRank().tier].price * ROOF_RATE) : 0);
   const serviceH = () => (Date.now() - S.sil.since) / 3600e3;
   const rankH = () => (Date.now() - (S.sil.rankAt || S.sil.since)) / 3600e3;   // выслуга на текущем звании
   // Погоны звания: у МВД — полицейские, у ФСБ и спецназа — армейские
@@ -2081,7 +2082,7 @@
       ${mission}
       <div class="section">«Крыша» · ${sv.roofs.length} из ${rk.roofs}</div>
       <div class="card">
-        <div class="small muted">Бизнес платит за спокойствие около ${(ROOF_RATE * MONTHS_PER_HOUR * 100).toFixed(1).replace('.', ',')}% своей цены в час — у каждого свой характер и риск. «Профильные» для ${STR().name} платят больше. Чем больше «крыш», тем чаще интересуется ОСБ.</div>
+        <div class="small muted">Бизнес платит за спокойствие долю своей цены, но не больше ${fmt(ph(roofCap()))} ₽/ч с одной «крыши» на твоём звании — у каждого свой характер и риск. «Профильные» для ${STR().name} платят больше. Чем больше «крыш», тем чаще интересуется ОСБ.</div>
         ${mine}${can ? `<div class="small" style="margin-top:10px">Можно взять:</div>${can}` : ''}
         ${!rk.roofs ? '<div class="small muted" style="margin-top:6px">«Крыша» — с сержанта.</div>' : ''}
       </div>
