@@ -48,6 +48,7 @@
       tut: 0,                     // шаг обучения (-1 — пройдено или пропущено)
       incHour: false,             // доход в шапке: false — в игровой месяц, true — в реальный час
       msgSeen: [],                // какие личные сообщения уже показаны
+      news: UPDATE_NOTES.id,      // какое окно «Что нового» уже видел (новичкам старые не показываем)
       lastReport: 0,              // когда последний раз отправляли данные в таблицу учёта
       pid: '',                    // личный ID игрока: выдаётся сам, случайный, не меняется даже при «Начать заново"
       tune2: true,                // тюнинг уже по новым ценам (см. upgrade)
@@ -104,6 +105,17 @@
     if (s.sil && s.sil.rep !== undefined && o.rep === undefined) s.rep = s.sil.rep;   // v30: репутация стала общей
     if (s.sil && !s.sil.rankAt) s.sil.rankAt = s.sil.since;
     // v49: у каждого спецзадания свой откат; штурм старого образца (с таймером) отменяем
+    if (o.news === undefined) s.news = '';   // старым игрокам — показать «Что нового»
+    // v51: мусорные иномарки убраны из игры — возвращаем их рыночную цену; билеты «Битых тачек» — в «Гаражный кооператив»
+    for (const id of ['c_matiz', 'c_lanos']) {
+      if (!s.inv || !s.inv[id]) continue;
+      s.money += { c_matiz: 250e3, c_lanos: 300e3 }[id] * s.inv[id];
+      delete s.inv[id]; if (s.garage) delete s.garage[id];
+      for (const p of s.plates || []) if (p.car === id) p.car = null;
+      if (s.car === id) s.car = null;
+      if (s.raceCar === id) s.raceCar = null;
+    }
+    if (s.tickets && s.tickets.car_junk) { s.tickets.car_garage = (s.tickets.car_garage || 0) + s.tickets.car_junk; delete s.tickets.car_junk; }
     // v50: «списал — жди нового звания» заменено автобазой: новая служебная через SVC_REISSUE_H ч
     if (s.sil && s.sil.wroteOff) { s.sil.reissueAt = Date.now() + SVC_REISSUE_H * 3600e3; delete s.sil.wroteOff; }
     if (s.sil && !s.sil.specCd) { s.sil.specCd = {}; delete s.sil.nextSpec; delete s.sil.specType; }
@@ -729,10 +741,20 @@
   // Показываем по одному, когда нет других окон; отметка «показано» ставится сразу, поэтому второго раза не будет
   function maybeMessage() {
     if (!$('#modal').classList.contains('hidden')) return;
+    if (S.news !== UPDATE_NOTES.id && !(S.tut > 0 && S.tut <= TUTORIAL.length)) {
+      S.news = UPDATE_NOTES.id;
+      save();
+      showModal(`${sheetHead('✨ ' + UPDATE_NOTES.title)}
+        ${UPDATE_NOTES.items.map(([icon, head, text]) => `<div class="news-row"><div class="news-ico">${icon}</div><div class="grow"><b>${head}</b><div class="small muted">${text}</div></div></div>`).join('')}
+        <button class="btn full" style="margin-top:12px" data-action="close">Круто, играю</button>`, true);
+      haptic('medium');
+      return;
+    }
     const m = PLAYER_MESSAGES.find(x => x.to === S.pid && !(S.msgSeen || []).includes(x.id));
     if (!m) return;
     (S.msgSeen = S.msgSeen || []).push(m.id);
-    save();
+    for (const t of m.tickets || []) if (CASE[t]) giveTicket(t);   // подарок: билеты в кейсы
+    save(); render();
     showModal(`<div class="drop"><div class="drop-icon" style="font-size:44px">${m.icon || '✉️'}</div>
       <div class="drop-name">${m.title}</div><p style="margin-top:10px;font-size:17px">${m.text}</p>
       <button class="btn full" style="margin-top:12px" data-action="close">Понял</button></div>`);
@@ -1191,11 +1213,14 @@
     const c = CASE[id], pool = poolOf(c);
     const rars = RARITY_ORDER.filter(x => c.w[x] > 0 && pool.some(i => i.rarity === x));
     const tw = rars.reduce((a, x) => a + c.w[x], 0);
-    const tiles = rars.slice().reverse().flatMap(r => {
-      const list = pool.filter(i => i.rarity === r);
-      return list.map(i => `<div data-action="item-info" data-id="${id}:${i.id}">${tileHTML(i, `<div class="tile-note muted">${pct(c.w[r] / tw * 100 / list.length)}${i.value ? ` · ${fmt(i.value)}` : ''}</div>`)}</div>`);
-    });
-    showModal(`${sheetHead(c.name + ': что внутри')}<p class="small muted">Нажми на вещь — покажу, что она даёт.</p><div class="tiles">${tiles.join('')}</div>
+    const own = i => i.cat === 'conn' ? !!S.conn[i.id] : !!S.inv[i.id];
+    const groups = rars.slice().reverse().map(r => {
+      const list = pool.filter(i => i.rarity === r).sort((a, b) => b.value - a.value);
+      const tiles = list.map(i => `<div data-action="item-info" data-id="${id}:${i.id}">${tileHTML(i, `<div class="tile-note muted">${pct(c.w[r] / tw * 100 / list.length)}${own(i) ? ` ${ic('circle-check-filled', 'good')}` : ''}${i.value ? `<br>${fmt(i.value)} ₽` : ''}</div>`)}</div>`).join('');
+      return `<div class="peek-head"><span class="rar-chip" style="background:${RARITIES[r].color}">${c.items[0].startsWith('c_') ? RACE_CLASSES[r].name + ' · ' : ''}${RARITIES[r].name}</span><b>${pct(c.w[r] / tw * 100)}</b></div>
+        <div class="tiles">${tiles}</div>`;
+    }).join('');
+    showModal(`${sheetHead(c.name + ': что внутри')}<p class="small muted">Нажми на вещь — покажу, что она даёт. ${ic('circle-check-filled', 'good')} — уже есть у тебя.</p>${groups}
       <button class="btn btn-ghost full" style="margin-top:12px" data-action="case" data-id="${id}">${ic('arrow-left')} Назад</button>`, true);
   }
 
@@ -1210,12 +1235,14 @@
         <div class="small" style="margin-top:8px">${ic('star', 'gold')} На полном доверии: ${specialText(it)}</div>
         ${EVENTS.some(e => e.via === id) ? `<div class="small muted" style="margin-top:6px">Помогает звонком: ${EVENTS.filter(e => e.via === id).map(e => e.title.toLowerCase()).join(', ')}</div>` : ''}`;
     } else if (it.cat === 'car') {
-      body = `<div class="kv small"><span>Цена</span><b>${fmt(it.value)} ₽</b></div>
+      body = `<div class="kv small"><span>Рыночная цена</span><b>${fmt(it.value)} ₽</b></div>
+        <div class="kv small"><span>Продать можно за</span><b>${fmt(sellPrice(it))} ₽</b></div>
         <div class="kv small"><span>К зарплате</span><b>+${it.bonus}%</b></div>
         <div class="kv small"><span>Мощность · класс</span><b>${CAR_HP[id] || '—'} л.с. · ${RACE_CLASSES[it.rarity].name}</b></div>
         <div class="kv small"><span>Ставки в гонках</span><b>от ${fmt(round2(Math.max(RACE_UNIT_MIN, it.value * RACE_CAR_SHARE) * RACE_LEVELS[4].prize))} ₽ за победу</b></div>`;
     } else {
-      body = `<div class="kv small"><span>Цена</span><b>${fmt(it.value)} ₽</b></div>
+      body = `<div class="kv small"><span>Рыночная цена</span><b>${fmt(it.value)} ₽</b></div>
+        <div class="kv small"><span>Продать можно за</span><b>${fmt(sellPrice(it))} ₽</b></div>
         <div class="kv small"><span>Аренда</span><b>+${fmt(ph(it.bonus))} ₽/ч</b></div>`;
     }
     showModal(`${sheetHead(it.name)}
@@ -1415,11 +1442,25 @@
         <div class="inv-actions">${equip}${isSvcCar(it.id) && n <= 1 ? '<span class="tag">Служебная</span>'
           : `<button class="btn btn-sm btn-ghost" data-action="sell" data-id="${it.id}">Продать ${fmt(sellPrice(it) + (n === 1 ? carExtra(it.id) : 0))}</button>`}</div></div>`;
     }).join('');
+    let worth = 0, sale = 0, cnt = 0;
+    for (const it of list) {
+      const n = S.inv[it.id] - (isSvcCar(it.id) ? 1 : 0);
+      if (n <= 0) continue;
+      cnt += n; worth += it.value * n; sale += sellPrice(it) * n + (cat === 'car' ? carExtra(it.id) : 0);
+      if (cat === 'car' && plateOf(it.id)) worth += plateOf(it.id).v;
+    }
     return `${invTabs(cat)}
       <p class="hint">${cat === 'car' ? 'Машина, на которой ездишь, прибавляет к зарплате.' : 'Всё жильё сдаётся и приносит аренду.'} Собрано ${list.filter(i => !i.svc).length} из ${ITEMS.filter(i => i.cat === cat && !i.svc).length}.</p>
-      ${rows || `<div class="empty">${ic(cat === 'car' ? 'car' : 'home')}Пока пусто<br><br><button class="btn btn-sm" data-goto="cases" data-sub="cases:${cat}">К кейсам</button></div>`}`;
+      ${rows || `<div class="empty">${ic(cat === 'car' ? 'car' : 'home')}Пока пусто<br><br><button class="btn btn-sm" data-goto="cases" data-sub="cases:${cat}">К кейсам</button></div>`}
+      ${cnt ? totalsCard(cnt, worth, sale, cat === 'car' ? 'Номера на машинах и тюнинг входят в цену продажи. Служебная не считается.' : '') : ''}`;
   }
 
+  // Итог под списком имущества: рыночная стоимость и сколько дадут, если продать всё сразу
+  const totalsCard = (cnt, worth, sale, note) => `<div class="card totals">
+      <div class="kv"><span>Всего</span><b>${cnt} шт.</b></div>
+      <div class="kv"><span>Рыночная стоимость</span><b>${fmt(worth)} ₽</b></div>
+      <div class="kv"><span>Если продать всё</span><b class="good">${fmt(sale)} ₽</b></div>
+      ${note ? `<div class="small muted">${note}</div>` : ''}</div>`;
   const invTabs = cat => `<button class="back" data-goto="home">${ic('chevron-left')} Главная</button>
       <div class="seg">
         <button class="${cat === 'car' ? 'active' : ''}" data-sub="inv:car">Гараж · ${countCat('car')}</button>
@@ -1461,7 +1502,8 @@
       ${regs}
       ${boxes}
       <label class="toggle" style="margin:4px 0 12px"><input type="checkbox" data-toggle="fast" ${S.fast ? 'checked' : ''}><i></i>Быстрое открытие</label>
-      ${mine || `<div class="empty">${ic('rectangle')}Номеров пока нет</div>`}`;
+      ${mine || `<div class="empty">${ic('rectangle')}Номеров пока нет</div>`}
+      ${S.plates.some(p => !p.svc) ? totalsCard(S.plates.filter(p => !p.svc).length, S.plates.filter(p => !p.svc).reduce((a, p) => a + p.v, 0), S.plates.filter(p => !p.svc).reduce((a, p) => a + plateSell(p), 0), 'Служебный номер не считается.') : ''}`;
   }
   function openPlate(boxId) {
     const box = PBOX[boxId], reg = plateReg();
@@ -1561,8 +1603,9 @@
       <p>${c.desc}.</p>
       <div class="chance-bar">${bar}</div><div class="chance-legend">${legend}</div>
       ${tickets ? `<button class="btn full" style="margin-top:12px" data-action="ticket" data-id="${id}">${ic('ticket')} Открыть по билету · осталось ${tickets}</button>` : ''}
-      <div class="open-row">${MULTI_OPEN.map(n => `<button class="btn ${n > 1 ? 'btn-ghost' : ''}" data-action="open" data-id="${id}" data-n="${n}" data-confirm="×${n} · ${fmt(batchPrice(c, n))} ₽">
-        <span class="btn-top">×${n}${MULTI_DISCOUNT[n] ? ` <s>−${MULTI_DISCOUNT[n] * 100}%</s>` : ''}</span>${fmt(batchPrice(c, n))} ₽</button>`).join('')}</div>
+      <div class="open-row">${MULTI_OPEN.map(n => `<button class="btn btn-ghost" data-action="open" data-id="${id}" data-n="${n}" data-confirm="×${n} · ${fmt(batchPrice(c, n))} ₽">
+        <span class="btn-top">×${n}${MULTI_DISCOUNT[n] ? ` <s>−${MULTI_DISCOUNT[n] * 100}%</s>` : ''}</span>${fmt(batchPrice(c, n))} ₽
+        ${MULTI_DISCOUNT[n] ? `<s class="save">выгода ${fmt(casePrice(c) * n - batchPrice(c, n))}</s>` : ''}</button>`).join('')}</div>
       <button class="btn btn-ghost full" style="margin-top:8px" data-action="peek" data-id="${id}">${ic('list-search')} Что внутри</button>
       <div style="margin-top:8px">
         <label class="toggle"><input type="checkbox" data-toggle="fast" ${S.fast ? 'checked' : ''}><i></i>Быстрое открытие</label>
@@ -1599,15 +1642,16 @@
   // «Месяц звания» — мерило денег в заданиях: довольствие + самая дорогая доступная «крыша»
   const rankMonth = () => svcRank().pay * STR().payMult + (svcRank().tier >= 0 ? BUSINESSES[svcRank().tier].price * ROOF_RATE : 0);
   const serviceH = () => (Date.now() - S.sil.since) / 3600e3;
+  const rankH = () => (Date.now() - (S.sil.rankAt || S.sil.since)) / 3600e3;   // выслуга на текущем звании
   // Погоны звания: у МВД — полицейские, у ФСБ и спецназа — армейские
   const boardImg = (r, cls = '') => `<img class="pogon ${cls}" src="img/ranks/${S.sil.s === 'mvd' ? 'p' : 'a'}${r}.png" alt="${SERVICE_RANKS[r].name}">`;
   // Что нужно до следующего звания: [{ text, ok }]
   function promoReqs() {
     const nx = SERVICE_RANKS[S.sil.r + 1];
     if (!nx) return null;
-    const left = Math.max(0, nx.h - serviceH());
+    const left = Math.max(0, nx.h - rankH());
     return [
-      { ok: left <= 0, text: left > 0 ? `Выслуга: ещё ${fmtTime(left * 3600e3)}` : `Выслуга ${nx.h} ч` },
+      { ok: left <= 0, text: left > 0 ? `Выслуга на звании: ещё ${fmtTime(left * 3600e3)} из ${nx.h} ч` : `Выслуга на звании ${nx.h} ч` },
       { ok: S.lvl >= nx.lv, text: `Уровень ${nx.lv}` + (S.lvl < nx.lv ? ` (сейчас ${S.lvl})` : '') },
       ...STR().skills.map(k => ({ ok: S.skills[k] >= nx.sk, text: `${SKILL[k].name} ${nx.sk}` + (S.skills[k] < nx.sk ? ` (сейчас ${S.skills[k]})` : '') })),
       { ok: S.sil.xp >= nx.xp, text: `Служебный опыт ${Math.floor(S.sil.xp)} / ${nx.xp}` },
@@ -1961,7 +2005,7 @@
     haptic(ok ? 'ok' : 'err'); save(); render();
     showModal(`<div class="drop"><div class="drop-name">${ok ? '🏅 Задание выполнено' : '😬 Провал'}</div>
       <p style="margin-top:8px">${text}</p>
-      ${ok ? `<div class="big">+${fmt(money)} ₽ · +${xp} опыта</div>` : '<div class="big muted">Без премии и опыта</div>'}
+      ${ok ? `<div class="big">+${fmt(money)} ₽ · +${xp} опыта</div>` : '<div class="big bad">Без премии и опыта</div>'}
       <p class="small muted">${rep ? `Репутация ${rep > 0 ? '+' : '−'}${Math.abs(rep)}. ` : ''}${SPEC_TYPES[t].name} — снова через ${SPEC_COOLDOWN_MIN} мин.</p>
       <button class="btn full" data-action="close">Дальше</button></div>`);
   }
@@ -1996,7 +2040,7 @@
         <div class="row">${boardImg(sv.r)}
           <div class="grow"><div class="job-name">${rk.name} · ${st.icon} ${st.name}</div>
             <div class="job-pay">${fmt(ph(servicePay()))} ₽/ч довольствие</div>
-            <div class="small muted">Выслуга ${hoursText(serviceH())} · звание ${sv.r + 1} из ${SERVICE_RANKS.length}</div></div></div>
+            <div class="small muted">На звании ${hoursText(rankH())} · всего ${hoursText(serviceH())} · звание ${sv.r + 1} из ${SERVICE_RANKS.length}</div></div></div>
         ${reqs ? `<div class="small" style="margin-top:10px">До звания «${SERVICE_RANKS[sv.r + 1].name}»:</div>
           ${reqs.map(x => `<div class="small ${x.ok ? 'good' : 'muted'}">${ic(x.ok ? 'check' : 'point')} ${x.text}</div>`).join('')}
           <button class="btn full" style="margin-top:8px" data-action="sil-promote" ${reqs.every(x => x.ok) ? '' : 'disabled'}>Аттестация — получить звание</button>`
