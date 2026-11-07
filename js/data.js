@@ -1013,8 +1013,10 @@ const SERVICE_BIZ_UNTIL = 3;
 // с полковника (SERVICE_NO_RACE) — никаких гонок: слишком много внимания. Зато мигалка: события с машиной обходят стороной.
 const SERVICE_OWN_RACE_UNTIL = 3;
 const SERVICE_NO_RACE = 6;
-// Служебная машина и номер — со звания капитана, растут со званием. Продать нельзя; «списать на личное» —
-// после SVC_WRITEOFF_H часов на звании и с репутацией не ниже 0, за SVC_WRITEOFF_RATE стоимости машины и номера.
+// Служебную продать нельзя; «списать на личное» — с репутацией не ниже 0 и не раньше SVC_WRITEOFF_H ч после выдачи,
+// за SVC_WRITEOFF_RATE стоимости машины и SVC_WRITEOFF_PLATE_RATE номера: дороже, чем дала бы перепродажа (70% и 85%),
+// так что списать и продать — всегда в минус. Списанные машину и номер нельзя продать SVC_SELL_LOCK_MIN минут.
+// Новую служебную автобаза выдаёт через SVC_REISSUE_H ч (на любом звании, и генералу тоже) — другую модель того же уровня.
 // Служебная машина — с сержанта; у каждой структуры своя линейка (как реально ездят в ведомствах),
 // на вершине — у МВД Mercedes Pullman с флажками, у ФСБ Aurus Senat, у спецназа Aurus Komendant.
 // Служебные выдаются отдельными вещами (svc: true, см. ниже): из кейсов не выпадают и в коллекцию не идут.
@@ -1047,8 +1049,11 @@ for (const line of Object.values(SERVICE_CARS)) for (const base of Object.values
   ITEMS.push(Object.assign({}, b, { id, name: b.name + ' · служебная', svc: true }, SVC_LOOK[id] || {}));
   CAR_HP[id] = CAR_HP[base];
 }
-const SVC_WRITEOFF_H = 24;
-const SVC_WRITEOFF_RATE = 0.5;
+const SVC_WRITEOFF_H = 1;
+const SVC_WRITEOFF_RATE = 0.85;
+const SVC_WRITEOFF_PLATE_RATE = 0.95;
+const SVC_REISSUE_H = 36;
+const SVC_SELL_LOCK_MIN = 20;
 // Попался — можно позвонить связи: шанс «замять» = RESCUE_BASE по редкости связи + RESCUE_PER_LV за каждый уровень доверия выше первого.
 // Получилось — «благодарность» RESCUE_FEE денег и минус репутация, но звание и свобода при тебе. Нет — суд.
 const RESCUE_BASE = { epic: 30, legendary: 40, mythic: 50 };

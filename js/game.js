@@ -104,6 +104,8 @@
     if (s.sil && s.sil.rep !== undefined && o.rep === undefined) s.rep = s.sil.rep;   // v30: репутация стала общей
     if (s.sil && !s.sil.rankAt) s.sil.rankAt = s.sil.since;
     // v49: у каждого спецзадания свой откат; штурм старого образца (с таймером) отменяем
+    // v50: «списал — жди нового звания» заменено автобазой: новая служебная через SVC_REISSUE_H ч
+    if (s.sil && s.sil.wroteOff) { s.sil.reissueAt = Date.now() + SVC_REISSUE_H * 3600e3; delete s.sil.wroteOff; }
     if (s.sil && !s.sil.specCd) { s.sil.specCd = {}; delete s.sil.nextSpec; delete s.sil.specType; }
     if (s.sil && s.sil.spec && s.sil.spec.t === 'raid' && s.sil.spec.v !== 2) s.sil.spec = null;
     if (s.lvl > LEVEL_MAX) { s.lvl = LEVEL_MAX; s.xp = 0; }
@@ -416,6 +418,7 @@
     maybeFavor();
     maybeOsb();
     maybeMessage();
+    maybeReissue();
     if (away > 60 && r.earned >= 1) showOffline(r);
     updateLive();
   }
@@ -1002,6 +1005,7 @@
     const it = ITEM[id];
     if (!it || !S.inv[id] || it.cat === 'conn') return 0;
     if (isSvcCar(id) && S.inv[id] <= 1) { toast('Служебную машину продать нельзя — можно «списать на личное»'); return 0; }
+    if (sellLock('i:' + id) && S.inv[id] <= 1) { toast(`Только что списана — продать можно через ${fmtTime(sellLock('i:' + id))}`); return 0; }
     const price = sellPrice(it) + (S.inv[id] === 1 ? carExtra(id) : 0);
     S.inv[id]--;
     earn(price);
@@ -1625,8 +1629,13 @@
     if (S.raceCar === id && !S.inv[id]) S.raceCar = null;
     S.sil.car = null;
   }
-  function issueSvcCar() {
-    const base = SERVICE_CARS[S.sil.s][S.sil.r];
+  // alt — повторная выдача после списания: автобаза даёт другую модель того же уровня (из линеек всех структур)
+  function issueSvcCar(alt) {
+    let base = SERVICE_CARS[S.sil.s][S.sil.r];
+    if (alt && base) {
+      const pool = [...new Set(Object.values(SERVICE_CARS).map(l => l[S.sil.r]).filter(Boolean))].filter(b => svcCarId(b) !== S.sil.lastCar);
+      if (pool.length) base = pickOne(pool);
+    }
     if (!base) return null;
     dropSvcCar();
     const id = svcCarId(base), plate = SERVICE_PLATES[S.sil.r];
@@ -1644,7 +1653,17 @@
     S.raceCar = id;
     return id;
   }
-  const writeoffCost = () => Math.round((ITEM[S.sil.car].value + (svcPlate() ? svcPlate().v : 0)) * SVC_WRITEOFF_RATE / 1000) * 1000;
+  const writeoffCost = () => Math.round((ITEM[S.sil.car].value * SVC_WRITEOFF_RATE + (svcPlate() ? svcPlate().v * SVC_WRITEOFF_PLATE_RATE : 0)) / 1000) * 1000;
+  const sellLock = key => Math.max(0, ((S.lock || {})[key] || 0) - Date.now());
+  // Автобаза выдала новую служебную после списания
+  function maybeReissue() {
+    const sv = S.sil;
+    if (!sv || svcCar() || !sv.reissueAt || Date.now() < sv.reissueAt || !SERVICE_CARS[sv.s][sv.r]) return;
+    sv.reissueAt = 0;
+    const id = issueSvcCar(true);
+    save(); render();
+    if (id) toast(`🚨 Автобаза выдала новую служебную: ${ITEM[id].name}`);
+  }
   const writeoffBlock = () => (S.rep < 0 ? 'нужна репутация не ниже 0'
     : Date.now() - (S.sil.carAt || 0) < SVC_WRITEOFF_H * 3600e3 ? `через ${fmtTime(S.sil.carAt + SVC_WRITEOFF_H * 3600e3 - Date.now())}` : '');
   // Риск сесть на службе: базовый × структура × защита (связи и звания, но не больше SVC_SAFE_MAX)
@@ -1778,7 +1797,7 @@
       : r >= SERVICE_OWN_RACE_UNTIL ? 'гонки — только на ней, ГИБДД не трогает' : 'пока гоняешь на своих (подпольные гонки — до лейтенанта)';
     if (!id) {
       const line = SERVICE_CARS[S.sil.s], next = Object.keys(line).map(Number).find(k => k > r);
-      return `<div class="card small muted">${ic('car')} ${S.sil.wroteOff ? 'Служебную ты списал на себя — новая будет со следующим званием.'
+      return `<div class="card small muted">${ic('car')} ${S.sil.reissueAt ? `Служебную ты списал на себя. Новую автобаза выдаст через <span data-timer="${S.sil.reissueAt}">${fmtTime(S.sil.reissueAt - Date.now())}</span> — другую модель того же уровня.`
         : next !== undefined ? `Служебная машина — со звания «${SERVICE_RANKS[next].name}»: ${ITEM[line[next]].name}.` : 'Служебной машины сейчас нет.'}
         <br>${race}.</div>`;
     }
@@ -2875,7 +2894,7 @@
       if (!reqs || !reqs.every(x => x.ok)) return;
       S.sil.r++;
       S.sil.rankAt = Date.now();
-      S.sil.wroteOff = false;
+      S.sil.reissueAt = 0;
       const rk = svcRank(), car = issueSvcCar();
       haptic('ok'); save(); render();
       showModal(`<div class="drop"><div class="pogon-pair">${boardImg(S.sil.r - 1, 'old')}${ic('arrow-right')}${boardImg(S.sil.r, 'new')}</div>
@@ -2977,12 +2996,15 @@
     'svc-writeoff': () => {
       if (!svcCar() || writeoffBlock()) return;
       const cost = writeoffCost(), id = S.sil.car;
-      askConfirm(`Списать «${ITEM[id].name}» со служебным номером на себя за ${fmt(cost)} ₽? Новая служебная будет только со следующим званием.`, () => {
+      askConfirm(`Списать «${ITEM[id].name}» со служебным номером на себя за ${fmt(cost)} ₽? Это дороже, чем дадут при продаже, — смысл, только если хочешь оставить её себе. Продать машину и номер можно будет не раньше чем через ${SVC_SELL_LOCK_MIN} мин. Новую служебную автобаза выдаст через ${SVC_REISSUE_H} ч.`, () => {
         if (!pay(cost)) return;
-        const p = svcPlate();
-        if (p) p.svc = false;
+        const p = svcPlate(), until = Date.now() + SVC_SELL_LOCK_MIN * 60e3;
+        S.lock = S.lock || {};
+        S.lock['i:' + id] = until;
+        if (p) { p.svc = false; S.lock['p:' + p.id] = until; }
         S.sil.car = null;
-        S.sil.wroteOff = true;   // новая служебная — только со следующим званием
+        S.sil.lastCar = id;
+        S.sil.reissueAt = Date.now() + SVC_REISSUE_H * 3600e3;
         haptic('ok'); toast(`${ITEM[id].name} теперь твоя`); save(); render();
       });
     },
@@ -3042,6 +3064,7 @@
     'plate-sell': id => {
       const p = S.plates.find(x => x.id === +id);
       if (!p || p.svc) return;
+      if (sellLock('p:' + p.id)) return toast(`Номер только что списан — продать можно через ${fmtTime(sellLock('p:' + p.id))}`);
       S.plates = S.plates.filter(x => x !== p);
       earn(plateSell(p));
       closeModal(); haptic('light'); toast(`Номер продан +${fmt(plateSell(p))} ₽`); save(); render();
@@ -3322,7 +3345,7 @@
 
   // v30: служебные машины появились позже — выдаём тем, кто уже на звании
   if (S.sil && S.sil.car && ITEM[S.sil.car] && !ITEM[S.sil.car].svc) { issueSvcCar(); save(); }
-  if (S.sil && !svcCar() && !S.sil.wroteOff && SERVICE_CARS[S.sil.s][S.sil.r]) { issueSvcCar(); save(); }
+  if (S.sil && !svcCar() && !S.sil.reissueAt && SERVICE_CARS[S.sil.s][S.sil.r]) { issueSvcCar(); save(); }
   const away = (Date.now() - S.lastTick) / 1000;
   const first = catchUp();
   ensureQuests();
