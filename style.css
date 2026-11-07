@@ -439,15 +439,10 @@ details.more-card .card { background: var(--card2); }
 .tut-glow { position: relative; z-index: 2; box-shadow: 0 0 0 2px var(--gold), 0 0 18px var(--gold) !important; border-radius: 12px; animation: tutpulse 1.4s ease-in-out infinite; }
 @keyframes tutpulse { 50% { box-shadow: 0 0 0 3px var(--gold), 0 0 28px var(--gold) !important; } }
 
-/* генеральская служебная: флажок на капоте и мигалка */
-.svc-car .svc-flag { position: absolute; left: 6px; top: 2px; font-size: 13px; }
-.svc-car .svc-light { position: absolute; right: 8px; top: -4px; font-size: 13px; animation: blink 1s steps(2) infinite; }
-@keyframes blink { 50% { opacity: .25; } }
-
 /* спецзадания */
 .inv-time i { width: 18px; }
 .inv-acts, .raid-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
-.raid-acts .btn { flex: 1 1 45%; }
+.raid-acts .btn { flex: 1 1 45%; white-space: normal; line-height: 1.2; }
 .card.sus.out { opacity: .4; }
 .chase-grid { display: grid; grid-template-columns: repeat(var(--n), 1fr); gap: 3px; margin: 10px auto; max-width: 340px; }
 .chase-grid .cc { aspect-ratio: 1; border-radius: 6px; display: grid; place-items: center; font-size: 16px; border: 0; padding: 0; }
