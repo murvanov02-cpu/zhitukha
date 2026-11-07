@@ -48,7 +48,8 @@
       tut: 0,                     // шаг обучения (-1 — пройдено или пропущено)
       incHour: false,             // доход в шапке: false — в игровой месяц, true — в реальный час
       msgSeen: [],                // какие личные сообщения уже показаны
-      news: UPDATE_NOTES.id,      // какое окно «Что нового» уже видел (новичкам старые не показываем)
+      news: UPDATE_NOTES.id,      // (старое) последнее окно «Что нового»
+      newsSeen: UPDATE_NOTES.items.map(i => i[3]),   // какие новости уже показаны: каждая — один раз; новичкам старые не показываем
       lastReport: 0,              // когда последний раз отправляли данные в таблицу учёта
       pid: '',                    // личный ID игрока: выдаётся сам, случайный, не меняется даже при «Начать заново"
       tune2: true,                // тюнинг уже по новым ценам (см. upgrade)
@@ -106,6 +107,10 @@
     if (s.sil && !s.sil.rankAt) s.sil.rankAt = s.sil.since;
     // v49: у каждого спецзадания свой откат; штурм старого образца (с таймером) отменяем
     if (!o.got) { s.got = {}; for (const k of Object.keys(s.inv || {})) s.got[k] = 1; for (const k of Object.keys(s.conn || {})) s.got[k] = 1; }   // v53: галочка в кейсе = когда-либо выпадало
+    if (!Array.isArray(o.newsSeen)) {   // v58: новости считаются по одной — то, что игрок уже видел в окнах v55–v58, не повторяем
+      const had = { v55: ['roofs', 'bizcap', 'equal', 'misc'], v56: ['roofs', 'bizcap', 'housing', 'equal', 'misc'], v58: ['roofs', 'bizcap', 'housing', 'equal', 'misc', 'chase', 'raid', 'bizrank'] }[o.news] || [];
+      s.newsSeen = o.news === undefined ? [] : had;
+    }
     if (o.news === undefined) s.news = '';   // старым игрокам — показать «Что нового»
     // v51: мусорные иномарки убраны из игры — возвращаем их рыночную цену; билеты «Битых тачек» — в «Гаражный кооператив»
     for (const id of ['c_matiz', 'c_lanos']) {
@@ -745,11 +750,12 @@
   // Показываем по одному, когда нет других окон; отметка «показано» ставится сразу, поэтому второго раза не будет
   function maybeMessage() {
     if (!$('#modal').classList.contains('hidden')) return;
-    if (S.news !== UPDATE_NOTES.id && !(S.tut > 0 && S.tut <= TUTORIAL.length)) {
-      S.news = UPDATE_NOTES.id;
+    const fresh = UPDATE_NOTES.items.filter(i => !S.newsSeen.includes(i[3]));
+    if (fresh.length && !(S.tut > 0 && S.tut <= TUTORIAL.length)) {
+      S.newsSeen = S.newsSeen.concat(fresh.map(i => i[3]));
       save();
       showModal(`${sheetHead('✨ ' + UPDATE_NOTES.title)}
-        ${UPDATE_NOTES.items.map(([icon, head, text]) => `<div class="news-row"><div class="news-ico">${icon}</div><div class="grow"><b>${head}</b><div class="small muted">${text}</div></div></div>`).join('')}
+        ${fresh.map(([icon, head, text]) => `<div class="news-row"><div class="news-ico">${icon}</div><div class="grow"><b>${head}</b><div class="small muted">${text}</div></div></div>`).join('')}
         <button class="btn full" style="margin-top:12px" data-action="close">Круто, играю</button>`, true);
       haptic('medium');
       return;
@@ -1666,6 +1672,10 @@
   // «Месяц звания» — мерило денег в заданиях: довольствие + самая дорогая доступная «крыша»
   const rankMonth = () => svcRank().pay * STR().payMult + (svcRank().tier >= 0 ? Math.min(roofCap(), BUSINESSES[svcRank().tier].price * ROOF_RATE) : 0);
   const serviceH = () => (Date.now() - S.sil.since) / 3600e3;
+  // Служебный опыт упирается в требование следующего звания (на высшем — в своё): сверх лимита не копится, до повышения фармить нечего
+  const svcXpCap = () => (SERVICE_RANKS[S.sil.r + 1] || SERVICE_RANKS[S.sil.r]).xp;
+  function svcXpAdd(n) { const got = Math.max(0, Math.min(n, svcXpCap() - S.sil.xp)); S.sil.xp += got; return got; }
+  const xpText = (got, want) => got >= want ? `+${got} опыта` : got > 0 ? `+${got} опыта (лимит звания)` : 'опыт на этом звании набран';
   const rankH = () => (Date.now() - (S.sil.rankAt || S.sil.since)) / 3600e3;   // выслуга на текущем звании
   // Погоны звания: у МВД — полицейские, у ФСБ и спецназа — армейские
   const boardImg = (r, cls = '') => `<img class="pogon ${cls}" src="img/ranks/${S.sil.s === 'mvd' ? 'p' : 'a'}${r}.png" alt="${SERVICE_RANKS[r].name}">`;
@@ -1801,7 +1811,7 @@
     if (!S.sil.osb && !S.sil.clean && Date.now() >= S.sil.nextCheck) {
       scheduleCheck();
       if (Math.random() * 100 < findChance()) S.sil.osb = true;
-      else { S.sil.xp += OSB_CLEAN_XP; repAdd(3); S.sil.clean = true; }
+      else { svcXpAdd(OSB_CLEAN_XP); repAdd(3); S.sil.clean = true; }
       save();
     }
     if (!$('#modal').classList.contains('hidden')) return;
@@ -2019,20 +2029,21 @@
   // Итог спецзадания. quality 0 — провал: ни денег, ни опыта. Иначе 0,5…1,3: премия, служебный опыт, репутация.
   function finishSpec(quality, text) {
     const sv = S.sil, t = sv.spec.t, ok = quality > 0;
-    const money = ok ? round2(specPrize() * quality) : 0, xp = ok ? Math.round(SPEC_XP * quality) : 0;
+    const money = ok ? round2(specPrize() * quality) : 0, want = ok ? Math.round(SPEC_XP * quality) : 0;
+    let xp = want;
     const rep = ok ? SPEC_REP * REP_GOOD_MULT : SPEC_FAIL_REP[t];
     sv.spec = null;
     if (ok) {
-      sv.xp += xp;
+      xp = svcXpAdd(want);
       earn(money);
-      gainXP(5 + Math.round(xp / 6));
+      gainXP(5 + Math.round(want / 6));
       progress('mission');
     }
     repAdd(ok ? SPEC_REP : SPEC_FAIL_REP[t]);
     haptic(ok ? 'ok' : 'err'); save(); render();
     showModal(`<div class="drop"><div class="drop-name">${ok ? '🏅 Задание выполнено' : '😬 Провал'}</div>
       <p style="margin-top:8px">${text}</p>
-      ${ok ? `<div class="big">+${fmt(money)} ₽ · +${xp} опыта</div>` : '<div class="big bad">Без премии и опыта</div>'}
+      ${ok ? `<div class="big">+${fmt(money)} ₽ · ${xpText(xp, want)}</div>` : '<div class="big bad">Без премии и опыта</div>'}
       <p class="small muted">${rep ? `Репутация ${rep > 0 ? '+' : '−'}${Math.abs(rep)}. ` : ''}${SPEC_TYPES[t].name} — снова через ${SPEC_COOLDOWN_MIN} мин.</p>
       <button class="btn full" data-action="close">Дальше</button></div>`);
   }
@@ -2990,7 +3001,7 @@
         return caught(`«${m.title}»: деньги оказались мечеными — это была проверка.`);
       const xp = failed ? c.fail.xp : c.xp || 0;
       const money = !failed && c.money ? round2(rankMonth() * st.bribeMult * c.money) : 0;
-      sv.xp += xp;
+      const got = svcXpAdd(xp);
       if (money) earn(money);
       repAdd(failed ? 3 : c.risk ? -(REP_BRIBE + 4 * c.money) : c.money ? 4 : REP_HONEST);
       progress('mission');
@@ -2998,7 +3009,7 @@
       haptic(failed ? 'err' : 'ok'); save(); render();
       showModal(`<div class="drop"><div class="drop-name">${failed ? '😬 Не вышло' : '✅ ' + m.title}</div>
         <p style="margin-top:8px">${failed ? c.fail.text : c.risk ? 'Деньги у тебя. Никто ничего не видел… пока.' : 'Сделано чисто — начальство заметило.'}</p>
-        <div class="big">${money ? '+' + fmt(money) + ' ₽ · ' : ''}+${xp} опыта</div>
+        <div class="big">${money ? '+' + fmt(money) + ' ₽ · ' : ''}${xpText(got, xp)}</div>
         <button class="btn full" data-action="close">Дальше</button></div>`);
     },
     rescue: id => {
