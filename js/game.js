@@ -115,7 +115,9 @@
       if (s.car === id) s.car = null;
       if (s.raceCar === id) s.raceCar = null;
     }
-    if (s.tickets && s.tickets.car_junk) { s.tickets.car_garage = (s.tickets.car_garage || 0) + s.tickets.car_junk; delete s.tickets.car_junk; }
+    // v52: «Битые тачки» и «Гаражный кооператив» ушли в «Авторынок и гаражи», «Уличные гонщики» — в «Автосалон»
+    for (const [from, to] of [['car_junk', 'car_used'], ['car_garage', 'car_used'], ['car_street', 'car_new']])
+      if (s.tickets && s.tickets[from]) { s.tickets[to] = (s.tickets[to] || 0) + s.tickets[from]; delete s.tickets[from]; }
     // v50: «списал — жди нового звания» заменено автобазой: новая служебная через SVC_REISSUE_H ч
     if (s.sil && s.sil.wroteOff) { s.sil.reissueAt = Date.now() + SVC_REISSUE_H * 3600e3; delete s.sil.wroteOff; }
     if (s.sil && !s.sil.specCd) { s.sil.specCd = {}; delete s.sil.nextSpec; delete s.sil.specType; }
@@ -884,7 +886,11 @@
   // ---------- номера ----------
   const PBOX = Object.fromEntries(PLATE_BOXES.map(b => [b.id, b]));
   const pick = a => a[Math.floor(Math.random() * a.length)];
-  const plateReg = () => PLATE_REGIONS.find(r => r.id === S.plateReg) || PLATE_REGIONS[0];
+  // «Все регионы»: регион выпадает случайно при открытии
+  const ALL_REG = { id: 'all', name: 'Все регионы', mult: PLATE_REGIONS.reduce((a, r) => a + r.mult, 0) / PLATE_REGIONS.length, codes: [] };
+  const plateReg = () => (S.plateReg === 'all' ? ALL_REG : PLATE_REGIONS.find(r => r.id === S.plateReg) || PLATE_REGIONS[0]);
+  // Шансы редкостей набора в регионе: госномер в Москве и Питере реже
+  const boxW = (box, reg) => Object.fromEntries(Object.entries(box.w).map(([rar, w]) => [rar, rar === 'mythic' ? w * (reg.gov || 1) : w]));
   const plateOf = carId => S.plates.find(p => p.car === carId);
   const plateSell = p => Math.round(p.v * PLATE_SELL_RATE);
   const isGov = carId => { const p = plateOf(carId); return !!p && p.rar === 'mythic'; };
@@ -905,7 +911,7 @@
     let a, d, b, r = pick(reg.codes);
     if (rar === 'mythic') {
       const g = pick(PLATE_GOV);
-      a = g[0]; b = g.slice(1); d = rndDigits(); r = pick(PLATE_GOV_CODES);
+      a = g[0]; b = g.slice(1); d = rndDigits(); r = pick(reg.codes.filter(c => c !== PLATE_SVC_CODE));
     } else {
       do {
         a = pick(PLATE_LETTERS);
@@ -917,23 +923,37 @@
       } while (plateRarity(a, d, b) !== rar);
     }
     const base = PLATE_RARITY[rar].value;
-    const v = rar === 'mythic' ? base : round2(base * reg.mult * (0.9 + Math.random() * 0.2));
+    const v = round2(base * reg.mult * (rar === 'mythic' ? 1 : 0.9 + Math.random() * 0.2));
     return { id: ++S.plateSeq, a, d, b, r, rar, v, car: null };
   }
   // Цена набора — от ожидаемой стоимости номера в выбранном регионе
+  const plateEV = (box, reg) => {
+    const w = boxW(box, reg), tw = Object.values(w).reduce((a, b) => a + b, 0);
+    return Object.entries(w).reduce((ev, [rar, x]) => ev + x / tw * PLATE_RARITY[rar].value * reg.mult, 0);
+  };
   function plateBoxPrice(box, reg) {
-    let ev = 0;
-    for (const [rar, w] of Object.entries(box.w)) ev += w / 100 * PLATE_RARITY[rar].value * (rar === 'mythic' ? 1 : reg.mult);
+    const ev = reg.id === 'all' ? PLATE_REGIONS.reduce((a, r) => a + plateEV(box, r), 0) / PLATE_REGIONS.length : plateEV(box, reg);
     return round2(ev * PLATE_PRICE_RATE);
   }
-  function rollPlateRarity(box) {
-    let x = Math.random() * Object.values(box.w).reduce((a, b) => a + b, 0);
-    for (const [rar, w] of Object.entries(box.w)) if ((x -= w) < 0) return rar;
+  function rollPlateRarity(box, reg) {
+    const w = reg ? boxW(box, reg) : box.w;
+    let x = Math.random() * Object.values(w).reduce((a, b) => a + b, 0);
+    for (const [rar, v] of Object.entries(w)) if ((x -= v) < 0) return rar;
     return 'common';
   }
-  const plateInner = p => `<span class="pl-main">${p.a}<b>${p.d}</b>${p.b}</span><span class="pl-reg">${p.r}<i>RUS</i></span>`;
+  // Номер как настоящий: буквы ниже цифр, у каждого символа своя ячейка — все номера одного размера.
+  // reel — вместо символов барабаны: случайные символы и в конце настоящий (крутятся при открытии набора).
+  const REEL_N = 14;
+  const reelOf = (fin, pool) => Array.from({ length: REEL_N }, () => `<span>${pick(pool)}</span>`).join('') + `<span>${fin}</span>`;
+  function plateInner(p, reel) {
+    const cells = [[p.a, 'L'], [p.d[0], 'D'], [p.d[1], 'D'], [p.d[2], 'D'], [p.b[0], 'L'], [p.b[1], 'L']];
+    const cell = ([ch, k], i) => `<span class="pc ${k}">${reel ? `<span class="pc-s" style="--t:${(0.9 + i * 0.14).toFixed(2)}s">${reelOf(ch, k === 'L' ? PLATE_LETTERS.split('') : '0123456789'.split(''))}</span>` : ch}</span>`;
+    const code = reel ? `<span class="pc-s" style="--t:${(0.9 + 6 * 0.14).toFixed(2)}s">${reelOf(p.r, reel)}</span>` : p.r;
+    return `<span class="pl-main">${cells.map(cell).join('')}</span>
+      <span class="pl-reg"><span class="pc R ${p.r.length > 2 ? 'c3' : ''}">${code}</span><span class="pl-rus">RUS<i class="pl-flag"></i></span></span>`;
+  }
   // Рамка и свечение — цвета редкости (у прокручивающегося номера редкости ещё нет — он нейтральный)
-  const plateHTML = (p, cls = '') => `<span class="plate ${p.rar ? 'r-' + p.rar : ''} ${cls}" style="--rc:${p.rar ? RARITIES[p.rar].color : '#8a8f98'}">${plateInner(p)}</span>`;
+  const plateHTML = (p, cls = '', reel) => `<span class="plate ${p.rar ? 'r-' + p.rar : ''} ${cls}" style="--rc:${p.rar ? RARITIES[p.rar].color : '#8a8f98'}">${plateInner(p, reel)}</span>`;
 
   // ---------- кейсы ----------
   function poolOf(c) {
@@ -1471,12 +1491,13 @@
   function renderPlates() {
     const reg = plateReg();
     const regs = `<button class="card tap" data-action="plate-regs"><div class="list-row"><div class="ico-box">${ic('map-pin')}</div>
-        <div class="grow"><div class="small muted">Регион номера</div><div class="val">${reg.name} · ${reg.codes.slice(0, 3).join(', ')}${reg.codes.length > 3 ? '…' : ''}</div></div>
-        <span class="small gold">${reg.mult > 1 ? '×' + String(reg.mult).replace('.', ',') : ''}</span><span class="chev">${ic('chevron-down')}</span></div></button>`;
+        <div class="grow"><div class="small muted">Регион номера</div><div class="val">${reg.id === 'all' ? 'Все регионы · выпадет случайно' : `${reg.name} · ${reg.codes.slice(0, 3).join(', ')}${reg.codes.length > 3 ? '…' : ''}`}</div></div>
+        <span class="small gold">${reg.id !== 'all' && reg.mult > 1 ? '×' + String(reg.mult).replace('.', ',') : ''}</span><span class="chev">${ic('chevron-down')}</span></div></button>`;
     const boxes = PLATE_BOXES.map(box => {
       const price = plateBoxPrice(box, reg), locked = rankIdx() < box.rank;
-      const odds = Object.entries(box.w).filter(([, w]) => w > 0)
-        .map(([rar, w]) => `<span style="color:${RARITIES[rar].color}">${PLATE_RARITY[rar].name} ${w}%</span>`).join(' · ');
+      const bw = reg.id === 'all' ? box.w : boxW(box, reg), tw = Object.values(bw).reduce((a, b) => a + b, 0);
+      const odds = Object.entries(bw).filter(([, w]) => w > 0)
+        .map(([rar, w]) => `<span style="color:${RARITIES[rar].color}">${PLATE_RARITY[rar].name} ${pct(w / tw * 100)}</span>`).join(' · ');
       return `<div class="card ${locked ? 'locked' : ''}">
         <div class="row"><div class="job-ico">${box.icon}</div>
           <div class="grow"><div class="job-name">${box.name}</div><div class="small">${odds}</div></div>
@@ -1498,7 +1519,7 @@
           <button class="btn btn-sm btn-ghost" data-action="plate-sell" data-id="${p.id}">Продать ${fmt(plateSell(p))}</button></div></div>`;
     }).join('');
     return `<p class="hint">Номер вешается на машину: его цена входит в твой статус и в цену машины при продаже.
-        Чем красивее номер и «дороже» регион — тем он ценнее. Госномера ${PLATE_GOV.join(' и ')} бывают только московские — с ними ГИБДД не штрафует.</p>
+        Чем красивее номер и «дороже» регион — тем он ценнее. Госномера ${PLATE_GOV.join(' и ')} выпадают в любом регионе, самые редкие и дорогие — московские; 97-й регион — только у генералов на службе. С госномером ГИБДД не штрафует.</p>
       ${regs}
       ${boxes}
       <label class="toggle" style="margin:4px 0 12px"><input type="checkbox" data-toggle="fast" ${S.fast ? 'checked' : ''}><i></i>Быстрое открытие</label>
@@ -1506,38 +1527,37 @@
       ${S.plates.some(p => !p.svc) ? totalsCard(S.plates.filter(p => !p.svc).length, S.plates.filter(p => !p.svc).reduce((a, p) => a + p.v, 0), S.plates.filter(p => !p.svc).reduce((a, p) => a + plateSell(p), 0), 'Служебный номер не считается.') : ''}`;
   }
   function openPlate(boxId) {
-    const box = PBOX[boxId], reg = plateReg();
+    const box = PBOX[boxId], sel = plateReg();
     if (!box || spinning || rankIdx() < box.rank) return;
-    if (!pay(plateBoxPrice(box, reg))) return;
-    const p = makePlate(rollPlateRarity(box), reg);
+    if (!pay(plateBoxPrice(box, sel))) return;
+    const reg = sel.id === 'all' ? pick(PLATE_REGIONS) : sel;
+    const p = makePlate(rollPlateRarity(box, reg), reg);
     S.plates.push(p);
     save(); render();
     const final = () => {
-      $('#pl-roll').outerHTML = plateHTML(p, 'big win');
+      spinning = false;
+      const el = $('#pl-roll');
+      if (!el) return;
+      el.outerHTML = plateHTML(p, 'big win');
       $('#pl-info').innerHTML = `<div class="drop-name" style="color:${RARITIES[p.rar].color}">${PLATE_RARITY[p.rar].name}</div>
-        <div class="big">${fmt(p.v)} ₽</div>`;
+        <div class="big">${fmt(p.v)} ₽</div>${sel.id === 'all' ? `<div class="small muted">${reg.name}</div>` : ''}`;
       $('#pl-actions').classList.remove('hidden');
       haptic(rarIdx(p.rar) >= 2 ? 'ok' : 'light');
     };
+    // барабаны региона: в режиме «Все регионы» крутятся коды всех регионов
+    const codes = (sel.id === 'all' ? PLATE_REGIONS.flatMap(r => r.codes) : reg.codes);
     showModal(`<div class="drop" style="${rStyle(p.rar)}">
-        <div class="plate-stage">${plateHTML(Object.assign({}, p, { rar: null }), 'big')}</div>
+        <div class="plate-stage">${plateHTML(Object.assign({}, p, { rar: null }), 'big', S.fast ? null : codes)}</div>
         <div id="pl-info" style="min-height:64px;margin-top:10px"></div>
         <div class="row hidden" id="pl-actions" style="margin-top:6px">
           <button class="btn btn-ghost grow" data-action="plate-sell" data-id="${p.id}">Продать ${fmt(plateSell(p))}</button>
           ${countCat('car') ? `<button class="btn grow" data-action="plate-on" data-id="${p.id}">Повесить</button>` : `<button class="btn grow" data-action="close">В коллекцию</button>`}</div></div>`);
     $('.plate-stage .plate').id = 'pl-roll';
     if (S.fast) return final();
-    // крутим символы, потом показываем настоящий номер
+    // барабаны останавливаются по очереди слева направо, последний — регион
     spinning = true;
-    const el = $('#pl-roll'), t0 = performance.now();
-    const tick = () => {
-      if (!el.isConnected) { spinning = false; return; }
-      if (performance.now() - t0 > 1400) { spinning = false; return final(); }
-      const fake = { a: pick(PLATE_LETTERS), d: rndDigits(), b: pick(PLATE_LETTERS) + pick(PLATE_LETTERS), r: pick(reg.codes) };
-      el.innerHTML = plateInner(fake);
-      setTimeout(tick, 70);
-    };
-    tick();
+    requestAnimationFrame(() => requestAnimationFrame(() => { const el = $('#pl-roll'); if (el) el.classList.add('go'); }));
+    setTimeout(final, (0.9 + 6 * 0.14) * 1000 + 250);
   }
   // Выбор машины для номера
   function plateChooseCar(pid) {
@@ -1690,6 +1710,7 @@
     if (plate.gov) {
       p = makePlate('mythic', PLATE_REGIONS[0]);
       p.d = '0' + String(1 + Math.floor(Math.random() * 99)).padStart(2, '0');   // «блатной» номер 001–099
+      p.r = PLATE_SVC_CODE;                                                     // 97-й регион — только служебный
     } else p = makePlate(rollPlateRarity({ w: plate }), PLATE_REGIONS[0]);
     for (const x of S.plates) if (x.car === id) x.car = null;
     p.car = id; p.svc = true;
@@ -3091,6 +3112,9 @@
     'plate-reg': id => { S.plateReg = id; closeModal(); save(); render(); },
     'plate-regs': () => showModal(`${sheetHead('Регион номера')}
       <p class="small muted">Чем престижнее регион, тем дороже номера — и наборы тоже.</p>
+      <button class="list-btn ${S.plateReg === 'all' ? 'active' : ''}" data-action="plate-reg" data-id="all">
+        <span class="grow"><b>Все регионы</b><br><span class="small muted">регион выпадет случайно, цена — средняя</span></span>
+        <span class="small gold">${ic('dice-5')}</span></button>
       ${PLATE_REGIONS.map(r => `<button class="list-btn ${r.id === S.plateReg ? 'active' : ''}" data-action="plate-reg" data-id="${r.id}">
         <span class="grow"><b>${r.name}</b><br><span class="small muted">${r.codes.join(', ')}</span></span>
         <span class="small gold">${r.mult > 1 ? '×' + String(r.mult).replace('.', ',') : ''}</span></button>`).join('')}`, true),
