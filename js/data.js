@@ -769,6 +769,7 @@ const UPDATE_NOTES = {
 };
 const PLAYER_MESSAGES = [
   { id: 'm1', to: 'ZH-CPNMHF', icon: '👀', title: 'Сообщение от разработчика', text: 'Матвей всё видит.' },
+  { id: 't1', to: 'ZH-7XCJFD', icon: '🧾', title: 'ФНС Житухи', text: 'У вас обнаружено незадекларированных Bugatti на 300 млн. Готовьтесь к… да ладно, просто завидуем 😄' },
   { id: 'g1', to: 'ZH-BRLKY5', icon: '🎁', title: 'Подарок от разработчика', text: 'Держи два билета: в «Автосалон» и в «Новостройки». Удачи!', tickets: ['car_new', 'home_new'] },
 ];
 
