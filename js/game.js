@@ -1954,9 +1954,10 @@
   function viewChase(sp) {
     const cells = sp.g.map((v, i) => i === sp.x ? '<span class="cc target">🚗</span>'
       : v === 1 ? '<span class="cc block"></span>' : v === 2 ? '<span class="cc post">🚓</span>'
-      : `<button class="cc free ${chaseEdge(i) ? 'edge' : ''}" data-action="ch-cell" data-id="${i}"></button>`).join('');
+      : chaseEdge(i) ? '<span class="cc exit"></span>'
+      : `<button class="cc free" data-action="ch-cell" data-id="${i}"></button>`).join('');
     return `${sheetHead('🚓 Перехват')}
-      <p class="small">Беглец на 🚗 рвётся к краю карты. Каждый ход ставь пост 🚓 на свободный перекрёсток — потом он делает шаг. Отрежь все пути — и он твой.<br><span class="muted">Совет: пост прямо перед машиной она просто объедет — перекрывай на шаг-два вперёд.</span></p>
+      <p class="small">Беглец на 🚗 рвётся к краю карты. Каждый ход ставь пост 🚓 на свободный перекрёсток — потом он делает шаг. Красные клетки по краю — выезды из города: он уйдёт, если доберётся до любой, а ставить посты на них нельзя. Отрежь все пути к выездам — и он твой.<br><span class="muted">Совет: пост прямо перед машиной она просто объедет — перекрывай на шаг-два вперёд.</span></p>
       <div class="kv small"><span>Постов выставлено</span><b>${sp.turns}</b></div>
       <div class="chase-grid" style="--n:${CHASE_SIZE}">${cells}</div>`;
   }
@@ -2001,9 +2002,10 @@
     if (!A || (A.limit && !sp.uses[k])) return;
     if (A.limit) sp.uses[k]--;
     const ok = A.ok.includes(room.type), what = RAID_THREATS[room.type].name;
-    if (ok) { if (room.type === 'hostage') sp.saved++; sp.log.push(`✅ ${A.name}: ${what} — чисто`); }
-    else if (room.type === 'hostage') { sp.lost++; sp.log.push(`❌ ${A.name}: там был заложник — не уберегли`); }
-    else { sp.hp--; sp.log.push(`🩸 ${A.name}: там ${what} — боец ранен`); }
+    const n = `Комната ${sp.i + 1}`, done = { empty: 'пусто, вошли без потерь', single: 'вооружённый задержан, потерь нет', group: 'группа задержана, потерь нет', hostage: 'заложник спасён', trap: 'растяжка обезврежена' }[room.type];
+    if (ok) { if (room.type === 'hostage') sp.saved++; sp.log.push(`✅ ${n}: ${A.name.toLowerCase()} — ${done}`); }
+    else if (room.type === 'hostage') { sp.lost++; sp.log.push(`❌ ${n}: ${A.name.toLowerCase()} — внутри был заложник, спасти не удалось`); }
+    else { sp.hp--; sp.log.push(`🩸 ${n}: ${A.name.toLowerCase()} — там ${what}, боец ранен (осталось ${sp.hp} из ${RAID_HP})`); }
     sp.i++;
     haptic(ok ? 'light' : 'err');
     if (sp.hp <= 0) return finishSpec(0, `Трое раненых — группу отозвали, штурм сорван.`);
@@ -2094,7 +2096,7 @@
       <div class="section">Что даёт ${st.name}</div>
       <div class="card small">${st.perks.map(t => `<div>${ic('star', 'gold')} ${t}</div>`).join('')}
         <div class="muted" style="margin-top:6px">Для званий качай в «Учёбе»: ${st.skills.map(k => SKILL[k].name).join(' и ')}.</div>
-        <div class="muted">Обычная работа и подработки — запрещены. Мелкий бизнес (до «${BUSINESSES[SERVICE_BIZ_TIER].name}») — можно до майора.</div></div>
+        <div class="muted">Обычная работа и подработки — запрещены. Мелкий бизнес (до «${BUSINESSES[SERVICE_BIZ_TIER].name}») — можно до звания «${SERVICE_RANKS[SERVICE_BIZ_UNTIL - 1].name}» включительно, с «${SERVICE_RANKS[SERVICE_BIZ_UNTIL].name}» любой бизнес надо продать.</div></div>
       <button class="btn btn-ghost btn-sm full" data-action="sil-quit">Уволиться со службы</button>`;
   }
   function renderJobs() {
@@ -2866,7 +2868,7 @@
     'biz-buy': id => {
       const d = BIZ[id];
       if (S.biz[id] || !bizOpen(d)) return;
-      if (S.sil && (S.sil.r >= SERVICE_BIZ_UNTIL || !smallBiz(id))) return toast(S.sil.r >= SERVICE_BIZ_UNTIL ? 'С майора бизнес — нельзя' : 'На службе — только мелкий бизнес');
+      if (S.sil && (S.sil.r >= SERVICE_BIZ_UNTIL || !smallBiz(id))) return toast(S.sil.r >= SERVICE_BIZ_UNTIL ? `С «${SERVICE_RANKS[SERVICE_BIZ_UNTIL].name}» бизнес — нельзя` : 'На службе — только мелкий бизнес');
       const lic = licenseCost(d), bribe = Math.round(lic / BRIBE_DIVISOR), risk = bribeRisk('license');
       showModal(`<h3>${d.icon} ${d.name}</h3>
         <p>Помещение и запуск: <b>${fmt(d.price)} ₽</b>. Осталось оформить лицензии и разрешения.</p>
@@ -2938,7 +2940,7 @@
       const block = joinBlock();
       showModal(`${sheetHead('Служба')}
         <p class="small">Вместо работы — служба: звания по выслуге, опыту и учёбе, довольствие, «крыша» над бизнесами, задания, служебная машина с капитана.
-          Подработки нельзя, бизнес — только мелкий и до майора. Уволишься или сядешь — звание сгорит, вернуться можно не сразу.</p>
+          Подработки нельзя, бизнес — только мелкий и до звания «${SERVICE_RANKS[SERVICE_BIZ_UNTIL - 1].name}». Уволишься или сядешь — звание сгорит, вернуться можно не сразу.</p>
         <div class="card"><div class="small muted">Твоя репутация</div>${repBar()}</div>
         ${block ? `<div class="card danger small">${block}</div>` : ''}
         ${STRUCTURES.map(x => `<div class="card"><div class="row"><div class="job-ico">${x.icon}</div><div class="grow"><div class="job-name">${x.name}</div>
@@ -3046,7 +3048,7 @@
     'ch-cell': i => {
       const sp = S.sil && S.sil.spec;
       i = +i;
-      if (!sp || sp.t !== 'chase' || sp.g[i] || i === sp.x) return;
+      if (!sp || sp.t !== 'chase' || sp.g[i] || i === sp.x || chaseEdge(i)) return;   // на красные клетки (выезды) посты не ставят
       sp.g[i] = 2; sp.turns++;
       const d = chaseDist(sp.g);
       if (d[sp.x] === Infinity) return finishSpec(1 + Math.max(0, 10 - sp.turns) * 0.04, `Беглец заперт — постов понадобилось ${sp.turns}.`);
