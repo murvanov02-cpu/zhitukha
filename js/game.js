@@ -26,7 +26,7 @@
     return {
       money: START_MONEY, total: 0, eco: ECO,
       skills: { int: 0, cha: 0, fit: 0, biz: 0 },
-      inv: {}, car: null, job: 'flyers',
+      inv: {}, got: {}, car: null, job: 'flyers',
       lastTick: Date.now(), cd: {}, opened: 0,  // cd: id кейса → когда открыт бесплатно
       pity: 0, fast: false, autoSell: false,
       gig: null,                  // идущая подработка: { id, until }
@@ -105,6 +105,7 @@
     if (s.sil && s.sil.rep !== undefined && o.rep === undefined) s.rep = s.sil.rep;   // v30: репутация стала общей
     if (s.sil && !s.sil.rankAt) s.sil.rankAt = s.sil.since;
     // v49: у каждого спецзадания свой откат; штурм старого образца (с таймером) отменяем
+    if (!o.got) { s.got = {}; for (const k of Object.keys(s.inv || {})) s.got[k] = 1; for (const k of Object.keys(s.conn || {})) s.got[k] = 1; }   // v53: галочка в кейсе = когда-либо выпадало
     if (o.news === undefined) s.news = '';   // старым игрокам — показать «Что нового»
     // v51: мусорные иномарки убраны из игры — возвращаем их рыночную цену; билеты «Битых тачек» — в «Гаражный кооператив»
     for (const id of ['c_matiz', 'c_lanos']) {
@@ -1013,6 +1014,7 @@
 
   // Кладёт выпавшее; возвращает, что с ним случилось
   function addItem(it) {
+    S.got[it.id] = 1;
     if (it.cat === 'conn') {
       if (!S.conn[it.id]) { S.conn[it.id] = newConn(0); return { it, isNew: true }; }
       if (S.conn[it.id].xp >= cxp(it.id, CONN_MAX_LV - 1)) {
@@ -1233,14 +1235,14 @@
     const c = CASE[id], pool = poolOf(c);
     const rars = RARITY_ORDER.filter(x => c.w[x] > 0 && pool.some(i => i.rarity === x));
     const tw = rars.reduce((a, x) => a + c.w[x], 0);
-    const own = i => i.cat === 'conn' ? !!S.conn[i.id] : !!S.inv[i.id];
+    const own = i => !!S.got[i.id];
     const groups = rars.slice().reverse().map(r => {
       const list = pool.filter(i => i.rarity === r).sort((a, b) => b.value - a.value);
       const tiles = list.map(i => `<div data-action="item-info" data-id="${id}:${i.id}">${tileHTML(i, `<div class="tile-note muted">${pct(c.w[r] / tw * 100 / list.length)}${own(i) ? ` ${ic('circle-check-filled', 'good')}` : ''}${i.value ? `<br>${fmt(i.value)} ₽` : ''}</div>`)}</div>`).join('');
       return `<div class="peek-head"><span class="rar-chip" style="background:${RARITIES[r].color}">${c.items[0].startsWith('c_') ? RACE_CLASSES[r].name + ' · ' : ''}${RARITIES[r].name}</span><b>${pct(c.w[r] / tw * 100)}</b></div>
         <div class="tiles">${tiles}</div>`;
     }).join('');
-    showModal(`${sheetHead(c.name + ': что внутри')}<p class="small muted">Нажми на вещь — покажу, что она даёт. ${ic('circle-check-filled', 'good')} — уже есть у тебя.</p>${groups}
+    showModal(`${sheetHead(c.name + ': что внутри')}${groups}
       <button class="btn btn-ghost full" style="margin-top:12px" data-action="case" data-id="${id}">${ic('arrow-left')} Назад</button>`, true);
   }
 
