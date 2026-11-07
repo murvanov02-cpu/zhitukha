@@ -26,7 +26,7 @@
     return {
       money: START_MONEY, total: 0, eco: ECO,
       skills: { int: 0, cha: 0, fit: 0, biz: 0 },
-      inv: {}, got: {}, car: null, job: 'flyers',
+      inv: {}, got: {}, bizV: 60, car: null, job: 'flyers',
       lastTick: Date.now(), cd: {}, opened: 0,  // cd: id кейса → когда открыт бесплатно
       pity: 0, fast: false, autoSell: false,
       gig: null,                  // идущая подработка: { id, until }
@@ -110,6 +110,22 @@
     if (!Array.isArray(o.newsSeen)) {   // v58: новости считаются по одной — то, что игрок уже видел в окнах v55–v58, не повторяем
       const had = { v55: ['roofs', 'bizcap', 'equal', 'misc'], v56: ['roofs', 'bizcap', 'housing', 'equal', 'misc'], v58: ['roofs', 'bizcap', 'housing', 'equal', 'misc', 'chase', 'raid', 'bizrank'] }[o.news] || [];
       s.newsSeen = o.news === undefined ? [] : had;
+    }
+    // v60: бизнесы пересчитаны (новые цены, до BIZ_MAX мест) — лишние места срезаем, переплату против новых цен возвращаем деньгами
+    if (!o.bizV) {
+      for (const [id, b] of Object.entries(s.biz)) {
+        const d = BIZ[id];
+        if (!d) continue;
+        b.slots = Math.min(Math.max(b.slots || BIZ_START, BIZ_START), BIZ_MAX);
+        b.ads = Math.min(b.ads || 0, BIZ_MAX - BIZ_START);
+        let inv = d.price;
+        for (let k = 0; k < b.slots - BIZ_START; k++) inv += d.eco * BIZ_SLOT_COST * Math.pow(BIZ_GROWTH, k);
+        for (let k = 0; k < b.ads; k++) inv += d.eco * BIZ_AD_COST * Math.pow(BIZ_GROWTH, k);
+        inv = Math.round(inv);
+        if ((b.inv || 0) > inv) s.money += b.inv - inv;
+        b.inv = inv;
+      }
+      s.bizV = 60;
     }
     if (o.news === undefined) s.news = '';   // старым игрокам — показать «Что нового»
     // v51: мусорные иномарки убраны из игры — возвращаем их рыночную цену; билеты «Битых тачек» — в «Гаражный кооператив»
@@ -346,8 +362,8 @@
   // Без управляющего: занят на работе — мало времени на бизнес, уволился — почти всё под контролем
   const ownerEff = () => Math.min(1, (S.job || S.sil ? OWNER_EFF_EMPLOYED : OWNER_EFF_FREE) * (1 + perk('bizEff') / 100));
   // Денежные параметры бизнеса — доли его цены (см. data.js)
-  const bizNum = d => ({ rev: d.price * BIZ_REV, salary: d.price * BIZ_SALARY, rent: d.price * BIZ_RENT,
-    mgr: d.price * BIZ_MGR, license: d.price * BIZ_LICENSE });
+  const bizNum = d => ({ rev: d.eco * BIZ_REV, salary: d.eco * BIZ_SALARY, rent: d.eco * BIZ_RENT,
+    mgr: d.eco * BIZ_MGR, license: d.price * BIZ_LICENSE });
   // b — состояние бизнеса (можно передать «а что если» для подсказок на кнопках)
   function bizStats(id, b = S.biz[id]) {
     const d = BIZ[id], n = bizNum(d);
@@ -358,17 +374,16 @@
     const eff = M ? M.eff : ownerEff();
     const nephew = (b.nephew || 0) > Date.now() ? FAVOR.f_nephew.drag : null;
     const revenue = frozen(id) ? 0 : sold / d.perSlot * n.rev * eff * (1 + perk('bizBoost') / 100) * (nephew ? 1 - nephew.revCut : 1);
-    const wages = (b.slots + (nephew ? nephew.wages : 0)) * n.salary, mgr = M ? d.price * M.salary : 0;
+    const wages = (b.slots + (nephew ? nephew.wages : 0)) * n.salary, mgr = M ? d.eco * M.salary : 0;
     const pre = revenue - wages - n.rent - mgr;
     const tax = pre > 0 ? pre * taxRate() : 0;
-    const raw = pre - tax, ceil = bizCap(d.price), capped = raw > ceil;
-    const neck = capped ? 'cap' : cap < demand ? 'slots' : cap > demand ? 'ads' : '';
-    return { cap, demand, sold, eff, revenue, wages, mgr, rent: n.rent, tax, profit: capped ? ceil : raw, neck };
+    const neck = cap < demand ? 'slots' : cap > demand ? 'ads' : '';
+    return { cap, demand, sold, eff, revenue, wages, mgr, rent: n.rent, tax, profit: pre - tax, neck };
   }
   const bizProfit = () => Object.keys(S.biz).reduce((a, id) => a + (BIZ[id] ? bizStats(id).profit : 0), 0);
-  const slotCost = id => Math.round(BIZ[id].price * BIZ_SLOT_COST * Math.pow(BIZ_GROWTH, S.biz[id].slots - BIZ_START));
-  const adCost = id => Math.round(BIZ[id].price * BIZ_AD_COST * Math.pow(BIZ_GROWTH, S.biz[id].ads));
-  const mgrSalary = (id, t) => BIZ[id].price * MANAGERS[t - 1].salary;
+  const slotCost = id => Math.round(BIZ[id].eco * BIZ_SLOT_COST * Math.pow(BIZ_GROWTH, S.biz[id].slots - BIZ_START));
+  const adCost = id => Math.round(BIZ[id].eco * BIZ_AD_COST * Math.pow(BIZ_GROWTH, S.biz[id].ads));
+  const mgrSalary = (id, t) => BIZ[id].eco * MANAGERS[t - 1].salary;
   const mgrHire = (id, t) => Math.round(mgrSalary(id, t) * MANAGERS[t - 1].hire / 1000) * 1000;
   // Насколько изменится прибыль, если поменять состояние бизнеса
   const bizDelta = (id, change) => bizStats(id, Object.assign({}, S.biz[id], change)).profit - bizStats(id).profit;
@@ -1667,10 +1682,10 @@
   const roofTrait = id => ROOF_TRAITS[id] || { rate: 1, risk: 1 };
   const roofFits = id => !!S.sil && roofTrait(id).fit === S.sil.s;
   const roofCap = () => svcRank().pay * ROOF_CAP;   // без payMult: «крыша» — деньги бизнеса, а не довольствие, во всех структурах одинаково
-  const roofPay = id => Math.min(roofCap(), BIZ[id].price * ROOF_RATE * roofTrait(id).rate * (roofFits(id) ? 1 + ROOF_FIT : 1));
+  const roofPay = id => Math.min(roofCap(), BIZ[id].turn * ROOF_RATE * roofTrait(id).rate * (roofFits(id) ? 1 + ROOF_FIT : 1));
   const roofIncome = () => (S.sil ? S.sil.roofs.reduce((a, id) => a + roofPay(id), 0) : 0);
   // «Месяц звания» — мерило денег в заданиях: довольствие + самая дорогая доступная «крыша»
-  const rankMonth = () => svcRank().pay * STR().payMult + (svcRank().tier >= 0 ? Math.min(roofCap(), BUSINESSES[svcRank().tier].price * ROOF_RATE) : 0);
+  const rankMonth = () => svcRank().pay * STR().payMult + (svcRank().tier >= 0 ? Math.min(roofCap(), BUSINESSES[svcRank().tier].turn * ROOF_RATE) : 0);
   const serviceH = () => (Date.now() - S.sil.since) / 3600e3;
   // Служебный опыт упирается в требование следующего звания (на высшем — в своё): сверх лимита не копится, до повышения фармить нечего
   const svcXpCap = () => (SERVICE_RANKS[S.sil.r + 1] || SERVICE_RANKS[S.sil.r]).xp;
@@ -1990,7 +2005,7 @@
     const acts = Object.entries(RAID_ACTIONS).map(([k, A]) => {
       const left = A.limit ? sp.uses[k] : null;
       return `<button class="btn ${left === 0 ? 'btn-ghost' : ''}" data-action="raid-act" data-id="${k}" ${left === 0 ? 'disabled' : ''}>${ic(A.icon)} ${A.name}${left !== null ? ` ×${left}` : ''}
-        <span class="small" style="display:block;opacity:.75">${A.ok.length === 4 ? 'всё, кроме растяжки' : A.ok.filter(t => t !== 'empty').map(t => RAID_THREATS[t].name).join(', ')}</span></button>`;
+        <span class="small" style="display:block;opacity:.75">Подходит: ${A.ok.length === 4 ? 'всё, кроме растяжки' : A.ok.map(t => RAID_THREATS[t].name).join(', ')}</span></button>`;
     }).join('');
     return `${sheetHead('🛡️ Штурм')}
       <div class="kv small"><span>Дверь ${sp.i + 1} из ${RAID_ROOMS}</span><span>Ранено: ${wounds} · заложников спасено ${sp.saved}${sp.lost ? `, погибло ${sp.lost}` : ''}</span></div>
@@ -1999,7 +2014,7 @@
         ${room.sure ? '' : `<button class="btn btn-sm btn-ghost full" style="margin-top:8px" data-action="raid-drone" ${sp.drones ? '' : 'disabled'}>${ic('eye')} Пустить дрон · осталось ${sp.drones}</button>`}</div>
       <div class="raid-acts">${acts}</div>
       <p class="small muted">Под каждой кнопкой — с чем она справляется. Не тот способ: заложник погибнет, в остальных случаях ранят бойца. ${RAID_HP} раненых — штурм сорван.
-        Разведка путает похожее: тишину и растяжку, группу и заложника, одиночку с группой.</p>
+        Разведка путает похожее: тишину и растяжку, банду и заложника, одного бандита с бандой.</p>
       ${sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : ''}`;
   }
   function openSpec() {
@@ -2012,7 +2027,7 @@
     if (!A || (A.limit && !sp.uses[k])) return;
     if (A.limit) sp.uses[k]--;
     const ok = A.ok.includes(room.type), what = RAID_THREATS[room.type].name;
-    const n = `Комната ${sp.i + 1}`, done = { empty: 'пусто, вошли без потерь', single: 'вооружённый задержан, потерь нет', group: 'группа задержана, потерь нет', hostage: 'заложник спасён', trap: 'растяжка обезврежена' }[room.type];
+    const n = `Комната ${sp.i + 1}`, done = { empty: 'пусто, вошли без потерь', single: 'бандит задержан, потерь нет', group: 'банда задержана, потерь нет', hostage: 'заложник спасён', trap: 'растяжка обезврежена' }[room.type];
     if (ok) { if (room.type === 'hostage') sp.saved++; sp.log.push(`✅ ${n}: ${A.name.toLowerCase()} — ${done}`); }
     else if (room.type === 'hostage') { sp.lost++; sp.log.push(`❌ ${n}: ${A.name.toLowerCase()} — внутри был заложник, спасти не удалось`); }
     else { sp.hp--; sp.log.push(`🩸 ${n}: ${A.name.toLowerCase()} — там ${what}, боец ранен (осталось ${sp.hp} из ${RAID_HP})`); }
@@ -2362,8 +2377,7 @@
       const b = S.biz[d.id], st = bizStats(d.id), n = bizNum(d);
       const fullS = b.slots >= BIZ_MAX, fullA = b.ads >= BIZ_MAX - BIZ_START;
       const dS = bizDelta(d.id, { slots: b.slots + 1 }), dA = bizDelta(d.id, { ads: b.ads + 1 });
-      const neck = st.neck === 'cap' ? `Потолок прибыли: рынок насыщен, дальше прокачка не даёт дохода`
-        : st.neck === 'slots' ? `Клиентов больше, чем мест — добавь рабочее место`
+      const neck = st.neck === 'slots' ? `Клиентов больше, чем мест — добавь рабочее место`
         : st.neck === 'ads' ? `Места простаивают — нужна реклама`
         : `Места и клиенты в балансе — расширяйся: место, потом реклама`;
       return `<div class="card ${frozen(d.id) ? 'danger' : ''}">
@@ -2376,7 +2390,7 @@
           <div><span class="small muted">Мощность</span><b>${fmt(st.cap)}</b><span class="small muted">${b.slots} мест</span></div>
           <div><span class="small muted">Клиенты</span><b>${fmt(st.demand)}</b><span class="small muted">${d.unit}</span></div>
           <div><span class="small muted">Обслужено</span><b>${fmt(st.sold)}</b><span class="small muted">${d.unit}</span></div></div>
-        <div class="small ${st.neck && st.neck !== 'cap' ? 'gold' : 'good'}" style="margin-bottom:10px">${ic(st.neck && st.neck !== 'cap' ? 'bulb' : 'check')} ${neck}</div>
+        <div class="small ${st.neck ? 'gold' : 'good'}" style="margin-bottom:10px">${ic(st.neck ? 'bulb' : 'check')} ${neck}</div>
         <div class="acts" style="grid-template-columns:1fr 1fr">
           <button class="act" data-action="biz-slot" data-id="${d.id}" ${fullS ? 'disabled' : ''}>${ic('user-plus')}
             <span class="act-name">Рабочее место</span><span class="act-sub">${d.slot} · ${b.slots}/${BIZ_MAX}</span>
@@ -2401,12 +2415,12 @@
     const rest = BUSINESSES.filter(d => !S.biz[d.id]);
     const shop = rest.map(d => {
       const open = bizOpen(d);
-      const start = Math.round((BIZ_START * bizNum(d).rev - BIZ_START * bizNum(d).salary - bizNum(d).rent - d.price * MANAGERS[2].salary) * (1 - BIZ_TAX));
+      const start = bizStats(d.id, { slots: BIZ_START, ads: 0, mgr: 3 }).profit, full = bizStats(d.id, { slots: BIZ_MAX, ads: BIZ_MAX - BIZ_START, mgr: MANAGERS.length }).profit;
       const reqs = reqTags(d.req, [`<span class="req ${rankIdx() >= d.rank ? 'ok' : 'no'}">${RANKS[d.rank].name}</span>`]);
       return `<div class="card job ${open ? '' : 'locked'}"><div class="ico-box" style="font-size:22px">${d.icon}</div>
         <div class="grow"><div class="job-name">${d.name}</div>
           <div class="small muted">${fmt(d.price)} ₽ + лицензии ${fmt(licenseCost(d))} ₽</div>
-          <div class="small good">≈ ${fmt(ph(start))} ₽/ч на старте с управляющим, до ${BIZ_MAX} мест</div>
+          <div class="small good">≈ ${fmt(ph(start))} ₽/ч на старте с управляющим · до ${fmt(ph(full))} ₽/ч на полной прокачке (${BIZ_MAX} мест)</div>
           ${open ? '' : `<div class="reqs">${reqs}</div>`}</div>
         ${open ? `<button class="btn btn-sm" data-action="biz-buy" data-id="${d.id}">Открыть</button>` : `<span class="tag lock">${ic('lock')}</span>`}</div>`;
     }).join('');
