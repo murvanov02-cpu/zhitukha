@@ -554,3 +554,9 @@ details.more-card .card { background: var(--card2); }
 .who > div:last-child { min-width: 0; }
 #prank { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
 .ava.dot::after { top: -3px; right: -3px; }
+
+/* суд: папка доказательств */
+.court-hand { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.court-card { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; white-space: normal; line-height: 1.25; padding: 10px; height: auto; }
+.court-card .small { opacity: .75; font-weight: 400; }
+.raid-noise i.on { background: var(--red) !important; }
