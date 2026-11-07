@@ -560,3 +560,14 @@ details.more-card .card { background: var(--card2); }
 .court-card { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; white-space: normal; line-height: 1.25; padding: 10px; height: auto; }
 .court-card .small { opacity: .75; font-weight: 400; }
 .raid-noise i.on { background: var(--red) !important; }
+
+/* выбор ведомства */
+.dept-head { display: flex; gap: 12px; align-items: center; }
+.dept .pogon { width: 30px; height: 78px; }
+.dept-name { font-weight: 800; font-size: 17px; }
+.dept-tag { font-size: 12px; color: var(--gold); margin-top: 2px; }
+.dept-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.dept-meta .chip { font-size: 11px; padding: 3px 8px; border-radius: 8px; background: var(--card2); border: 1px solid var(--line); white-space: nowrap; }
+.dept-list { margin-top: 10px; display: grid; gap: 5px; font-size: 12.5px; line-height: 1.35; }
+.dept-list > div { display: flex; gap: 6px; align-items: flex-start; }
+.dept-list .ti { flex: none; margin-top: 1px; }
