@@ -984,8 +984,10 @@
   const tuneValue = id => (S.garage[id] ? Math.round((S.garage[id].tuneInv || 0) * TUNE_SELL_RATE) : 0);
   // что машина стоит сверх себя самой: тюнинг и висящий на ней номер
   const carExtra = id => tuneValue(id) + (plateOf(id) ? plateSell(plateOf(id)) : 0);
-  const stageHp = (hp, st) => Math.round(hp * (1 + (st ? TUNE_STAGES[st - 1].hp : 0)));
-  const carHp = id => stageHp(CAR_HP[id], carState(id).stage);
+  // Мощность после тюнинга: запас мотора зависит от машины (у «девятки» +60%, у Supra +70%, у Chiron +8%)
+  const tunePot = id => { const base = id.replace(/^svc_/, ''); return TUNE_JDM.includes(base) ? TUNE_JDM_POT : TUNE_POT.find(([h]) => CAR_HP[id] <= h)[1]; };
+  const stageHp = (id, st) => Math.round(CAR_HP[id] * (1 + (st ? tunePot(id) * TUNE_STAGES[st - 1].share : 0)));
+  const carHp = id => stageHp(id, carState(id).stage);
   const carTime = id => quarterMile(carHp(id));
   const stageStars = st => `<span class="stars">${'★'.repeat(st)}<span class="off">${'★'.repeat(TUNE_STAGES.length - st)}</span></span>`;
   // Шанс победы на уровне lv (0…4): соперник уровня затюнингован на Stage lv, сравниваем с твоим Stage
@@ -1025,7 +1027,7 @@
   }
   function rivalOf(id, lv) {
     const r = rivals(id)[lv];
-    return { it: ITEM[r.id], stage: lv, hp: Math.round(stageHp(CAR_HP[r.id], lv) * (0.96 + 0.08 * r.roll)) };
+    return { it: ITEM[r.id], stage: lv, hp: Math.round(stageHp(r.id, lv) * (0.96 + 0.08 * r.roll)) };
   }
   const breakChance = id => Math.min(90, carState(id).wear * BREAK_PER_WEAR);
   const raceCarId = () => {
@@ -1832,7 +1834,7 @@
   // «Крыш» по званию; у ФСБ на одну меньше (но если звание даёт хоть одну — одна остаётся)
   const roofMax = (rk = svcRank()) => (rk.roofs ? Math.max(1, rk.roofs + (STR().roofDelta || 0)) : 0);
   const roofCap = () => svcRank().pay * ROOF_CAP;   // без payMult: «крыша» — деньги бизнеса, а не довольствие, во всех структурах одинаково
-  const roofPay = id => Math.min(roofCap(), BIZ[id].turn * ROOF_RATE * roofTrait(id).rate * (roofFits(id) ? 1 + ROOF_FIT : 1));
+  const roofPay = id => Math.min(roofCap(), BIZ[id].turn * ROOF_RATE * roofTrait(id).rate * (roofFits(id) ? 1 + ROOF_FIT : 1)) * (STR().roofMult || 1);
   const roofIncome = () => (S.sil ? S.sil.roofs.reduce((a, id) => a + roofPay(id), 0) : 0);
   // «Месяц звания» — мерило денег в заданиях: довольствие + самая дорогая доступная «крыша»
   const rankMonth = () => svcRank().pay * STR().payMult + (svcRank().tier >= 0 ? Math.min(roofCap(), BUSINESSES[svcRank().tier].turn * ROOF_RATE) : 0);
@@ -2233,17 +2235,23 @@
   function viewCourt(sp) {
     if (sp.v !== 2) return `${sheetHead('⚖️ Суд')}<p>Это задание устарело.</p>`;
     const r = sp.tricks[sp.i], next = sp.tricks[sp.i + 1];
-    const cards = sp.hand.map(id => { const c = ccard(id); return `<button class="btn btn-ghost court-card" data-action="court-move" data-id="${id}"><b>${c.name}</b><span class="small">${c.text}</span></button>`; }).join('');
+    const tag = (g, on) => `<span class="ctag ${on ? 'on' : ''}">${ic(COURT_TAGS[g][0])} ${COURT_TAGS[g][1]}</span>`;
+    const need = ctrick(r.id).need;
+    const cards = sp.hand.map(id => { const c = ccard(id); return `<button class="btn btn-ghost court-card" data-action="court-move" data-id="${id}"><b>${c.name}</b><span class="small">${c.text}</span>
+        <span class="ctags">${c.tags.map(g => tag(g, need.includes(g))).join('')}</span></button>`; }).join('');
     return `${sheetHead('⚖️ Суд')}
       <p class="small">Подсудимый — <b>${sp.who}</b>, обвинение: ${sp.charge}. Защищает — <b>${sp.lawyer}</b>.</p>
       <div class="kv small"><span>Раунд ${sp.i + 1} из ${COURT_ROUNDS}</span><span>Присяжные: ${sp.win} за тебя · ${sp.lose} против</span></div>
-      <div class="card accent"><div class="small muted">${sp.lawyer}:</div><div class="big-text">${r.line}</div></div>
-      ${next ? `<p class="small muted">${ic('eye')} Следом адвокат готовит: ${next.line}</p>` : ''}
-      <div class="section">Твоя папка — какая улика это опровергнет?</div>
+      <details class="howto"><summary>${ic('help-circle')} Как играть</summary>
+        <div class="small">Адвокат выдвигает версию — сверху написано, <b>что нужно опровергнуть</b> (время, место, личность…). Выбери из папки улику, которая это <b>доказывает</b>: у неё должен совпасть хотя бы один значок — совпавшие подсвечены золотом. Улика тратится, так что смотри, что адвокат готовит следом, и береги нужные. Выиграй 3 раунда из 5 — подсудимый виновен.</div></details>
+      <div class="card accent"><div class="small muted">${sp.lawyer}:</div><div class="big-text">${r.line}</div>
+        <div class="small" style="margin-top:6px">Нужно опровергнуть: ${need.map(g => tag(g, true)).join(' или ')}</div></div>
+      ${next ? `<p class="small muted">${ic('eye')} Следом адвокат готовит: ${next.line} <span class="nowrap">(${ctrick(next.id).need.map(g => COURT_TAGS[g][1]).join(' или ')})</span></p>` : ''}
+      <div class="section">Твоя папка — что доказывает каждая улика</div>
       <div class="court-hand">${cards}</div>
       <div class="row" style="margin-top:8px"><button class="btn btn-line btn-sm grow" data-action="court-move" data-id="obj" ${sp.obj ? '' : 'disabled'}>${ic('hand-stop')} «Протест!» ×${sp.obj}</button>
         <button class="btn btn-ghost btn-sm grow" data-action="court-move" data-id="pass">Уступить раунд</button></div>
-      <p class="small muted" style="margin-top:6px">Улика тратится. Нужно выиграть ${COURT_WIN} раунда из ${COURT_ROUNDS}. «Протест!» бьёт что угодно, но он один.</p>
+      <p class="small muted" style="margin-top:6px">«Протест!» бьёт любую версию, но он один. «Уступить раунд» — если подходящей улики нет, а нужные жалко.</p>
       ${sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : ''}`;
   }
   function courtStep(sp, k) {
@@ -2317,17 +2325,20 @@
     const acc = Math.min(0.9, AUDIT_ACC + S.skills.int * 0.005);
     const titles = AUDIT_TITLES.slice().sort(() => Math.random() - 0.5).slice(0, AUDIT_DOCS);
     const bad = new Set(Array.from({ length: AUDIT_DOCS }, (_, i) => i).sort(() => Math.random() - 0.5).slice(0, AUDIT_BAD));
-    const docs = titles.map((t, i) => ({ t, bad: bad.has(i), flag: Math.random() < acc ? bad.has(i) : !bad.has(i), open: false }));
+    const docs = titles.map((t, i) => ({ t, bad: bad.has(i), flag: Math.random() < acc ? bad.has(i) : !bad.has(i), open: false,
+      sum: fmt(Math.round((0.2 + Math.random() * 30) * 1e5) * 10), by: pickOne(AUDIT_SIGNERS) }));
     return { t: 'audit', docs, checks: AUDIT_CHECKS, found: 0, acc };
   }
   function viewAudit(sp) {
     const cards = sp.docs.map((d, i) => `<div class="card sus ${d.open && !d.bad ? 'out' : ''}"><div class="row"><div class="grow">
         <b>${d.open ? (d.bad ? '🚩 ' : '✔️ ') : d.flag ? '⚠️ ' : ''}${d.t}</b>
-        <div class="small muted">${d.open ? d.note : d.flag ? 'аналитик: подозрительно' : 'аналитик: вроде чисто'}</div></div>
+        <div class="small muted">${d.sum ? `${d.sum} ₽ · подписал ${d.by}` : ''}</div>
+        <div class="small ${d.open ? (d.bad ? 'bad' : 'good') : d.flag ? 'gold' : 'muted'}">${d.open ? (d.bad ? 'Нарушение: ' : 'Чисто: ') + d.note : d.flag ? '⚠️ аналитик: подозрительно' : 'аналитик: вроде чисто'}</div></div>
         ${d.open ? '' : `<button class="btn btn-sm" data-action="audit-open" data-id="${i}" ${sp.checks ? '' : 'disabled'}>Проверить</button>`}</div></div>`).join('');
     return `${sheetHead('📂 Проверка компании')}
       <div class="kv small"><span>Проверок осталось: ${sp.checks}</span><span>Нарушений найдено: ${sp.found} из ${AUDIT_BAD}</span></div>
-      <p class="small">Аналитик пометил подозрительное ⚠️, но прав примерно в ${Math.round(sp.acc * 100)}% случаев. Найди все ${AUDIT_BAD} нарушения за ${AUDIT_CHECKS} проверок — чем меньше потратишь, тем больше премия. Найдёшь два — тоже засчитают, но скромнее.</p>
+      <details class="howto" open><summary>${ic('help-circle')} Как играть</summary>
+        <div class="small">В <b>3 документах из 9</b> спрятаны нарушения. Жми «Проверить» — узнаешь, чист документ или нет. Проверок всего <b>${AUDIT_CHECKS}</b>, поэтому не открывай всё подряд: ⚠️ — подсказка аналитика (прав примерно в ${Math.round(sp.acc * 100)}% случаев), а странные названия и подписи тоже наводят на мысль. Нашёл все 3 — полная премия, 2 — поменьше.</div></details>
       ${cards}`;
   }
   function auditStep(sp, i) {
@@ -2512,7 +2523,7 @@
     const next = TUNE_STAGES[st.stage];
     const tune = next
       ? `<div class="row"><div class="grow"><div class="small">Stage ${st.stage + 1} · <b>${next.name}</b></div>
-          <div class="small muted">${carHp(id)} → ${stageHp(CAR_HP[id], st.stage + 1)} л.с.</div>
+          <div class="small muted">${carHp(id)} → ${stageHp(id, st.stage + 1)} л.с.</div>
           <div class="small">В среднем за заезд: ${fmt(round2(bestRaceEV(id, st.stage)))} → <b class="good">${fmt(round2(bestRaceEV(id, st.stage + 1)))} ₽</b></div></div>
           <button class="btn btn-sm btn-col" data-action="tune" data-id="${id}" ${S.money < tuneCost(id, st.stage) ? 'disabled' : ''}>Тюнинг<span class="btn-top">${fmt(tuneCost(id, st.stage))} ₽</span></button></div>`
       : `<div class="small good">${ic('check')} Гоночная сборка — максимальный тюнинг</div>`;
