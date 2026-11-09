@@ -315,8 +315,7 @@ details.more-card .card { background: var(--card2); }
 #roulette { background: radial-gradient(circle at 50% 45%, rgba(212,168,75,.12), rgba(5,5,7,.92) 60%); }
 .rl-title { font-size: 20px; letter-spacing: .02em; }
 .rl-window { padding: 16px 0; background: linear-gradient(180deg, #16171a, #1d1f23); border-color: rgba(212,168,75,.25); }
-.rl-window::before { content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 112px; transform: translateX(-50%);
-  background: linear-gradient(180deg, rgba(212,168,75,.0), rgba(212,168,75,.10), rgba(212,168,75,.0)); pointer-events: none; z-index: 1; }
+
 .rl-strip .tile { height: 124px; border-width: 1px; position: relative; overflow: hidden; background: linear-gradient(180deg, var(--rbg), rgba(0,0,0,.25)); }
 .rl-strip .tile::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--rc); box-shadow: 0 0 10px var(--rc); }
 .rl-strip .tile.win { animation: winpop .6s ease-out forwards; z-index: 2; }
@@ -367,9 +366,10 @@ details.more-card .card { background: var(--card2); }
 .plate { display: inline-flex; align-items: stretch; width: 11.4em; height: 2.5em; background: #f6f6f1; color: #111;
   border: .12em solid #111; border-radius: .38em; font: 700 13px/1 'Roboto Mono', ui-monospace, Menlo, monospace;
   flex: none; overflow: hidden; vertical-align: middle; }
-.plate .pl-main { flex: 1; display: flex; align-items: center; justify-content: center; gap: .05em; padding-top: .12em; }
-.plate .pc { display: inline-block; height: 1em; overflow: hidden; text-align: center; color: #111; }
-.plate .pc.L { font-size: 1.3em; width: .7em; margin-top: .18em; }
+/* все знаки стоят на одной линии снизу, как на настоящем номере: буквы ниже цифр, но с общей нижней кромкой */
+.plate .pl-main { flex: 1; display: flex; align-items: flex-end; justify-content: center; gap: .05em; padding-bottom: .3em; }
+.plate .pc { display: block; height: 1em; line-height: 1; overflow: hidden; text-align: center; color: #111; flex: none; }
+.plate .pc.L { font-size: 1.3em; width: .7em; margin-bottom: -.07em; }
 .plate .pc.D { font-size: 1.7em; width: .64em; }
 .plate .pl-reg { width: 3em; flex: none; border-left: .12em solid #111; display: flex; flex-direction: column;
   align-items: center; justify-content: center; }
@@ -581,3 +581,5 @@ details.more-card .card { background: var(--card2); }
 .howto summary::-webkit-details-marker { display: none; }
 .howto .small { margin-top: 6px; line-height: 1.45; }
 .nowrap { white-space: nowrap; }
+
+.ctag.done { background: var(--green-bg); color: var(--green); box-shadow: inset 0 0 0 1px rgba(123,198,138,.4); }
