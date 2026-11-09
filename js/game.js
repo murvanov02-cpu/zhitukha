@@ -1026,6 +1026,8 @@
     return { it: ITEM[r.id], stage: lv, hp: Math.round(stageHp(r.id, lv) * (0.97 + 0.06 * r.roll)) };
   }
   const breakChance = id => Math.min(90, carState(id).wear * BREAK_PER_WEAR);
+  // 0 — всё хорошо, 1 — пора на ТО, 2 — высокий риск или уже сломана (смотрим только машины, у которых есть история гонок)
+  const wearLevel = id => { const g = S.garage && S.garage[id]; if (!g) return 0; if (g.broken) return 2; const b = (g.wear || 0) * BREAK_PER_WEAR; return b >= BREAK_DANGER ? 2 : b >= BREAK_WARN ? 1 : 0; };
   const raceCarId = () => {
     const owned = Object.keys(S.inv).filter(id => ITEM[id] && ITEM[id].cat === 'car');
     if (S.raceCar && S.inv[S.raceCar]) return S.raceCar;
@@ -1631,7 +1633,7 @@
         <div class="inv-icon">${visual(it)}${n > 1 ? `<b class="cnt">×${n}</b>` : ''}</div>
         <div class="grow"><div class="inv-name">${it.name}</div>
           ${cat === 'car' && plateOf(it.id) ? `<div>${plateHTML(plateOf(it.id), 'sm')}</div>` : ''}
-          <div class="small" style="color:${RARITIES[it.rarity].color}">${RARITIES[it.rarity].name}</div>
+          <div class="small" style="color:${RARITIES[it.rarity].color}">${RARITIES[it.rarity].name}${cat === 'car' && wearLevel(it.id) ? ` <span class="tag ${wearLevel(it.id) === 2 ? 'bad-tag' : 'gold'}">${S.garage[it.id].broken ? '💥 сломана' : '🔧 нужен ТО'}</span>` : ''}</div>
           <div class="small muted">${bonusText(it)}${cat === 'home' && n > 1 ? ' · ×' + n + ', сдаётся одно' : ''} · ${fmt(it.value)} ₽</div></div>
         <div class="inv-actions">${equip}${isSvcCar(it.id) && n <= 1 ? '<span class="tag">Служебная</span>'
           : `<button class="btn btn-sm btn-ghost" data-action="sell" data-id="${it.id}">Продать ${fmt(sellPrice(it) + (n === 1 ? carExtra(it.id) : 0))}</button>`}</div></div>`;
@@ -2535,7 +2537,7 @@
       <button class="btn btn-sm" data-goto="cases" data-sub="cases:car">К кейсам</button></div>`;
     const it = ITEM[id], st = carState(id), rc = rclass(id), block = raceBlock(id), pl = pool();
     const cars = Object.keys(S.inv).filter(x => ITEM[x] && ITEM[x].cat === 'car').sort((a, b) => carHp(b) - carHp(a));
-    const chips = cars.map(x => `<button class="chip ${x === id ? 'active' : ''}" data-action="race-car" data-id="${x}">${isSvcCar(x) ? '🚨 ' : ''}${rclass(x).name} · ${ITEM[x].name}${carState(x).stage ? ' · S' + carState(x).stage : ''} · ⛽${carState(x).tank}</button>`).join('');
+    const chips = cars.map(x => `<button class="chip ${x === id ? 'active' : ''}" data-action="race-car" data-id="${x}">${isSvcCar(x) ? '🚨 ' : ''}${rclass(x).name} · ${ITEM[x].name}${carState(x).stage ? ' · S' + carState(x).stage : ''} · ⛽${carState(x).tank}${wearLevel(x) ? (carState(x).broken ? ' · 💥' : ' · 🔧') : ''}</button>`).join('');
     const tank = Array.from({ length: TANK_RACES }, (_, i) => `<i class="${i < st.tank ? 'on' : ''}"></i>`).join('');
     const next = TUNE_STAGES[st.stage];
     const tune = next
@@ -2573,10 +2575,17 @@
         <div class="kv small" style="margin-top:8px"><span>Бак: ${st.tank} / ${TANK_RACES} заездов</span>
           <b class="muted">${st.tank < TANK_RACES ? `+1 через <span data-timer="${st.ts + TANK_REGEN_MIN * 60e3}">${fmtTime(nextIn({ ts: st.ts }, TANK_REGEN_MIN))}</span>` : 'полный'}</b></div>
         <div class="tank">${tank}</div>
-        <div class="kv small"><span>Износ ${Math.round(st.wear)}% · шанс поломки ${Math.round(breakChance(id))}%</span><b>${st.broken ? '<span class="bad">сломана</span>' : ''}</b></div>
-        <div class="row" style="margin-top:8px">
-          ${st.broken ? `<button class="btn btn-sm grow" data-action="repair" data-id="${id}">Ремонт · ${fmt(it.value * REPAIR_COST)} ₽</button>`
-            : `<button class="btn btn-sm btn-ghost grow" data-action="service" data-id="${id}" ${st.wear <= 0 ? 'disabled' : ''}>ТО: износ → 0 · ${fmt(it.value * SERVICE_COST)} ₽</button>`}</div>
+        ${(() => {
+          const wl = wearLevel(id), bc = Math.round(breakChance(id));
+          const alert = st.broken ? `<div class="wear-alert danger">${ic('car-crash')}<div><b>Машина сломана</b><div class="small">Без ремонта на старт не выйти.</div></div></div>`
+            : wl === 2 ? `<div class="wear-alert danger">${ic('alert-triangle')}<div><b>Высокий риск поломки — ${bc}%</b><div class="small">Сделай ТО: ремонт после поломки обойдётся в ${Math.round(REPAIR_COST / SERVICE_COST)} раз дороже.</div></div></div>`
+            : wl === 1 ? `<div class="wear-alert warn">${ic('tool')}<div><b>Пора на ТО — шанс поломки ${bc}%</b><div class="small">Пока это дёшево: ${fmt(it.value * SERVICE_COST)} ₽.</div></div></div>` : '';
+          return `<div class="kv small" style="margin-top:4px"><span>Износ ${Math.round(st.wear)}%</span><b class="${wl === 2 ? 'bad' : wl === 1 ? 'gold' : 'muted'}">шанс поломки ${bc}%</b></div>
+            <div class="wear-bar lv${st.broken ? 2 : wl}"><i style="width:${Math.min(100, st.wear)}%"></i></div>${alert}
+            <div class="row" style="margin-top:8px">
+            ${st.broken ? `<button class="btn btn-sm btn-danger grow pulse" data-action="repair" data-id="${id}">${ic('hammer')} Ремонт · ${fmt(it.value * REPAIR_COST)} ₽</button>`
+              : `<button class="btn btn-sm ${wl === 2 ? 'btn-danger pulse' : wl === 1 ? 'btn-warn pulse' : 'btn-ghost'} grow" data-action="service" data-id="${id}" ${st.wear <= 0 ? 'disabled' : ''}>${ic('tool')} ТО: износ → 0 · ${fmt(it.value * SERVICE_COST)} ₽</button>`}</div>`;
+        })()}
       </div>
       <div class="card">${tune}
         <div class="small muted" style="margin-top:6px">Тюнинг остаётся в машине: при продаже вернётся ${Math.round(TUNE_SELL_RATE * 100)}% вложенного${st.tuneInv ? ` (+${fmt(tuneValue(id))} ₽)` : ''}.</div></div>
