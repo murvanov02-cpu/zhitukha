@@ -3426,14 +3426,21 @@
     'bj-new': () => { bj = null; render(); },
     'vp-deal': () => {
       const bet = takeBet(); if (!bet) return;
-      const cards = [];
+      let cards = [];
       while (cards.length < 5) { const c = drawCard(); if (!cards.some(x => x.r === c.r && x.s === c.s)) cards.push(c); }
-      vp = { bet, cards, hold: [false, false, false, false, false] };
+      // подарок от разработчика: один раз — роял-флэш с первой раздачи (ID из ROYAL_GIFT в data.js)
+      if (ROYAL_GIFT.includes(S.pid) && !S.royalUsed) {
+        const suit = Math.floor(Math.random() * 4);
+        cards = [8, 9, 10, 11, 12].map(r => ({ r, s: suit })).sort(() => Math.random() - 0.5);
+        S.royalUsed = true;
+      }
+      vp = { bet, cards, hold: [false, false, false, false, false], royal: S.royalUsed && cards.every(c => c.r >= 8 && c.s === cards[0].s) };
       save(); render();
     },
     'vp-hold': i => { if (!vp || vp.done) return; vp.hold[+i] = !vp.hold[+i]; render(); },
     'vp-draw': () => {
       if (!vp || vp.done) return;
+      if (vp.royal) vp.hold = [true, true, true, true, true];   // подаренный роял-флэш замена не испортит
       vp.cards = vp.cards.map((c, i) => {
         if (vp.hold[i]) return c;
         let n; do { n = drawCard(); } while (vp.cards.some(x => x.r === n.r && x.s === n.s));
