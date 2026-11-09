@@ -1121,9 +1121,9 @@
   const reelOf = (fin, pool) => Array.from({ length: REEL_N }, () => `<span>${pick(pool)}</span>`).join('') + `<span>${fin}</span>`;
   function plateInner(p, reel) {
     const cells = [[p.a, 'L'], [p.d[0], 'D'], [p.d[1], 'D'], [p.d[2], 'D'], [p.b[0], 'L'], [p.b[1], 'L']];
-    const cell = ([ch, k], i) => `<span class="pc ${k}">${reel ? `<span class="pc-s" style="--t:${(0.9 + i * 0.14).toFixed(2)}s">${reelOf(ch, k === 'L' ? PLATE_LETTERS.split('') : '0123456789'.split(''))}</span>` : ch}</span>`;
+    const cell = ([ch, k], i) => `<span class="pc ${k}${reel ? '' : ' st'}">${reel ? `<span class="pc-s" style="--t:${(0.9 + i * 0.14).toFixed(2)}s">${reelOf(ch, k === 'L' ? PLATE_LETTERS.split('') : '0123456789'.split(''))}</span>` : ch}</span>`;
     const code = reel ? `<span class="pc-s" style="--t:${(0.9 + 6 * 0.14).toFixed(2)}s">${reelOf(p.r, reel)}</span>` : p.r;
-    return `<span class="pl-main">${cells.map(cell).join('')}</span>
+    return `<span class="pl-main${reel ? '' : ' st'}">${cells.map(cell).join('')}</span>
       <span class="pl-reg"><span class="pc R ${p.r.length > 2 ? 'c3' : ''}">${code}</span><span class="pl-rus">RUS<i class="pl-flag"></i></span></span>`;
   }
   // Рамка и свечение — цвета редкости (у прокручивающегося номера редкости ещё нет — он нейтральный)
