@@ -368,11 +368,17 @@
     if (!j || (j.needCar && !carBonus())) return 0;
     return j.pay * (1 + carBonus() / 100) * (1 + S.skills.int * 0.01);
   }
+  // Ремонт жилья: этап (0 — без ремонта) и аренда с учётом ремонта
+  const homeLv = id => (S.homeLv && S.homeLv[id]) || 0;
+  const homeRent = id => ITEM[id].bonus * (1 + (homeLv(id) ? HOME_REPAIRS[homeLv(id) - 1].bonus : 0));
+  const repairNext = id => HOME_REPAIRS[homeLv(id)];
+  const repairReady = id => { const nx = repairNext(id); return !!nx && (S.inv[id] || 0) - 1 >= nx.need; };
+  const repairStars = id => (homeLv(id) ? `<span class="rep-stars">${'★'.repeat(homeLv(id))}<span class="off">${'★'.repeat(HOME_REPAIRS.length - homeLv(id))}</span></span>` : '');
   function rent() {
     let r = 0;
     for (const [id, n] of Object.entries(S.inv)) {
       const it = ITEM[id];
-      if (it && it.cat === 'home') r += it.bonus;   // каждое жильё сдаётся один раз: копии не складываются
+      if (it && it.cat === 'home') r += homeRent(id);   // каждое жильё сдаётся один раз, копии идут на ремонт
     }
     return r * (1 + S.skills.biz * 0.01 + perk('rentUp') / 100);
   }
@@ -1224,6 +1230,7 @@
     if (!S.inv[id]) {
       delete S.inv[id];
       delete S.garage[id];
+      if (S.homeLv) delete S.homeLv[id];   // продал последнюю — ремонт ушёл вместе с квартирой
       S.plates = S.plates.filter(p => p.car !== id);
       if (S.car === id) S.car = bestCar();
     }
@@ -1335,7 +1342,7 @@
   function bonusText(it) {
     if (it.cat === 'conn') return perkText(it);
     if (it.cat === 'car') return `+${it.bonus}% к зарплате`;
-    return `+${fmt(ph(it.bonus))} ₽/ч аренды`;
+    return `+${fmt(ph(S.inv[it.id] ? homeRent(it.id) : it.bonus))} ₽/ч аренды`;
   }
   function resultNote(res) {
     if (res.sold) return `продано +${fmt(sellPrice(res.it))}`;
@@ -1620,6 +1627,28 @@
   }
 
   // ---------- имущество (открывается с главной) ----------
+  function showRepair(id) {
+    const it = ITEM[id], lv = homeLv(id), nx = repairNext(id), spare = (S.inv[id] || 0) - 1;
+    const steps = HOME_REPAIRS.map((R, i) => {
+      const done = i < lv, cur = i === lv;
+      return `<div class="rep-step ${done ? 'done' : cur ? 'cur' : ''}"><div class="rep-ico">${done ? ic('check') : R.icon}</div>
+        <div class="grow"><div class="rep-name">${'★'.repeat(i + 1)} ${R.name} <span class="small ${done ? 'good' : 'muted'}">+${Math.round(R.bonus * 100)}% к аренде</span></div>
+          <div class="small muted">${done || cur ? R.text : `Нужно копий: ${R.need}`}</div></div>
+        ${cur ? `<span class="tag ${spare >= R.need ? 'gold' : ''}">${Math.min(spare, R.need)} / ${R.need}</span>` : ''}</div>`;
+    }).join('');
+    const after = nx ? it.bonus * (1 + nx.bonus) : 0;
+    showModal(`${sheetHead('Ремонт')}
+      <div class="rep-hero"><div class="rep-photo">${visual(it)}</div>
+        <div class="grow"><div class="big-text">${it.name}</div>
+          <div class="small">${lv ? `${repairStars(id)} ${HOME_REPAIRS[lv - 1].name}` : '<span class="muted">Без ремонта</span>'}</div>
+          <div class="small good" style="margin-top:4px">Аренда: ${fmt(ph(homeRent(id)))} ₽/ч${nx ? ` → <b>${fmt(ph(after))} ₽/ч</b>` : ''}</div>
+          <div class="small muted">Копий на ремонт: ${spare}</div></div></div>
+      <div class="rep-steps">${steps}</div>
+      ${nx ? `<button class="btn full" style="margin-top:12px" data-action="repair-go" data-id="${id}" ${spare >= nx.need ? '' : 'disabled'}>${nx.icon} ${nx.name} ремонт · ${nx.need} ${nx.need === 1 ? 'копия' : 'копии'}</button>
+          ${spare >= nx.need ? '' : `<p class="small muted" style="text-align:center;margin-top:6px">Не хватает ${nx.need - spare} — копии выпадают из кейсов жилья.</p>`}`
+        : '<div class="card accent small" style="margin-top:12px;text-align:center">👑 Максимальный ремонт. Лишние копии можно продать.</div>'}
+      <p class="small muted" style="margin-top:8px">Ремонт делается только из копий этого же жилья. Продашь последнюю — ремонт уйдёт вместе с ней.</p>`, true);
+  }
   function renderInv() {
     const cat = sub.inv;
     if (cat === 'plate') return invTabs(cat) + renderPlates();
@@ -1627,14 +1656,18 @@
       .sort((a, b) => rarIdx(b.rarity) - rarIdx(a.rarity) || b.value - a.value);
     const rows = list.map(it => {
       const n = S.inv[it.id];
-      const equip = cat === 'home' ? '' : S.car === it.id ? '<span class="tag">За рулём</span>'
+      const nx = cat === 'home' && repairNext(it.id), spare = n - 1;
+      const equip = cat === 'home' ? (repairReady(it.id) ? `<button class="btn btn-sm btn-warn pulse" data-action="repair-home" data-id="${it.id}">${ic('hammer')} Ремонт</button>`
+          : (nx ? `<button class="btn btn-sm btn-ghost" data-action="repair-home" data-id="${it.id}">${ic('hammer')} Ремонт</button>` : `<button class="btn btn-sm btn-ghost" data-action="repair-home" data-id="${it.id}">👑</button>`))
+        : S.car === it.id ? '<span class="tag">За рулём</span>'
         : `<button class="btn btn-sm btn-line" data-action="equip" data-id="${it.id}">Сесть</button>`;
       return `<div class="inv-item" style="${rStyle(it.rarity)}">
         <div class="inv-icon">${visual(it)}${n > 1 ? `<b class="cnt">×${n}</b>` : ''}</div>
         <div class="grow"><div class="inv-name">${it.name}</div>
           ${cat === 'car' && plateOf(it.id) ? `<div>${plateHTML(plateOf(it.id), 'sm')}</div>` : ''}
           <div class="small" style="color:${RARITIES[it.rarity].color}">${RARITIES[it.rarity].name}${cat === 'car' && wearLevel(it.id) ? ` <span class="tag ${wearLevel(it.id) === 2 ? 'bad-tag' : 'gold'}">${S.garage[it.id].broken ? '💥 сломана' : '🔧 нужен ТО'}</span>` : ''}</div>
-          <div class="small muted">${bonusText(it)}${cat === 'home' && n > 1 ? ' · ×' + n + ', сдаётся одно' : ''} · ${fmt(it.value)} ₽</div></div>
+          ${cat === 'home' && homeLv(it.id) ? `<div class="small rep-line">${repairStars(it.id)} ${HOME_REPAIRS[homeLv(it.id) - 1].name} · +${Math.round(HOME_REPAIRS[homeLv(it.id) - 1].bonus * 100)}%</div>` : ''}
+          <div class="small muted">${bonusText(it)}${cat === 'home' && n > 1 ? ` · ${spare} ${spare === 1 ? 'копия' : spare < 5 ? 'копии' : 'копий'} на ремонт` : ''} · ${fmt(it.value)} ₽</div></div>
         <div class="inv-actions">${equip}${isSvcCar(it.id) && n <= 1 ? '<span class="tag">Служебная</span>'
           : `<button class="btn btn-sm btn-ghost" data-action="sell" data-id="${it.id}">Продать ${fmt(sellPrice(it) + (n === 1 ? carExtra(it.id) : 0))}</button>`}</div></div>`;
     }).join('');
@@ -1646,7 +1679,7 @@
       if (cat === 'car' && plateOf(it.id)) worth += plateOf(it.id).v;
     }
     return `${invTabs(cat)}
-      <p class="hint">${cat === 'car' ? 'Машина, на которой ездишь, прибавляет к зарплате.' : 'Каждое жильё сдаётся один раз — лишние копии лучше продать.'} Собрано ${list.filter(i => !i.svc).length} из ${ITEMS.filter(i => i.cat === cat && !i.svc).length}.</p>
+      <p class="hint">${cat === 'car' ? 'Машина, на которой ездишь, прибавляет к зарплате.' : 'Каждое жильё сдаётся один раз, а выпавшие копии идут на ремонт — до +75% к аренде.'} Собрано ${list.filter(i => !i.svc).length} из ${ITEMS.filter(i => i.cat === cat && !i.svc).length}.</p>
       ${rows || `<div class="empty">${ic(cat === 'car' ? 'car' : 'home')}Пока пусто<br><br><button class="btn btn-sm" data-goto="cases" data-sub="cases:${cat}">К кейсам</button></div>`}
       ${cnt ? totalsCard(cnt, worth, sale, cat === 'car' ? 'Номера на машинах и тюнинг входят в цену продажи. Служебная не считается.' : '') : ''}`;
   }
@@ -3416,6 +3449,16 @@
     },
     'vp-new': () => { vp = null; render(); },
     'race-car': id => { S.raceCar = id; save(); render(); },
+    'repair-home': id => { if (ITEM[id] && S.inv[id]) showRepair(id); },
+    'repair-go': id => {
+      const nx = repairNext(id);
+      if (!nx || !repairReady(id)) return;
+      S.inv[id] -= nx.need;
+      S.homeLv = S.homeLv || {};
+      S.homeLv[id] = homeLv(id) + 1;
+      haptic('ok'); save(); render(); showRepair(id);
+      toast(`${nx.icon} ${ITEM[id].name}: ${nx.name.toLowerCase()} ремонт готов — аренда +${Math.round(nx.bonus * 100)}%`);
+    },
     'race-mode': m => { S.raceTrack = m === 'track' && trackOk(); haptic('light'); save(); render(); },
     'sil-join': () => {
       if (S.sil || S.lvl < SERVICE_MIN_LEVEL) return;
