@@ -600,3 +600,19 @@ details.more-card .card { background: var(--card2); }
 .btn-danger.pulse { animation-name: needpulse-r; }
 @keyframes needpulse-r { 50% { box-shadow: 0 0 0 5px rgba(229,72,77,.22); } }
 .tag.bad-tag { color: var(--red); background: var(--red-bg); }
+
+/* ремонт жилья */
+.rep-stars { color: var(--gold); letter-spacing: 1px; }
+.rep-stars .off { color: var(--card3); }
+.rep-line { margin-top: 2px; color: var(--gold); }
+.rep-hero { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.rep-photo { width: 96px; height: 72px; border-radius: 12px; overflow: hidden; flex: none; border: 1px solid var(--gold-line); background: var(--card2); display: grid; place-items: center; font-size: 34px; }
+.rep-photo img { width: 100%; height: 100%; object-fit: cover; }
+.rep-steps { display: grid; gap: 6px; }
+.rep-step { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line); opacity: .6; }
+.rep-step.done { opacity: 1; border-color: rgba(123,198,138,.35); background: linear-gradient(135deg, var(--green-bg), var(--card2) 70%); }
+.rep-step.cur { opacity: 1; border-color: var(--gold-line); background: linear-gradient(135deg, var(--gold-bg), var(--card2) 70%); }
+.rep-ico { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--card3); font-size: 18px; flex: none; }
+.rep-step.done .rep-ico { background: var(--green-bg); color: var(--green); }
+.rep-name { font-weight: 700; font-size: 14px; }
+.rep-name .small { font-weight: 600; margin-left: 4px; }
