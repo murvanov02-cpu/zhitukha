@@ -145,7 +145,7 @@
       }
     }
     if (o.tut === -1 && o.tutPaid === undefined) s.tutPaid = true;   // подарок за обучение — один раз, даже если пройти заново
-    if (s.sil && s.sil.spec && ((s.sil.spec.t === 'raid' && s.sil.spec.v !== 3) || (s.sil.spec.t === 'court' && s.sil.spec.v !== 2))) s.sil.spec = null;   // v68: штурм и суд переделаны
+    if (s.sil && s.sil.spec && ((s.sil.spec.t === 'raid' && s.sil.spec.v !== 3) || (s.sil.spec.t === 'court' && s.sil.spec.v !== 3))) s.sil.spec = null;   // v68: штурм и суд переделаны
     if (o.news === undefined) s.news = '';   // старым игрокам — показать «Что нового»
     // v51: мусорные иномарки убраны из игры — возвращаем их рыночную цену; билеты «Битых тачек» — в «Гаражный кооператив»
     for (const id of ['c_matiz', 'c_lanos']) {
@@ -984,50 +984,46 @@
   const tuneValue = id => (S.garage[id] ? Math.round((S.garage[id].tuneInv || 0) * TUNE_SELL_RATE) : 0);
   // что машина стоит сверх себя самой: тюнинг и висящий на ней номер
   const carExtra = id => tuneValue(id) + (plateOf(id) ? plateSell(plateOf(id)) : 0);
-  // Мощность после тюнинга: запас мотора зависит от машины (у «девятки» +60%, у Supra +70%, у Chiron +8%)
-  const tunePot = id => { const base = id.replace(/^svc_/, ''); return TUNE_JDM.includes(base) ? TUNE_JDM_POT : TUNE_POT.find(([h]) => CAR_HP[id] <= h)[1]; };
-  const stageHp = (id, st) => Math.round(CAR_HP[id] * (1 + (st ? tunePot(id) * TUNE_STAGES[st - 1].share : 0)));
+  const stageHp = (id, st) => Math.round(CAR_HP[id] * (1 + (st ? TUNE_STAGES[st - 1].hp : 0)));
   const carHp = id => stageHp(id, carState(id).stage);
   const carTime = id => quarterMile(carHp(id));
   const stageStars = st => `<span class="stars">${'★'.repeat(st)}<span class="off">${'★'.repeat(TUNE_STAGES.length - st)}</span></span>`;
   // Шанс победы на уровне lv (0…4): соперник уровня затюнингован на Stage lv, сравниваем с твоим Stage
   // roll — «форма» соперника (0…1, см. rivals): чем он сильнее, тем ниже шанс.
   // Верных побед нет: где по тюнингу было бы 100%, шанс в полосе своего уровня (кроме «Новичка»), сложнее — ниже.
-  function raceChance(id, lv, stage, roll) {
-    const s = stage === undefined ? carState(id).stage : stage, d = lv + 1 - s;
-    const r = roll === undefined ? rivals(id)[lv].roll : roll;
-    if (d <= 0) return lv === 0 ? 100 : Math.ceil(RACE_TOP_MAX - RACE_TOP_STEP * (lv - 1 + r));
-    if (d === 1 && s > 0) return RACE_NEAR_WIN;
-    const base = RACE_LEVELS[d - 1].base;
-    return base > 0 && base < 100 ? base + Math.round(RACE_FORM * (1 - 2 * r)) : base;
+  // Шанс — от соотношения мощностей (своя с тюнингом против соперника с его тюнингом)
+  function raceChance(id, lv, stage) {
+    const s = stage === undefined ? carState(id).stage : stage;
+    const q = stageHp(id, s) / rivalOf(id, lv).hp, k = Math.pow(q, RACE_CHANCE_K);
+    return Math.max(2, Math.min(98, Math.round(100 * k / (1 + k))));
   }
   // Средний выигрыш за заезд на самом выгодном уровне (без учёта мастерства) — чтобы видеть, что даёт тюнинг
   function bestRaceEV(id, stage) {
     return Math.max(...RACE_LEVELS.map((L, lv) => {
       const st = raceStake(id, lv);
-      return raceChance(id, lv, stage, 0.5) / 100 * st.prize - st.fee;
+      return raceChance(id, lv, stage) / 100 * st.prize - st.fee;
     }));
   }
   // Соперники машины меняются после каждого заезда: модель — случайная из своей «пятой» части класса по мощности
   // (чем выше уровень, тем мощнее), roll — форма соперника: мощность ±4% и шанс победы.
+  // Соперники: на каждом уровне — машина, чья заводская мощность ближе всего к твоей заводской × RACE_RIVAL_K (из трёх ближайших — случайная)
   function rollRivals(id) {
-    const list = ITEMS.filter(x => x.cat === 'car' && x.rarity === ITEM[id].rarity && x.id !== id && CAR_HP[x.id])
-      .sort((a, b) => CAR_HP[a.id] - CAR_HP[b.id]);
-    const n = list.length, k = RACE_LEVELS.length;
+    const base = CAR_HP[id] || 100;
+    const all = ITEMS.filter(x => x.cat === 'car' && !x.svc && x.id !== id && x.id !== id.replace(/^svc_/, 'c_') && CAR_HP[x.id]);
     return RACE_LEVELS.map((L, lv) => {
-      if (!n) return { id, roll: Math.random() };
-      const lo = Math.min(n - 1, Math.floor(lv * n / k)), hi = Math.min(n, Math.max(lo + 1, Math.floor((lv + 1) * n / k)));
-      return { id: list[lo + Math.floor(Math.random() * (hi - lo))].id, roll: Math.random() };
+      const target = base * RACE_RIVAL_K[lv];
+      const near = all.slice().sort((a, b) => Math.abs(CAR_HP[a.id] - target) - Math.abs(CAR_HP[b.id] - target)).slice(0, 3);
+      return { id: near.length ? near[Math.floor(Math.random() * near.length)].id : id, roll: Math.random(), v: 3 };
     });
   }
   function rivals(id) {
     const g = carState(id);
-    if (!g.rivals || g.rivals.length !== RACE_LEVELS.length || g.rivals.some(r => !ITEM[r.id])) g.rivals = rollRivals(id);
+    if (!g.rivals || g.rivals.length !== RACE_LEVELS.length || g.rivals.some(r => !ITEM[r.id] || r.v !== 3)) g.rivals = rollRivals(id);   // v3: соперники по мощности
     return g.rivals;
   }
   function rivalOf(id, lv) {
     const r = rivals(id)[lv];
-    return { it: ITEM[r.id], stage: lv, hp: Math.round(stageHp(r.id, lv) * (0.96 + 0.08 * r.roll)) };
+    return { it: ITEM[r.id], stage: lv, hp: Math.round(stageHp(r.id, lv) * (0.97 + 0.06 * r.roll)) };
   }
   const breakChance = id => Math.min(90, carState(id).wear * BREAK_PER_WEAR);
   const raceCarId = () => {
@@ -1039,8 +1035,8 @@
   function raceBlock(id) {
     const st = carState(id);
     if (st.broken) return 'Машина сломана — нужен ремонт';
-    if (st.tank < 1) return `Бак пуст — +1 заезд через ${fmtTime(nextIn({ ts: st.ts }, TANK_REGEN_MIN))}`;
-    if (pool().n < 1) return `Лимит заездов — +1 через ${fmtTime(nextIn(S.pool, POOL_REGEN_MIN))}`;
+    if (st.tank < 1) return `Бак пуст — +1 заезд через <span data-timer="${st.ts + TANK_REGEN_MIN * 60e3}">${fmtTime(nextIn({ ts: st.ts }, TANK_REGEN_MIN))}</span>`;
+    if (pool().n < 1) return `Лимит заездов — +1 через <span data-timer="${S.pool.ts + POOL_REGEN_MIN * 60e3}">${fmtTime(nextIn(S.pool, POOL_REGEN_MIN))}</span>`;
     return '';
   }
   // После заезда может остановить ГИБДД. Связь «Инспектор ГИБДД» снижает шанс, на максимуме — отпускает.
@@ -1250,7 +1246,7 @@
     spinning = true;
     const strip = $('#rl-strip'), box = $('#rl-window');
     const items = Array.from({ length: RL_WIN + 6 }, (_, i) => (i === RL_WIN ? res.it : rollItem(c, false)));
-    strip.innerHTML = items.map(i => tileHTML(i)).join('');
+    strip.innerHTML = items.map(i => tileHTML(i)).join('').replace(/loading="lazy"/g, 'loading="eager" decoding="sync"');   // картинки ленты — сразу, иначе пролетают пустыми
     $('#rl-title').textContent = c.name;
     strip.style.transition = 'none';
     strip.style.transform = 'translateX(0)';
@@ -1275,12 +1271,16 @@
       if (idx !== lastIdx) { lastIdx = idx; haptic('tick'); }
       raf = requestAnimationFrame(follow);
     };
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+    // ждём, пока картинки ленты загрузятся (не дольше 0,8 с), и только потом крутим
+    const imgs = [...strip.querySelectorAll('img')];
+    const ready = Promise.all(imgs.map(im => (im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; }))));
+    Promise.race([ready, new Promise(r => setTimeout(r, 800))]).then(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (done) return;
       const x = RL_WIN * RL_STEP + 48 - box.clientWidth / 2 + (Math.random() - 0.5) * 70;
       strip.style.transition = 'transform 6s cubic-bezier(.08,.6,.12,1)';
       strip.style.transform = `translateX(${-x}px)`;
       raf = requestAnimationFrame(follow);
-    }));
+    })));
     strip.addEventListener('transitionend', () => setTimeout(finish, 150), { once: true });
     $('#rl-skip').onclick = () => {
       // пропуск: мгновенно доезжаем до выигрышной плитки
@@ -1852,7 +1852,7 @@
     if (!nx) return null;
     const left = Math.max(0, nx.h - rankH());
     return [
-      { ok: left <= 0, text: left > 0 ? `Выслуга на звании: ещё ${fmtTime(left * 3600e3)} из ${nx.h} ч` : `Выслуга на звании ${nx.h} ч` },
+      { ok: left <= 0, text: left > 0 ? `Выслуга на звании: ещё <span data-timer="${(S.sil.rankAt || S.sil.since) + nx.h * 3600e3}">${fmtTime(left * 3600e3)}</span> из ${nx.h} ч` : `Выслуга на звании ${nx.h} ч` },
       { ok: S.lvl >= nx.lv, text: `Уровень ${nx.lv}` + (S.lvl < nx.lv ? ` (сейчас ${S.lvl})` : '') },
       ...STR().skills.map(k => ({ ok: S.skills[k] >= nx.sk, text: `${SKILL[k].name} ${nx.sk}` + (S.skills[k] < nx.sk ? ` (сейчас ${S.skills[k]})` : '') })),
       { ok: S.sil.xp >= nx.xp, text: `Служебный опыт ${Math.floor(S.sil.xp)} / ${nx.xp}` },
@@ -1930,7 +1930,7 @@
     if (id) toast(`🚨 Автобаза выдала новую служебную: ${ITEM[id].name}`);
   }
   const writeoffBlock = () => (S.rep < 0 ? 'нужна репутация не ниже 0'
-    : Date.now() - (S.sil.carAt || 0) < SVC_WRITEOFF_H * 3600e3 ? `через ${fmtTime(S.sil.carAt + SVC_WRITEOFF_H * 3600e3 - Date.now())}` : '');
+    : Date.now() - (S.sil.carAt || 0) < SVC_WRITEOFF_H * 3600e3 ? `через <span data-timer="${S.sil.carAt + SVC_WRITEOFF_H * 3600e3}">${fmtTime(S.sil.carAt + SVC_WRITEOFF_H * 3600e3 - Date.now())}</span>` : '');
   // Риск сесть на службе: базовый × структура × защита (связи и звания, но не больше SVC_SAFE_MAX)
   const svcRisk = base => Math.round(base * STR().riskMult * (1 - Math.min(SVC_SAFE_MAX, perk('safe')) / 100));
   function repAdd(n) { S.rep = Math.max(-REP_MAX, Math.min(REP_MAX, (S.rep || 0) + (n > 0 ? n * REP_GOOD_MULT : n))); }
@@ -1942,7 +1942,7 @@
   function scheduleCheck() { S.sil.nextCheck = Date.now() + 24 / checksPerDay() / (STR().osbMult || 1) * (0.6 + Math.random() * 0.8) * 3600e3; }
   const smallBiz = id => BUSINESSES.findIndex(d => d.id === id) <= SERVICE_BIZ_TIER;
   function joinBlock() {
-    if (Date.now() < S.silBan) return `Вернуться на службу можно через ${fmtTime(S.silBan - Date.now())}.`;
+    if (Date.now() < S.silBan) return `Вернуться на службу можно через <span data-timer="${S.silBan}">${fmtTime(S.silBan - Date.now())}</span>.`;
     if (Object.keys(S.biz).some(id => !smallBiz(id))) return `Госслужащему можно держать только мелкий бизнес (до «${BUSINESSES[SERVICE_BIZ_TIER].name}») — остальное продай.`;
     if (S.gig) return 'Сначала закончи подработку.';
     return '';
@@ -2222,7 +2222,8 @@
   const ctrick = id => COURT_TRICKS.find(x => x.id === id);
   const ccard = id => COURT_CARDS.find(x => x.id === id);
   function genCourt() {
-    const tricks = COURT_TRICKS.slice().sort(() => Math.random() - 0.5).slice(0, COURT_ROUNDS).map(t => ({ id: t.id, line: pickOne(t.text) }));
+    // «сильная» версия (если в ней два пункта) — опровергнуть надо оба: одной уликой с обоими значками или двумя уликами
+    const tricks = COURT_TRICKS.slice().sort(() => Math.random() - 0.5).slice(0, COURT_ROUNDS).map(t => ({ id: t.id, line: pickOne(t.text), strong: t.need.length > 1 && Math.random() < COURT_STRONG }));
     const pool = COURT_CARDS.slice().sort(() => Math.random() - 0.5), hand = [];
     tricks.slice().sort(() => Math.random() - 0.5).slice(0, COURT_WIN + 1).forEach(t => {
       const need = ctrick(t.id).need, c = pool.find(c => !hand.includes(c.id) && c.tags.some(g => need.includes(g)));
@@ -2230,23 +2231,25 @@
     });
     for (const c of pool) if (hand.length < COURT_HAND && !hand.includes(c.id)) hand.push(c.id);
     hand.sort(() => Math.random() - 0.5);
-    return { t: 'court', v: 2, charge: pickOne(COURT_CHARGES), who: pickOne(COURT_DEFENDANTS), lawyer: pickOne(COURT_LAWYERS), tricks, hand, i: 0, win: 0, lose: 0, obj: COURT_OBJECTIONS, log: [] };
+    return { t: 'court', v: 3, charge: pickOne(COURT_CHARGES), who: pickOne(COURT_DEFENDANTS), lawyer: pickOne(COURT_LAWYERS), tricks, hand, i: 0, win: 0, lose: 0, obj: COURT_OBJECTIONS, cover: [], objAt: 1 + Math.floor(Math.random() * 3), log: [] };
   }
   function viewCourt(sp) {
-    if (sp.v !== 2) return `${sheetHead('⚖️ Суд')}<p>Это задание устарело.</p>`;
+    if (sp.v !== 3) return `${sheetHead('⚖️ Суд')}<p>Это задание устарело.</p>`;
     const r = sp.tricks[sp.i], next = sp.tricks[sp.i + 1];
-    const tag = (g, on) => `<span class="ctag ${on ? 'on' : ''}">${ic(COURT_TAGS[g][0])} ${COURT_TAGS[g][1]}</span>`;
+    const tag = (g, on, done) => `<span class="ctag ${on ? 'on' : ''} ${done ? 'done' : ''}">${ic(done ? 'check' : COURT_TAGS[g][0])} ${COURT_TAGS[g][1]}</span>`;
     const need = ctrick(r.id).need;
     const cards = sp.hand.map(id => { const c = ccard(id); return `<button class="btn btn-ghost court-card" data-action="court-move" data-id="${id}"><b>${c.name}</b><span class="small">${c.text}</span>
-        <span class="ctags">${c.tags.map(g => tag(g, need.includes(g))).join('')}</span></button>`; }).join('');
+        <span class="ctags">${c.tags.map(g => tag(g)).join('')}</span></button>`; }).join('');
+    const needLine = r.strong ? `<b class="bad">Сильная версия</b> — опровергни <b>и</b> ${need.map(g => tag(g, true, sp.cover.includes(g))).join(' <b>и</b> ')}`
+      : `Нужно опровергнуть: ${need.map(g => tag(g, true)).join(' или ')}`;
     return `${sheetHead('⚖️ Суд')}
       <p class="small">Подсудимый — <b>${sp.who}</b>, обвинение: ${sp.charge}. Защищает — <b>${sp.lawyer}</b>.</p>
       <div class="kv small"><span>Раунд ${sp.i + 1} из ${COURT_ROUNDS}</span><span>Присяжные: ${sp.win} за тебя · ${sp.lose} против</span></div>
       <details class="howto"><summary>${ic('help-circle')} Как играть</summary>
-        <div class="small">Адвокат выдвигает версию — сверху написано, <b>что нужно опровергнуть</b> (время, место, личность…). Выбери из папки улику, которая это <b>доказывает</b>: у неё должен совпасть хотя бы один значок — совпавшие подсвечены золотом. Улика тратится, так что смотри, что адвокат готовит следом, и береги нужные. Выиграй 3 раунда из 5 — подсудимый виновен.</div></details>
+        <div class="small">Адвокат выдвигает версию — под ней написано, <b>что нужно опровергнуть</b> (время, место, личность…). Найди в папке улику, у которой есть такой же значок, — она это <b>доказывает</b>. Не тот значок — раунд проигран. <b>Сильную версию</b> надо опровергнуть по всем пунктам: улика с обоими значками или две улики подряд. Улики тратятся, а один раз за суд адвокат добьётся исключения твоей улики — береги запасные. Выиграй 3 раунда из 5.</div></details>
       <div class="card accent"><div class="small muted">${sp.lawyer}:</div><div class="big-text">${r.line}</div>
-        <div class="small" style="margin-top:6px">Нужно опровергнуть: ${need.map(g => tag(g, true)).join(' или ')}</div></div>
-      ${next ? `<p class="small muted">${ic('eye')} Следом адвокат готовит: ${next.line} <span class="nowrap">(${ctrick(next.id).need.map(g => COURT_TAGS[g][1]).join(' или ')})</span></p>` : ''}
+        <div class="small" style="margin-top:6px">${needLine}</div></div>
+      ${next ? `<p class="small muted">${ic('eye')} Следом адвокат готовит: ${next.line} <span class="nowrap">(${next.strong ? 'сильная: ' : ''}${ctrick(next.id).need.map(g => COURT_TAGS[g][1]).join(next.strong ? ' и ' : ' или ')})</span></p>` : ''}
       <div class="section">Твоя папка — что доказывает каждая улика</div>
       <div class="court-hand">${cards}</div>
       <div class="row" style="margin-top:8px"><button class="btn btn-line btn-sm grow" data-action="court-move" data-id="obj" ${sp.obj ? '' : 'disabled'}>${ic('hand-stop')} «Протест!» ×${sp.obj}</button>
@@ -2255,7 +2258,7 @@
       ${sp.log.length ? `<div class="card small">${sp.log.slice(-3).map(l => `<div>${l}</div>`).join('')}</div>` : ''}`;
   }
   function courtStep(sp, k) {
-    if (sp.v !== 2) return;
+    if (sp.v !== 3) return;
     const r = sp.tricks[sp.i], need = ctrick(r.id).need;
     let ok = false, txt = '';
     if (k === 'obj') { if (!sp.obj) return; sp.obj--; ok = true; txt = '«Протест принят!» — судья стучит молотком'; }
@@ -2263,13 +2266,27 @@
     else {
       if (!sp.hand.includes(k)) return;
       const c = ccard(k); sp.hand = sp.hand.filter(x => x !== k);
-      ok = c.tags.some(g => need.includes(g));
+      const add = c.tags.filter(g => need.includes(g) && !sp.cover.includes(g));
+      if (r.strong && add.length && need.some(g => !sp.cover.includes(g) && !add.includes(g))) {
+        // сильная версия опровергнута наполовину — раунд продолжается
+        sp.cover.push(...add);
+        sp.log.push(`☑️ «${c.name}» — доказано: ${add.map(g => COURT_TAGS[g][1]).join(', ')}. Осталось: ${need.filter(g => !sp.cover.includes(g)).map(g => COURT_TAGS[g][1]).join(', ')}`);
+        haptic('light'); save(); openSpec(); return;
+      }
+      ok = add.length > 0;
       txt = ok ? `«${c.name}» — ${pickOne(['адвокат покраснел', 'зал ахнул', 'присяжные закивали', 'подсудимый сполз под стол'])}` : `«${c.name}» — не в тему, присяжные зевнули`;
     }
     if (ok) sp.win++; else sp.lose++;
     sp.log.push(`${ok ? '✅' : '❌'} Раунд ${sp.i + 1}: ${txt}`);
-    sp.i++;
+    sp.i++; sp.cover = [];
     haptic(ok ? 'light' : 'err');
+    // адвокат один раз за суд добивается исключения улики — той, что опаснее всего для его следующей версии
+    if (sp.i === sp.objAt && sp.hand.length > 1 && sp.tricks[sp.i]) {
+      const nNeed = ctrick(sp.tricks[sp.i].id).need;
+      const victim = sp.hand.slice().sort((a, b) => ccard(b).tags.filter(g => nNeed.includes(g)).length - ccard(a).tags.filter(g => nNeed.includes(g)).length)[0];
+      sp.hand = sp.hand.filter(x => x !== victim);
+      sp.log.push(`⚠️ ${sp.lawyer}: «Ходатайствую исключить „${ccard(victim).name}“ — получено с нарушением!» Судья согласился.`);
+    }
     if (sp.win >= COURT_WIN) return finishSpec(0.8 + 0.12 * (sp.win - sp.lose) + 0.05 * sp.hand.length + 0.1 * sp.obj,
       `Виновен! ${sp.who} отправляется подумать о жизни (${sp.win}:${sp.lose}). ${sp.lawyer} уже пишет апелляцию на салфетке.`);
     if (sp.lose > COURT_ROUNDS - COURT_WIN) return finishSpec(0, `Оправдан. ${sp.who} уходит из зала под ручку с тётей-свидетельницей (${sp.win}:${sp.lose}).`);
@@ -2544,8 +2561,7 @@
         ${trackOn() ? `<div class="small"><b>${STR().cup}</b> — официально, среди своих: без ГИБДД и без риска засветиться. Призы и взносы — ${Math.round(RACE_TRACK_PRIZE * 100)}% от уличных.</div>`
           : `<div class="small">${ic('device-mobile')} Офицер на уличной гонке — находка для блогеров: шанс засветиться <b class="${exposeChance() >= 6 ? 'bad' : 'gold'}">${String(exposeChance()).replace('.', ',')}%</b> за заезд.
             Засветился — репутация −${RACE_EXPOSE_REP} и внеплановая проверка ОСБ.${trackOk() ? '' : ` С капитана откроется безопасный трек ведомства.`}</div>`}</div>`;
-    return `${mode}<p class="hint">Драг на 402 м. Пять соперников — от новичка до легенды, после каждого заезда приезжают новые. Тюнинг поднимает шанс против сильных:
-        соперник уровня N затюнингован на Stage N−1. Стартуй ровно на зелёный и попади передачей в зелёную зону — это ещё ±${RACE_SKILL}% к шансу.</p>
+    return `${mode}<p class="hint">Драг на 402 м. Шанс зависит от мощности: равные машины — 50 на 50, у тебя на 20% мощнее — около 80%, в полтора раза — почти верная победа. Соперник уровня N затюнингован на Stage N, а твой тюнинг поднимает шанс против всех. Старт ровно на зелёный и передача в зелёной зоне — ещё ±${RACE_SKILL}%.</p>
       <div class="card"><div class="kv"><span>${ic('flag')} Заездов доступно</span><b>${pl.n} / ${RACE_POOL}</b></div>
         <div class="small muted">${pl.n < RACE_POOL ? `+1 через <span data-timer="${pl.ts + POOL_REGEN_MIN * 60e3}">${fmtTime(nextIn(pl, POOL_REGEN_MIN))}</span> · ` : ''}общий лимит на все машины, ${RACE_POOL} в час</div></div>
       <div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:10px">${chips}</div>
@@ -2653,9 +2669,8 @@
       const sh = r.shift;
       const shiftQ = sh >= 0.72 && sh <= 0.88 ? 1 : sh >= 0.6 && sh <= 0.94 ? 0 : -1;
       const skill = (r.rt < 0.3 ? 1 : r.rt > 0.6 ? -1 : 0) + shiftQ;
-      const skillBonus = r.chance > 0 && r.chance < 100 ? Math.sign(skill) * RACE_SKILL : 0;
-      const top = r.lv === 0 ? 100 : RACE_TOP_MAX - RACE_TOP_STEP * (r.lv - 1);
-      const p = Math.max(0, Math.min(Math.max(top, r.chance), r.chance + skillBonus));
+      const skillBonus = Math.sign(skill) * RACE_SKILL;
+      const p = Math.max(1, Math.min(99, r.chance + skillBonus));
       const bonus = p - r.chance;   // сколько реально дало мастерство (выше полосы своего уровня не поднимает)
       win = Math.random() * 100 < p;
       const myTime = carTime(id) + (r.rt - 0.2) + [SHIFT_MISS, 0, SHIFT_PERFECT][shiftQ + 1] + (Math.random() - 0.5) * 0.1;
@@ -2849,7 +2864,7 @@
       const until = c.cd[m.id] || 0, wait = until > now, [mname, micon] = meetOf(id, i);
       return `<button class="act" data-action="meet" data-id="${id}:${m.id}" ${wait ? 'disabled' : ''}>${ic(micon)}
         <span class="act-name">${mname}</span><span class="act-sub">+${Math.round(m.xp * (1 + perk('trustUp') / 100))} доверия</span>
-        <span class="act-cost">${wait ? fmtTime(until - now) : fmt(meetCost(id, m)) + ' ₽'}</span></button>`;
+        <span class="act-cost">${wait ? `<span data-timer="${until}">${fmtTime(until - now)}</span>` : fmt(meetCost(id, m)) + ' ₽'}</span></button>`;
     }).join('');
     const spLeft = specialLeft(id);
     const canUse = it.special.type !== 'closeEvent' || (S.event && !EV[S.event.id].good);
@@ -2863,7 +2878,7 @@
       <div class="card ${lv >= CONN_MAX_LV ? 'accent' : ''}"><div class="label">${ic('sparkles')} Особая услуга · раз в сутки</div>
         <div>${specialText(it)}</div>
         ${lv < CONN_MAX_LV ? `<div class="small muted" style="margin-top:4px">Откроется на ${CONN_MAX_LV} ★</div>`
-          : spLeft ? `<div class="small muted" style="margin-top:6px">Снова через ${fmtTime(spLeft)}</div>`
+          : spLeft ? `<div class="small muted" style="margin-top:6px">Снова через <span data-timer="${Date.now() + spLeft}">${fmtTime(spLeft)}</span></div>`
           : `<button class="btn btn-sm full" style="margin-top:8px" data-action="special" data-id="${id}" ${canUse ? '' : 'disabled'}>${canUse ? 'Воспользоваться' : 'Сейчас нет проблем'}</button>`}</div>
       <div class="section">Встречи</div><div class="acts">${meets}</div>`, true);
   }
@@ -3175,7 +3190,14 @@
     $('#plvl').textContent = S.lvl;
     $('.hdr').style.setProperty('--lc', lvlColor(S.lvl));
     const now = Date.now();
-    document.querySelectorAll('[data-timer]').forEach(el => { el.textContent = fmtTime(+el.dataset.timer - now); });
+    let expired = false;
+    document.querySelectorAll('[data-timer]').forEach(el => {
+      const left = +el.dataset.timer - now;
+      el.textContent = fmtTime(Math.max(0, left));
+      if (left <= 0 && !el.dataset.fired) { el.dataset.fired = 1; expired = true; }
+    });
+    // таймер дошёл до нуля — перерисуем экран, чтобы кнопки и условия обновились сами
+    if (expired && $('#modal').classList.contains('hidden') && !spinning) setTimeout(render, 300);
     document.querySelectorAll('[data-cdcase]').forEach(b => {
       const left = cdLeft(CASE[b.dataset.cdcase]);
       b.disabled = left > 0;
@@ -3892,6 +3914,7 @@
   else maybeEvent();
   if (away > 60 && first.earned >= 1 && !S.event) showOffline(first);
 
+  setTimeout(() => ITEMS.forEach(i => { if (i.img) new Image().src = i.img; }), 4000);   // фото вещей — заранее, чтобы лента кейса не была пустой
   setInterval(tick, 1000);
   setInterval(save, 5000);
   document.addEventListener('visibilitychange', () => { if (document.hidden) { save(); cloudSaveSoon(true); } else tick(); });
