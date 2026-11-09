@@ -616,3 +616,7 @@ details.more-card .card { background: var(--card2); }
 .rep-step.done .rep-ico { background: var(--green-bg); color: var(--green); }
 .rep-name { font-weight: 700; font-size: 14px; }
 .rep-name .small { font-weight: 600; margin-left: 4px; }
+
+/* готовый номер (не барабан): знаки выравниваются по общей базовой линии шрифта — буквы ниже цифр, низ ровный, как на настоящем номере */
+.plate .pl-main.st { align-items: baseline; align-self: center; padding: 0; }
+.plate .pc.st { display: inline-block; height: auto; overflow: visible; margin: 0; line-height: 1; }
