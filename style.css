@@ -583,3 +583,20 @@ details.more-card .card { background: var(--card2); }
 .nowrap { white-space: nowrap; }
 
 .ctag.done { background: var(--green-bg); color: var(--green); box-shadow: inset 0 0 0 1px rgba(123,198,138,.4); }
+
+/* износ машины: полоска и предупреждения */
+.wear-bar { height: 6px; border-radius: 3px; background: var(--card3); overflow: hidden; margin-top: 4px; }
+.wear-bar i { display: block; height: 100%; border-radius: 3px; background: var(--green); transition: width .4s; }
+.wear-bar.lv1 i { background: linear-gradient(90deg, var(--green), var(--gold)); }
+.wear-bar.lv2 i { background: linear-gradient(90deg, var(--gold), var(--red)); }
+.wear-alert { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; padding: 10px 12px; border-radius: 12px; font-size: 13px; line-height: 1.35; }
+.wear-alert > .ti { font-size: 20px; flex: none; margin-top: 1px; }
+.wear-alert.warn { background: var(--gold-bg); border: 1px solid var(--gold-line); color: var(--gold); }
+.wear-alert.danger { background: var(--red-bg); border: 1px solid rgba(229,72,77,.45); color: #ff8a8e; }
+.wear-alert .small { color: var(--text); opacity: .8; margin-top: 2px; }
+.btn-warn { background: var(--gold); color: #1a1407; }
+.btn.pulse { animation: needpulse 1.6s ease-in-out infinite; }
+@keyframes needpulse { 50% { box-shadow: 0 0 0 5px rgba(212,168,75,.18); } }
+.btn-danger.pulse { animation-name: needpulse-r; }
+@keyframes needpulse-r { 50% { box-shadow: 0 0 0 5px rgba(229,72,77,.22); } }
+.tag.bad-tag { color: var(--red); background: var(--red-bg); }
