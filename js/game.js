@@ -586,6 +586,7 @@
   }
   function eventOk(e) {
     if (e.old) return false;   // бизнес-проверки теперь у каждого бизнеса свои (BIZ_INCIDENTS)
+    if (e.only && (!S.sil || !e.only.includes(S.sil.s))) return false;   // события только для своего ведомства
     const has = { car: !!carBonus(), home: countCat('home') > 0, biz: Object.keys(S.biz).length > 0, sil: !!S.sil, civil: !S.sil };
     if (e.need && !has[e.need]) return false;
     if (e.id === 'e_gibdd' && (S.car && isGov(S.car) || S.sil && S.sil.r >= STR().gibdd)) return false;
