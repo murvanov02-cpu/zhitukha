@@ -28,7 +28,7 @@
       skills: { int: 0, cha: 0, fit: 0, biz: 0 },
       inv: {}, got: {}, bizV: 61, p97: {}, car: null, job: 'flyers',
       lastTick: Date.now(), cd: {}, opened: 0,  // cd: id кейса → когда открыт бесплатно
-      pity: 0, fast: false, autoSell: false,
+      pity: 0, pityBy: {}, fast: false, autoSell: false,   // pityBy: id кейса → сколько открытий подряд без эпика (pity — старый общий счётчик)
       gig: null,                  // идущая подработка: { id, until }
       tickets: {},                // бесплатные открытия: id кейса → сколько
       daily: null, weekly: null,  // задания: { key, list: [{ id, target, prog, claimed }], bonus }
@@ -302,6 +302,7 @@
   const visual = it => (it.img ? `<img class="pic${it.cat === 'home' ? ' cover' : ''}" src="${it.img}" alt="" loading="lazy">` : it.icon);
   const rStyle = r => `--rc:${RARITIES[r].color};--rbg:${RARITIES[r].bg}`;
   const short = name => name.split(',')[0];
+  const plural = (n, one, few, many) => { const a = Math.abs(n) % 100, b = a % 10; return a > 10 && a < 20 ? many : b === 1 ? one : b >= 2 && b <= 4 ? few : many; };
 
   // ---------- статус ----------
   function netWorth() {
@@ -348,8 +349,9 @@
     if (S.sil) for (let r = 0; r <= S.sil.r; r++) if (SERVICE_RANKS[r].perk === name) v = Math.max(v, SERVICE_RANKS[r].v);
     return v;
   }
+  const gen = (it, m, f) => (it.f ? f : m);   // «не смог» / «не смогла»
   const perkText = (it, lv) => PERKS[it.perk].replace('{v}', it.lv[(lv || connLv(it.id) || 1) - 1]);
-  const sellRate = () => SELL_RATE + perk('sellUp') / 100;
+  const sellRate = () => SELL_RATE;   // вещи — всегда 70%: надбавка банкира тут давала «купил кейсы — продал в плюс»
   const sellPrice = it => Math.round(it.value * sellRate());
   const bizSellRate = () => BIZ_SELL_RATE + perk('sellUp') / 100;
   const taxRate = () => (Date.now() < S.taxFreeUntil ? 0 : Math.max(0, BIZ_TAX - perk('taxCut') / 100));
@@ -410,8 +412,9 @@
     return { cap, demand, sold, eff, revenue, wages, mgr, rent: n.rent, tax, profit: pre - tax, neck };
   }
   const bizProfit = () => Object.keys(S.biz).reduce((a, id) => a + (BIZ[id] ? bizStats(id).profit : 0), 0);
-  const slotCost = id => Math.round(BIZ[id].eco * BIZ_SLOT_COST * Math.pow(BIZ_GROWTH, S.biz[id].slots - BIZ[id].s0));
-  const adCost = id => Math.round(BIZ[id].eco * BIZ_AD_COST * Math.pow(BIZ_GROWTH, S.biz[id].ads));
+  const growK = () => 1 - perk('growCut') / 100;   // медиамагнат: места и реклама дешевле
+  const slotCost = id => Math.round(BIZ[id].eco * BIZ_SLOT_COST * Math.pow(BIZ_GROWTH, S.biz[id].slots - BIZ[id].s0) * growK());
+  const adCost = id => Math.round(BIZ[id].eco * BIZ_AD_COST * Math.pow(BIZ_GROWTH, S.biz[id].ads) * growK());
   const mgrSalary = (id, t) => BIZ[id].eco * MANAGERS[t - 1].salary;
   const mgrHire = (id, t) => Math.round(mgrSalary(id, t) * MANAGERS[t - 1].hire / 1000) * 1000;
   // Насколько изменится прибыль, если поменять состояние бизнеса
@@ -430,7 +433,8 @@
   // реальные деньги в реальный час: ph() переводит «в месяц» в «в час» (за час проходит MONTHS_PER_HOUR месяцев).
   const ph = v => v * MONTHS_PER_HOUR;
   const incomeMonth = () => jobPay() + rent() + bizProfit() + roofIncome();
-  const casePrice = c => Math.round(c.price * (1 - (Math.min(S.skills.cha, 30) + perk('caseCheap')) / 100));
+  const caseDisc = () => Math.min(CASE_DISC_MAX, S.skills.cha * CASE_DISC_PER_CHA + perk('caseCheap'));
+  const casePrice = c => Math.round(c.price * (1 - caseDisc() / 100));
   const batchPrice = (c, n) => Math.round(casePrice(c) * n * (1 - (MULTI_DISCOUNT[n] || 0)));
   function meetsJob(j) {
     for (const [k, v] of Object.entries(j.req)) if (S.skills[k] < v) return false;
@@ -462,9 +466,10 @@
   }
 
   // ---------- время ----------
+  const offlineCap = () => OFFLINE_CAP_H + perk('offline');   // швейцарский банкир присматривает за деньгами дольше
   function catchUp() {
     const now = Date.now();
-    const sec = Math.max(0, Math.min((now - S.lastTick) / 1000, OFFLINE_CAP_H * 3600));
+    const sec = Math.max(0, Math.min((now - S.lastTick) / 1000, offlineCap() * 3600));
     S.lastTick = now;
     const rate = sec > OFFLINE_AFTER_S ? OFFLINE_RATE : 1;
     const earned = incomeMonth() * MONTHS_PER_HOUR * sec / 3600 * rate;
@@ -541,6 +546,7 @@
   const allClaimed = set => set.list.every(q => q.claimed);
   const giveTicket = id => { S.tickets[id] = (S.tickets[id] || 0) + 1; };
   const ticketName = id => `билет «${CASE[id].name}»`;
+  const questTix = () => { const r = rankIdx(); return QUEST_TICKETS.filter(t => r >= t.rank).pop(); };   // билеты за задания — по статусу
 
   // ---------- жизненный путь ----------
   // У силовика шаги про работу и бизнес читаются как служба и «крыша»
@@ -600,7 +606,8 @@
     const [a, b] = EVENT_EVERY_H;
     S.nextEvent = Date.now() + (a + Math.random() * (b - a)) * 3600e3;
     // Сначала решаем, приятное событие или нет, и не повторяем прошлое
-    const good = Math.random() * 100 < EVENT_GOOD_CHANCE;
+    const good = !!S.omen || Math.random() * 100 < EVENT_GOOD_CHANCE + perk('luck');   // гадалка: приятное чаще, а «расклад» гарантирует следующее
+    S.omen = false;
     const weight = e => (S.sil && (STR().eventMult || {})[e.id]) || 1;   // у ведомств свои «любимые» неприятности
     let pool = EVENTS.filter(e => eventOk(e) && !!e.good === good && e.id !== S.lastEvent).flatMap(e => Array(weight(e)).fill(e));
     if (!pool.length) pool = EVENTS.filter(e => eventOk(e) && e.id !== S.lastEvent);
@@ -644,7 +651,7 @@
     const hint = [e.via ? `связь «${ITEM[e.via].name}»` : '', solvers.length ? `профессия ${solvers.join(' или ')}` : ''].filter(Boolean).join(' или ');
     showModal(`<h3>${e.icon} ${e.title}</h3><p>${evText(ev)}</p>
       <div class="choice">
-        ${via && ev.callFailed ? `<button class="btn btn-danger" disabled>📵 ${ITEM[e.via].name} не помог<span class="btn-top">звонок не сработал — решай сам</span></button>`
+        ${via && ev.callFailed ? `<button class="btn btn-danger" disabled>📵 ${ITEM[e.via].name} ${gen(ITEM[e.via], 'не помог', 'не помогла')}<span class="btn-top">звонок не сработал — решай сам</span></button>`
           : via ? `<button class="btn btn-green" data-action="event-solve" data-id="via">${via.label}<span class="btn-top">${via.kind === 'job' || via.chance >= 100 ? 'бесплатно и без риска' : `бесплатно · шанс ${via.chance}%, иначе — официально`}</span></button>` : ''}
         ${evMgr(ev) ? (ev.mgrFailed ? `<button class="btn btn-danger" disabled>${evMgr(ev).icon} ${evMgr(ev).name} не справился<span class="btn-top">решай сам</span></button>`
           : `<button class="btn btn-line" data-action="event-solve" data-id="mgr">Поручить: ${evMgr(ev).name}<span class="btn-top">бесплатно · шанс ${evMgr(ev).solve}%</span></button>`) : ''}
@@ -678,7 +685,7 @@
           S.event = null;
           save(); render();
           showModal(`<div class="drop"><div class="call-fail">📵</div><div class="drop-name bad">Не получилось</div>
-            <p style="margin-top:8px">${ITEM[e.via].name} не смог помочь — пришлось решать официально.</p>
+            <p style="margin-top:8px">${ITEM[e.via].name} ${gen(ITEM[e.via], 'не смог', 'не смогла')} помочь — пришлось решать официально.</p>
             <div class="big bad">−${fmt(ev.cost)} ₽</div>
             <p class="small muted">Чем выше доверие, тем чаще звонок срабатывает: от ${CALL_CHANCE[0]}% до ${CALL_CHANCE[CALL_CHANCE.length - 1]}%.</p>
             <button class="btn full" data-action="close">Понятно</button></div>`);
@@ -756,7 +763,7 @@
       : x.effect === 'freeze' ? 'Пока не решишь: выручки нет, а зарплаты и аренда идут.' : 'Пока не решишь: выручка вдвое меньше.';
     const btn = (o, i) => {
       if (!incOptOk(id, o)) return '';
-      if (o.t === 'conn' && b.inc.callFailed === o.conn) return `<button class="btn btn-danger" disabled>📵 ${ITEM[o.conn].name} не помог<span class="btn-top">решай по-другому</span></button>`;
+      if (o.t === 'conn' && b.inc.callFailed === o.conn) return `<button class="btn btn-danger" disabled>📵 ${ITEM[o.conn].name} ${gen(ITEM[o.conn], 'не помог', 'не помогла')}<span class="btn-top">решай по-другому</span></button>`;
       const cost = o.h ? incCost(id, o.h) : 0, rec = x.record ? ' · нарушение в дело' : '';
       const [cls, top] = {
         pay: ['', `${fmt(cost)} ₽${o.clear ? ` · минус ${o.clear} нарушения из дела` : rec}`],
@@ -867,7 +874,7 @@
   }
   function specialText(it) {
     const amt = specialAmount(it);
-    const base = SPECIALS[it.special.type].replace('{h}', it.special.hours).replace('{case}', it.special.case ? CASE[it.special.case].name : '');
+    const base = SPECIALS[it.special.type].replace('{h}', it.special.hours).replace('{v}', it.special.v).replace('{case}', it.special.case ? CASE[it.special.case].name : '');
     return amt ? `${base.split(':')[0]}: +${fmt(amt)} ₽` : base;
   }
   const specialLeft = id => Math.max(0, (S.conn[id].sp || 0) + SPECIAL_CD_H * 3600e3 - Date.now());
@@ -984,7 +991,7 @@
   const exposeChance = () => (S.sil ? Math.round((RACE_EXPOSE_BASE + RACE_EXPOSE_RANK * S.sil.r) * (STR().exposeMult || 1) * 10) / 10 : 0);
   function raceStake(id, lv) {
     const u = raceUnit(id), L = RACE_LEVELS[lv], k = trackOn() ? RACE_TRACK_PRIZE : 1;
-    return { fee: round2(u * L.fee * k), prize: round2(u * L.prize * k) };
+    return { fee: round2(u * L.fee * k), prize: round2(u * L.prize * k * (1 + perk('prizeUp') / 100)) };
   }
   const tuneCost = (id, st) => round2(raceUnit(id) * TUNE_STAGES[st].cost);
   // сколько тюнинг добавит к цене машины при продаже (только последнего экземпляра)
@@ -1032,6 +1039,9 @@
     const r = rivals(id)[lv];
     return { it: ITEM[r.id], stage: lv, hp: Math.round(stageHp(r.id, lv) * (0.97 + 0.06 * r.roll)) };
   }
+  const fixK = () => 1 - perk('carFix') / 100;   // свой механик: ТО и ремонт дешевле
+  const serviceCost = id => Math.round(ITEM[id].value * SERVICE_COST * fixK());
+  const repairCost = id => Math.round(ITEM[id].value * REPAIR_COST * fixK());
   const breakChance = id => Math.min(90, carState(id).wear * BREAK_PER_WEAR);
   // 0 — всё хорошо, 1 — пора на ТО, 2 — высокий риск или уже сломана (смотрим только машины, у которых есть история гонок)
   const wearLevel = id => { const g = S.garage && S.garage[id]; if (!g) return 0; if (g.broken) return 2; const b = (g.wear || 0) * BREAK_PER_WEAR; return b >= BREAK_DANGER ? 2 : b >= BREAK_WARN ? 1 : 0; };
@@ -1143,14 +1153,16 @@
     const pool = poolOf(c);
     let rars = RARITY_ORDER.filter(r => c.w[r] > 0 && pool.some(i => i.rarity === r));
     const hiW = rars.filter(r => rarIdx(r) >= 2).reduce((x, r) => x + c.w[r], 0) / rars.reduce((x, r) => x + c.w[r], 0) * 100;
-    if (real && S.pity >= PITY - 1 && hiW >= PITY_MIN_W) {
+    const elig = hiW >= PITY_MIN_W && hiW < 100, P = S.pityBy || (S.pityBy = {});
+    if (real && elig && S.pity) { P[c.id] = Math.max(P[c.id] || 0, S.pity); S.pity = 0; }   // старый общий счётчик достаётся первому открытому кейсу
+    if (real && elig && (P[c.id] || 0) >= PITY - 1) {
       const hi = rars.filter(r => rarIdx(r) >= 2);
       if (hi.length) rars = hi;
     }
     let x = Math.random() * rars.reduce((a, r) => a + c.w[r], 0);
     let rar = rars[rars.length - 1];
     for (const r of rars) { if ((x -= c.w[r]) < 0) { rar = r; break; } }
-    if (real && hiW >= PITY_MIN_W) S.pity = rarIdx(rar) >= 2 ? 0 : S.pity + 1;
+    if (real && elig) P[c.id] = rarIdx(rar) >= 2 ? 0 : (P[c.id] || 0) + 1;
     const list = pool.filter(i => i.rarity === rar);
     return list[Math.floor(Math.random() * list.length)];
   }
@@ -1406,7 +1418,7 @@
     showModal(`<h3>С возвращением 👋</h3>
       <p>Тебя не было ${h ? h + ' ч ' : ''}${m} мин. Работа, аренда и бизнес принесли:</p>
       <div class="big">+${fmt(earned)} ₽</div>
-      <p class="small">Без тебя доход идёт на ${Math.round(OFFLINE_RATE * 100)}% и копится максимум ${OFFLINE_CAP_H} часов — в игре он полный.</p>
+      <p class="small">Без тебя доход идёт на ${Math.round(OFFLINE_RATE * 100)}% и копится максимум ${offlineCap()} ч — в игре он полный.</p>
       <button class="btn full" data-action="close">Забрать</button>`);
   }
   // Шанс в процентах по-русски: 7,9% · 0,5% · 0,05%
@@ -1460,7 +1472,7 @@
       const d = QDEF[q.id];
       const text = d.text.replace('{X}', fmt(q.target) + ' ₽');
       const done = q.prog >= q.target;
-      const reward = kind === 'daily' ? `+${fmt(monthsMoney(DAILY_REWARD.hours, DAILY_REWARD.min))} ₽` : ticketName(WEEKLY_TICKETS[i % WEEKLY_TICKETS.length]);
+      const reward = kind === 'daily' ? `+${fmt(monthsMoney(DAILY_REWARD.hours, DAILY_REWARD.min))} ₽` : ticketName(questTix().weekly[i % 3]);
       const right = q.claimed ? `<span class="tag">${ic('check')}</span>`
         : done ? `<button class="btn btn-green btn-sm" data-action="claim-q" data-id="${kind}:${i}">Забрать</button>`
         : `<span class="small muted">${d.ev === 'earn' ? fmt(q.prog) : q.prog}/${d.ev === 'earn' ? fmt(q.target) : q.target}</span>`;
@@ -1470,7 +1482,7 @@
     }).join('');
   }
   function questBonus(set, kind) {
-    const label = kind === 'daily' ? `+${fmt(monthsMoney(DAILY_BONUS.hours, DAILY_BONUS.min))} ₽ и ${ticketName(DAILY_BONUS.ticket)}` : ticketName(WEEKLY_BONUS.ticket);
+    const label = kind === 'daily' ? `+${fmt(monthsMoney(DAILY_BONUS.hours, DAILY_BONUS.min))} ₽ и ${ticketName(questTix().daily)}` : ticketName(questTix().bonus);
     const right = set.bonus ? `<span class="tag">${ic('check')}</span>`
       : allClaimed(set) ? `<button class="btn btn-sm" data-action="claim-bonus" data-id="${kind}">Забрать</button>`
       : `<span class="tag lock">${ic('lock')}</span>`;
@@ -1590,41 +1602,61 @@
     const nConn = Object.keys(S.conn).length;
     const ev = S.event && EV[S.event.id];
     const life = LIFE_PATH[S.life], lifeOk = life && lifeDone(life);
-    const studyLine = `навыки: ${Object.values(S.skills).reduce((a, b) => a + b, 0)} ур.`;
-    const gigLine = S.gig ? (Date.now() >= S.gig.until ? ' · подработка готова' : ` · подработка <span data-timer="${S.gig.until}">${fmtTime(S.gig.until - Date.now())}</span>`) : '';
-    const row = (go, icon, title, subline, cls = 'muted') => `<button class="card tap" ${go}><div class="list-row"><div class="ico-box">${ic(icon)}</div>
-      <div class="grow"><div class="val">${title}</div><div class="small ${cls}">${subline}</div></div><span class="chev">${ic('chevron-right')}</span></div></button>`;
+    const ri = rankInfo();
+    const skillSum = Object.values(S.skills).reduce((a, b) => a + b, 0);
+    const gigReady = S.gig && Date.now() >= S.gig.until;
+    const mission = S.sil && Date.now() >= S.sil.nextMission;
+    const bizTrouble = Object.values(S.biz).some(b => b.inc);
+    // Плитка-ярлык: значок, подпись, главное значение и строка под ним
+    const qtile = (go, icon, label, title, subline, cls = 'muted', flag = '', photo = '') => `<button class="qtile${photo ? ' photo' : ''}" ${go}>
+      ${photo ? `<img src="${photo}" alt="" loading="lazy">` : ''}${flag}
+      <div class="ico-box">${ic(icon)}</div>
+      <div class="label">${label}</div><div class="val ellipsis">${title}</div><div class="small ${cls} ellipsis">${subline}</div></button>`;
+    const flag = (text, red) => `<span class="qtile-flag${red ? ' red' : ''}">${text}</span>`;
+    const carSub = car ? (S.sil ? (isSvcCar(car.id) ? 'служебная машина' : 'личная машина') : `+${car.bonus}% к зарплате`) : countCat('car') ? 'в гараже есть на чём ездить — выбери' : 'машины выпадают из кейсов';
+    const wl = car ? wearLevel(car.id) : 0;
     return `
       ${ev ? `<button class="card tap ${ev.good ? 'accent' : 'danger'}" data-action="event-show"><div class="list-row">
           <div class="ico-box" style="font-size:22px">${ev.icon}</div>
           <div class="grow"><div class="big-text">${ev.title}</div>
           <div class="small muted">${ev.good ? 'Забери награду' : 'Требует решения'}${S.event.biz ? ' · ' + BIZ[S.event.biz].name : ''}</div></div>
           <span class="chev">${ic('chevron-right')}</span></div></button>` : ''}
+      <button class="hero" data-action="inv" data-id="car" style="${car ? rStyle(car.rarity) : '--rc:#5b6178;--rbg:rgba(91,97,120,.14)'}">
+        <div class="hero-top"><span class="hero-chip">${ic('car-garage')} Гараж · ${countCat('car')}</span>
+          ${car ? `<span class="hero-chip rar">${RARITIES[car.rarity].name}</span>` : ''}</div>
+        <div class="hero-stage"><div class="hero-glow"></div><div class="hero-floor"></div>
+          ${car ? (car.img ? `<img class="hero-car" src="${car.img}" alt="">` : `<div class="hero-emoji">${car.icon}</div>`) : '<div class="hero-emoji">👟</div>'}</div>
+        <div class="hero-info"><div class="grow"><div class="hero-name">${car ? car.name : 'Пока пешком'}</div>
+          <div class="small ${car ? 'good' : 'muted'}">${carSub}</div></div>
+          ${wl ? `<span class="tag ${wl === 2 ? 'bad-tag' : 'gold'}">${S.garage[car.id].broken ? '💥 сломана' : '🔧 нужен ТО'}</span>` : ''}
+          <span class="chev">${ic('chevron-right')}</span></div>
+      </button>
+      <button class="card tap status" data-action="profile">
+        <div class="row"><div class="status-ico">${ri.cur.icon}</div>
+          <div class="grow"><div class="label">Статус</div><div class="big-text ellipsis">${ri.cur.name}</div></div>
+          <div class="status-nw"><span class="small muted">состояние</span><b>${fmt(ri.nw)} ₽</b></div></div>
+        <div class="bar"><i style="width:${ri.pct.toFixed(1)}%"></i></div>
+        <div class="status-next">${ri.next ? `<span>до «${ri.next.name}» ${ri.next.icon}</span><b>ещё ${fmt(Math.max(0, ri.next.min - ri.nw))} ₽</b>` : '<span>Выше только небо. И налоговая.</span>'}</div>
+      </button>
       ${life ? `<button class="card tap accent ${lifeOk ? 'ok' : ''}" data-action="${lifeOk ? 'claim-life' : 'life-go'}">
-        <div class="label">${ic('route')} Следующая цель</div>
-        <div class="row"><div class="grow"><div class="big-text">${lifeText(life)}</div><div class="reward">${rewardText(life.reward)}</div></div>
-        ${lifeOk ? '<span class="btn btn-green btn-sm">Забрать</span>' : `<span class="chev">${ic('chevron-right')}</span>`}</div></button>` : ''}
-      <div class="grid2">
-        <button class="tile-card" data-action="inv" data-id="car">
-          <div class="ph">${car ? visual(car) : ic('car')}</div>
-          <div class="body"><div class="label">Гараж · ${countCat('car')}</div>
-            <div class="val ellipsis">${car ? car.name : 'Пешком'}</div>
-            <div class="small ${car ? 'good' : 'muted'}">${car ? (S.sil ? (isSvcCar(car.id) ? 'служебная' : 'личная машина') : `+${car.bonus}% к зарплате`) : 'машины — в кейсах'}</div></div></button>
-        <button class="tile-card" data-action="inv" data-id="home">
-          <div class="ph">${homes.length ? `<img class="cover" src="${ITEM[homes[0]].img}" alt="">` : ic('home')}</div>
-          <div class="body"><div class="label">Жильё · ${countCat('home')}</div>
-            <div class="val ellipsis">${homes.length ? ITEM[homes[0]].name : 'Нет жилья'}</div>
-            <div class="small ${homes.length ? 'good' : 'muted'}">${homes.length ? `+${fmt(ph(rent()))} ₽/ч` : 'жильё — в кейсах'}</div></div></button>
+        <div class="row"><div class="goal-ico">${ic(lifeOk ? 'gift' : 'target-arrow')}</div>
+          <div class="grow"><div class="label">Следующая цель</div><div class="big-text">${lifeText(life)}</div><div class="reward">${rewardText(life.reward)}</div></div>
+          ${lifeOk ? '<span class="btn btn-green btn-sm">Забрать</span>' : `<span class="chev">${ic('chevron-right')}</span>`}</div></button>` : ''}
+      <div class="qgrid">
+        ${qtile('data-goto="career"', S.sil ? 'shield' : 'briefcase', S.sil ? 'Служба' : 'Карьера',
+          S.sil ? `${STR().icon} ${svcRank().name}` : job ? job.name : 'Предприниматель',
+          pay ? `+${fmt(ph(pay))} ₽/ч` : `навыки: ${skillSum} ур.`, pay ? 'good' : 'muted',
+          mission ? flag('задание') : gigReady ? flag('готово') : S.gig ? `<span class="qtile-flag" style="background:rgba(8,9,14,.6);color:var(--text);box-shadow:inset 0 0 0 1px var(--line2)"><span data-timer="${S.gig.until}">${fmtTime(S.gig.until - Date.now())}</span></span>` : '')}
+        ${S.sil ? qtile('data-goto="career"', 'umbrella', '«Крыша»', S.sil.roofs.length ? `${S.sil.roofs.length} из ${roofMax()}` : 'Нет подопечных',
+            S.sil.roofs.length ? `+${fmt(ph(roofIncome()))} ₽/ч` : svcRank().roofs ? 'возьми бизнес под «крышу»' : 'доступно с сержанта', S.sil.roofs.length ? 'good' : 'muted')
+          : qtile('data-goto="biz"', 'building-skyscraper', 'Бизнес', nBiz ? `${nBiz} ${plural(nBiz, 'точка', 'точки', 'точек')}` : 'Свой бизнес',
+            nBiz ? `${bp >= 0 ? '+' : ''}${fmt(ph(bp))} ₽/ч` : 'от шаурмы до IT-холдинга', nBiz ? (bp < 0 ? 'bad' : 'good') : 'muted', bizTrouble ? flag('проблемы', true) : '')}
+        ${qtile('data-action="inv" data-id="home"', 'home', `Жильё · ${countCat('home')}`, homes.length ? ITEM[homes[0]].name : 'Нет жилья',
+          homes.length ? `+${fmt(ph(rent()))} ₽/ч аренда` : 'жильё выпадает из кейсов', homes.length ? 'good' : 'muted', '', homes.length ? ITEM[homes[0]].img : '')}
+        ${qtile('data-goto="career" data-sub="career:conn"', 'users-group', 'Связи', nConn ? `${nConn} ${plural(nConn, 'человек', 'человека', 'человек')}` : 'Никого не знаю',
+          S.favor ? 'тебя кое о чём просят' : nConn ? 'полезные люди решают проблемы' : 'открой «Знакомство дня»', S.favor ? 'gold' : 'muted', S.favor ? flag('просьба') : '')}
       </div>
-      ${row('data-goto="career"', S.sil ? 'shield' : 'briefcase', S.sil ? `${STR().icon} ${svcRank().name} ${STR().name}` : job ? job.name : 'Предприниматель',
-        `${pay ? `<span class="good">${fmt(ph(pay))} ₽/ч</span> · ` : ''}${studyLine}${gigLine}${S.sil && Date.now() >= S.sil.nextMission ? ' · <span class="gold">есть задание</span>' : ''}`)}
-      ${S.sil ? row('data-goto="career"', 'umbrella', `«Крыша» · ${S.sil.roofs.length}`,
-        S.sil.roofs.length ? `+${fmt(ph(roofIncome()))} ₽/ч` : svcRank().roofs ? 'возьми бизнес под «крышу»' : 'с сержанта', S.sil.roofs.length ? 'good' : 'muted')
-      : row('data-goto="biz"', 'building-factory-2', nBiz ? `Бизнес · ${nBiz}${Object.values(S.biz).some(b => b.inc) ? ' · ⚠️ проблемы' : ''}` : 'Свой бизнес',
-        nBiz ? `${bp >= 0 ? '+' : ''}${fmt(ph(bp))} ₽/ч` : 'от ларька с шаурмой до IT-холдинга', nBiz ? (bp < 0 ? 'bad' : 'good') : 'muted')}
-      ${row('data-goto="career" data-sub="career:conn"', 'users', nConn ? `Связи · ${nConn}` : 'Связи',
-        S.favor ? 'Тебя кое о чём просят' : nConn ? 'полезные люди решают проблемы' : 'открой «Знакомство дня»', S.favor ? 'gold' : 'muted')}
-      <p class="small muted" style="text-align:center;margin-top:6px">${ic('clock')} Деньги капают непрерывно. Без тебя — ${Math.round(OFFLINE_RATE * 100)}% дохода, максимум ${OFFLINE_CAP_H} ч</p>`;
+      <p class="foot-note">${ic('moon-stars')} Деньги капают и без тебя: ${Math.round(OFFLINE_RATE * 100)}% дохода, но не дольше ${offlineCap()} ч</p>`;
   }
 
   // ---------- имущество (открывается с главной) ----------
@@ -1786,7 +1818,7 @@
   const coverHTML = c => (c.cover ? `<img src="${c.cover}" alt="" loading="lazy">` : c.icon);
   function caseTile(c) {
     const tickets = S.tickets[c.id] || 0;
-    return `<button class="case-tile" data-action="case" data-id="${c.id}">
+    return `<button class="case-tile t-${c.tier || 'cheap'}" data-action="case" data-id="${c.id}">
       ${tickets ? `<span class="case-badge">${ic('ticket')} ×${tickets}</span>` : ''}
       <div class="case-cover">${coverHTML(c)}</div>
       <div class="body"><div class="case-name ellipsis">${c.name}</div><div class="case-price">${fmt(casePrice(c))} ₽</div></div></button>`;
@@ -1816,7 +1848,7 @@
         <button class="${sec === 'car' ? 'active' : ''}" data-sub="cases:car">Авто${dot(CASE.free)}</button>
         <button class="${sec === 'home' ? 'active' : ''}" data-sub="cases:home">Жильё</button>
         <button class="${sec === 'conn' ? 'active' : ''}" data-sub="cases:conn">Связи${dot(CASE.conn_free)}</button></div>
-      <p class="pity mb">${ic('target')} Эпик или выше не позже чем через ${PITY - S.pity} шт. в кейсах, где его шанс от ${PITY_MIN_W}%${S.skills.cha ? ` · скидка ${Math.min(S.skills.cha, 30)}%` : ''}</p>
+      <p class="pity mb">${ic('target')} Гарантия: в кейсах, где шанс эпика от ${PITY_MIN_W}%, эпик или выше — не позже ${PITY}-го открытия${caseDisc() ? ` · твоя скидка ${String(caseDisc()).replace('.', ',')}%` : ''}</p>
       ${freeCaseCard(sec === 'conn' ? CASE.conn_free : CASE.free)}
       ${tierBlock('cheap', 'Недорогие')}${tierBlock('mid', 'Средние')}${tierBlock('elite', 'Дорогие')}
       ${themed.length ? `<details class="more"><summary>${ic('category')} Тематические · ${themed.length}</summary>${themed.map(themeRow).join('')}</details>` : ''}`;
@@ -1828,10 +1860,13 @@
     const bar = rars.map(r => `<i style="width:${c.w[r] / tw * 100}%;background:${RARITIES[r].color}"></i>`).join('');
     const legend = rars.map(r => `<span style="color:${RARITIES[r].color}">${RARITIES[r].name} ${pct(c.w[r] / tw * 100)}</span>`).join('');
     const tickets = S.tickets[id] || 0;
+    const hiW = rars.filter(r => rarIdx(r) >= 2).reduce((x, r) => x + c.w[r], 0) / tw * 100;
+    const left = PITY - Math.max((S.pityBy || {})[id] || 0, S.pity || 0);
+    const pityLine = hiW >= PITY_MIN_W && hiW < 100 ? `<p class="pity" style="margin-top:10px">${ic('target')} ${left <= 1 ? 'Следующее открытие — гарантированно эпик или выше' : `Эпик или выше — не позже чем через ${left} ${plural(left, 'открытие', 'открытия', 'открытий')}`}</p>` : '';
     showModal(`${sheetHead(c.name)}
       <div class="case-tile" style="margin-bottom:12px"><div class="case-cover" style="height:140px">${coverHTML(c)}</div></div>
       <p>${c.desc}.</p>
-      <div class="chance-bar">${bar}</div><div class="chance-legend">${legend}</div>
+      <div class="chance-bar">${bar}</div><div class="chance-legend">${legend}</div>${pityLine}
       ${tickets ? `<button class="btn full" style="margin-top:12px" data-action="ticket" data-id="${id}">${ic('ticket')} Открыть по билету · осталось ${tickets}</button>` : ''}
       <div class="open-row">${MULTI_OPEN.map(n => `<button class="btn btn-ghost" data-action="open" data-id="${id}" data-n="${n}" data-confirm="×${n} · ${fmt(batchPrice(c, n))} ₽">
         <span class="btn-top">×${n}${MULTI_DISCOUNT[n] ? ` <s>−${MULTI_DISCOUNT[n] * 100}%</s>` : ''}</span>${fmt(batchPrice(c, n))} ₽
@@ -2071,7 +2106,7 @@
     const missionReady = S.sil && Date.now() >= S.sil.nextMission;
     return `<div class="seg seg-scroll">
         <button class="${v === 'jobs' ? 'active' : ''}" data-sub="career:jobs">${S.sil ? `Служба${missionReady ? ' <span class="dotty">•</span>' : ''}` : 'Работа'}</button>
-        ${S.sil ? `<button class="${v === 'spec' ? 'active' : ''}" data-sub="career:spec">Спецзадания${specReady() ? ' <span class="dotty">•</span>' : ''}</button>` : ''}
+        ${S.sil ? `<button class="${v === 'spec' ? 'active' : ''}" data-sub="career:spec">Задания${specReady() ? ' <span class="dotty">•</span>' : ''}</button>` : ''}
         <button class="${v === 'skills' ? 'active' : ''}" data-sub="career:skills">Учёба</button>
         ${S.sil ? '' : `<button class="${v === 'gigs' ? 'active' : ''}" data-sub="career:gigs">Подработки${gigReady ? ' <span class="dotty">•</span>' : ''}</button>`}
         <button class="${v === 'race' ? 'active' : ''}" data-sub="career:race">Гонки</button>
@@ -2385,7 +2420,7 @@
   function viewAudit(sp) {
     const cards = sp.docs.map((d, i) => `<div class="card sus ${d.open && !d.bad ? 'out' : ''}"><div class="row"><div class="grow">
         <b>${d.open ? (d.bad ? '🚩 ' : '✔️ ') : d.flag ? '⚠️ ' : ''}${d.t}</b>
-        <div class="small muted">${d.sum ? `${d.sum} ₽ · подписал ${d.by}` : ''}</div>
+        <div class="small muted">${d.sum ? `${d.sum} ₽ · подпись: ${d.by}` : ''}</div>
         <div class="small ${d.open ? (d.bad ? 'bad' : 'good') : d.flag ? 'gold' : 'muted'}">${d.open ? (d.bad ? 'Нарушение: ' : 'Чисто: ') + d.note : d.flag ? '⚠️ аналитик: подозрительно' : 'аналитик: вроде чисто'}</div></div>
         ${d.open ? '' : `<button class="btn btn-sm" data-action="audit-open" data-id="${i}" ${sp.checks ? '' : 'disabled'}>Проверить</button>`}</div></div>`).join('');
     return `${sheetHead('📂 Проверка компании')}
@@ -2458,7 +2493,7 @@
     haptic(ok ? 'ok' : 'err'); save(); render();
     showModal(`<div class="drop"><div class="drop-name">${ok ? '🏅 Задание выполнено' : '😬 Провал'}</div>
       <p style="margin-top:8px">${text}</p>
-      ${ok ? `<div class="big">+${fmt(money)} ₽ · ${xpText(xp, want)}</div>` : '<div class="big bad">Без премии и опыта</div>'}
+      ${ok ? `<div class="big">+${fmt(money)} ₽</div><div class="big-sub">${xpText(xp, want)}</div>` : '<div class="big bad">Без премии и опыта</div>'}
       <p class="small muted">${rep ? `Репутация ${rep > 0 ? '+' : '−'}${Math.abs(rep)}. ` : ''}${SPEC_TYPES[t].name} — снова через ${SPEC_COOLDOWN_MIN} мин.</p>
       <button class="btn full" data-action="close">Дальше</button></div>`);
   }
@@ -2529,7 +2564,7 @@
     const open = JOBS.filter(j => S.job === j.id || meetsJob(j)).reverse();
     const locked = JOBS.filter(j => S.job !== j.id && !meetsJob(j));
     const focus = Object.keys(S.biz).length ? `<div class="card small">${S.job
-      ? `Пока работаешь, бизнес без управляющего идёт на ${Math.round(OWNER_EFF_EMPLOYED * 100)}%.<br>
+      ? `Пока работаешь, бизнес без управляющего идёт на ${Math.round(ownerEff() * 100)}%.<br>
          <button class="btn btn-sm btn-line" style="margin-top:8px" data-action="quit">Уволиться и заняться бизнесом</button>`
       : `Ты занимаешься только бизнесом: без управляющего он идёт на ${Math.round(OWNER_EFF_FREE * 100)}%. Работа даст зарплату и пользу профессии.`}</div>` : '';
     // Ближайшая закрытая профессия: меньше всего не хватает уровней навыков
@@ -2546,7 +2581,7 @@
       ${service}
       ${focus}
       ${locked.length ? `<details class="card more-card"><summary class="row"><span class="ico-box">${ic('lock')}</span>
-        <span class="grow"><span class="val">Ещё ${locked.length} профессий закрыто</span><br>
+        <span class="grow"><span class="val">Ещё ${locked.length} ${plural(locked.length, 'профессия закрыта', 'профессии закрыты', 'профессий закрыто')}</span><br>
         <span class="small muted">Нужны навыки — качай их в «Учёбе». Ближе всего: ${near.name}</span></span><span class="chev">${ic('chevron-down')}</span></summary>
         <div style="margin-top:10px">${locked.map(jobCard).join('')}</div></details>` : ''}
       ${open.map(jobCard).join('')}`;
@@ -2613,12 +2648,12 @@
           const wl = wearLevel(id), bc = Math.round(breakChance(id));
           const alert = st.broken ? `<div class="wear-alert danger">${ic('car-crash')}<div><b>Машина сломана</b><div class="small">Без ремонта на старт не выйти.</div></div></div>`
             : wl === 2 ? `<div class="wear-alert danger">${ic('alert-triangle')}<div><b>Высокий риск поломки — ${bc}%</b><div class="small">Сделай ТО: ремонт после поломки обойдётся в ${Math.round(REPAIR_COST / SERVICE_COST)} раз дороже.</div></div></div>`
-            : wl === 1 ? `<div class="wear-alert warn">${ic('tool')}<div><b>Пора на ТО — шанс поломки ${bc}%</b><div class="small">Пока это дёшево: ${fmt(it.value * SERVICE_COST)} ₽.</div></div></div>` : '';
+            : wl === 1 ? `<div class="wear-alert warn">${ic('tool')}<div><b>Пора на ТО — шанс поломки ${bc}%</b><div class="small">Пока это дёшево: ${fmt(serviceCost(id))} ₽.</div></div></div>` : '';
           return `<div class="kv small" style="margin-top:4px"><span>Износ ${Math.round(st.wear)}%</span><b class="${wl === 2 ? 'bad' : wl === 1 ? 'gold' : 'muted'}">шанс поломки ${bc}%</b></div>
             <div class="wear-bar lv${st.broken ? 2 : wl}"><i style="width:${Math.min(100, st.wear)}%"></i></div>${alert}
             <div class="row" style="margin-top:8px">
-            ${st.broken ? `<button class="btn btn-sm btn-danger grow pulse" data-action="repair" data-id="${id}">${ic('hammer')} Ремонт · ${fmt(it.value * REPAIR_COST)} ₽</button>`
-              : `<button class="btn btn-sm ${wl === 2 ? 'btn-danger pulse' : wl === 1 ? 'btn-warn pulse' : 'btn-ghost'} grow" data-action="service" data-id="${id}" ${st.wear <= 0 ? 'disabled' : ''}>${ic('tool')} ТО: износ → 0 · ${fmt(it.value * SERVICE_COST)} ₽</button>`}</div>`;
+            ${st.broken ? `<button class="btn btn-sm btn-danger grow pulse" data-action="repair" data-id="${id}">${ic('hammer')} Ремонт · ${fmt(repairCost(id))} ₽</button>`
+              : `<button class="btn btn-sm ${wl === 2 ? 'btn-danger pulse' : wl === 1 ? 'btn-warn pulse' : 'btn-ghost'} grow" data-action="service" data-id="${id}" ${st.wear <= 0 ? 'disabled' : ''}>${ic('tool')} ТО: износ → 0 · ${fmt(serviceCost(id))} ₽</button>`}</div>`;
         })()}
       </div>
       <div class="card">${tune}
@@ -2707,7 +2742,7 @@
     } else if (r.willBreak) {
       st.broken = true;
       title = '💥 Поломка';
-      text = `Машина сломалась прямо на трассе. Ремонт — ${fmt(ITEM[id].value * REPAIR_COST)} ₽. Делай ТО, пока износ небольшой.`;
+      text = `Машина сломалась прямо на трассе. Ремонт — ${fmt(repairCost(id))} ₽. Делай ТО, пока износ небольшой.`;
     } else {
       const sh = r.shift;
       const shiftQ = sh >= 0.72 && sh <= 0.88 ? 1 : sh >= 0.6 && sh <= 0.94 ? 0 : -1;
@@ -2810,7 +2845,7 @@
         ${(b.closedUntil || 0) > Date.now() ? `<div class="small bad" style="margin:6px 0">🔒 Закрыт ещё <span data-timer="${b.closedUntil}">${fmtTime(b.closedUntil - Date.now())}</span></div>` : ''}
         ${b.strikes ? `<div class="small muted" style="margin:6px 0">📁 Нарушений в деле: ${b.strikes} из ${BIZ_STRIKE_MAX} — проверки чаще, штрафы выше</div>` : ''}
         <div class="biz-grid">
-          <div><span class="small muted">Мощность</span><b>${fmt(st.cap)}</b><span class="small muted">${b.slots} мест</span></div>
+          <div><span class="small muted">Мощность</span><b>${fmt(st.cap)}</b><span class="small muted">${b.slots} ${plural(b.slots, 'место', 'места', 'мест')}</span></div>
           <div><span class="small muted">Клиенты</span><b>${fmt(st.demand)}</b><span class="small muted">${d.unit}</span></div>
           <div><span class="small muted">Обслужено</span><b>${fmt(st.sold)}</b><span class="small muted">${d.unit}</span></div></div>
         <div class="small ${st.neck ? 'gold' : 'good'}" style="margin-bottom:10px">${ic(st.neck ? 'bulb' : 'check')} ${neck}</div>
@@ -2849,7 +2884,8 @@
     }).join('');
     return `<div class="title">Бизнес</div>
       ${owned.length ? `<div class="card"><div class="kv"><span>Прибыль всех бизнесов</span><b class="${total < 0 ? 'bad' : 'good'}">${fmt(ph(total))} ₽/ч</b></div>
-        <div class="small muted" style="margin-top:6px">Без управляющего бизнес работает на ${Math.round(ownerEff() * 100)}% — ${S.job ? 'ты занят на работе' : 'ты занят только бизнесом'}.</div></div>${cards}`
+        <div class="small muted" style="margin-top:6px">${Object.values(S.biz).every(x => x.mgr) ? 'Везде сидят управляющие — можно заниматься своими делами.'
+          : `Без управляющего бизнес работает на ${Math.round(ownerEff() * 100)}% — ${S.sil ? 'ты на службе' : S.job ? 'ты занят на работе' : 'ты занят только бизнесом'}.`}</div></div>${cards}`
         : `<p class="hint">Рабочие места дают мощность, реклама — клиентов. Заработаешь на меньшем из двух, поэтому развивай их по очереди. На каждой кнопке видно, сколько прибыли она добавит.</p>`}
       ${rest.length ? `<details class="more" ${owned.length ? '' : 'open'}><summary>${ic('plus')} Открыть новый бизнес</summary>${shop}</details>` : ''}`;
   }
@@ -2910,7 +2946,8 @@
         <span class="act-cost">${wait ? `<span data-timer="${until}">${fmtTime(until - now)}</span>` : fmt(meetCost(id, m)) + ' ₽'}</span></button>`;
     }).join('');
     const spLeft = specialLeft(id);
-    const canUse = it.special.type !== 'closeEvent' || (S.event && !EV[S.event.id].good);
+    const spT = it.special.type;
+    const canUse = spT === 'closeEvent' ? !!(S.event && !EV[S.event.id].good) : spT === 'omen' ? !S.omen : true;
     showModal(`${sheetHead('')}
       <div class="conn-hero" style="${rStyle(it.rarity)}"><div class="face">${it.icon}</div>
         <div class="big-text">${it.name}</div><div class="small" style="color:${RARITIES[it.rarity].color}">${RARITIES[it.rarity].name}</div>
@@ -2922,32 +2959,34 @@
         <div>${specialText(it)}</div>
         ${lv < CONN_MAX_LV ? `<div class="small muted" style="margin-top:4px">Откроется на ${CONN_MAX_LV} ★</div>`
           : spLeft ? `<div class="small muted" style="margin-top:6px">Снова через <span data-timer="${Date.now() + spLeft}">${fmtTime(spLeft)}</span></div>`
-          : `<button class="btn btn-sm full" style="margin-top:8px" data-action="special" data-id="${id}" ${canUse ? '' : 'disabled'}>${canUse ? 'Воспользоваться' : 'Сейчас нет проблем'}</button>`}</div>
+          : `<button class="btn btn-sm full" style="margin-top:8px" data-action="special" data-id="${id}" ${canUse ? '' : 'disabled'}>${canUse ? 'Воспользоваться' : spT === 'omen' ? 'Расклад уже сделан' : 'Сейчас нет проблем'}</button>`}</div>
       <div class="section">Встречи</div><div class="acts">${meets}</div>`, true);
   }
 
   // ---------- казино ----------
+  // Раздачи блэкджека и покера лежат в сохранении (S.bj, S.vp): закрыл игру посреди раздачи — она дождётся.
   let casBet = 0;          // текущая ставка (в рублях)
-  let bj = null;           // раздача блэкджека
-  let vp = null;           // раздача видеопокера
   let rlBusy = false;
+  let bjHit = false;       // последняя карта игрока только что взята
+  let casAnim = '';        // какие карты «прилетают» при ближайшей перерисовке: deal, hit, end, draw
+  let rlHold = 0;          // выигрыш рулетки уже начислен, но в шапке появится, когда колесо остановится
   const maxBet = () => Math.floor(S.money * CASINO_MAX_SHARE);
   function betValue() {
     const mx = maxBet();
-    if (!casBet) casBet = Math.max(CASINO_MIN_BET, Math.round(mx / 5 / 1000) * 1000);
+    if (!casBet) casBet = Math.max(CASINO_MIN_BET, Math.floor(S.money * 0.1 / 1000) * 1000);
     return Math.min(casBet, mx);
   }
   function betBar() {
     const mx = maxBet(), b = betValue();
     const chips = [[0.02, '2%'], [0.1, '10%'], [0.25, '25%'], [0.5, 'Макс']].map(([f, l]) => {
-      const v = Math.max(CASINO_MIN_BET, Math.floor(S.money * f / 1000) * 1000);
-      return `<button class="chip ${Math.min(v, mx) === b ? 'active' : ''}" data-action="cas-bet" data-id="${v}">${l} · ${fmt(Math.min(v, mx))}</button>`;
+      const v = Math.max(CASINO_MIN_BET, Math.floor(S.money * f / 1000) * 1000), x = Math.min(v, mx);
+      return `<button class="bet-chip ${x === b ? 'active' : ''}" data-action="cas-bet" data-id="${v}"><b>${l}</b><span>${fmt(x)}</span></button>`;
     }).join('');
-    return `<div class="card"><div class="kv"><span>Ставка</span><b class="gold">${fmt(b)} ₽</b></div>
-      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">${chips}</div>
-      <div class="small muted" style="margin-top:6px">Максимум — половина баланса: ${fmt(mx)} ₽</div></div>`;
+    return `<div class="card bet-bar"><div class="kv"><span>Ставка</span><b class="gold">${fmt(b)} ₽</b></div>
+      <div class="bet-chips">${chips}</div>
+      <div class="small muted">Максимум — половина баланса: ${fmt(mx)} ₽</div></div>`;
   }
-  // ставка списывается сразу; false — если ставить нечего
+  // ставка списывается сразу; 0 — если ставить нечего
   function takeBet() {
     const b = betValue();
     if (b < CASINO_MIN_BET || S.money < CASINO_MIN_BET * 2) { toast(`Минимальная ставка ${fmt(CASINO_MIN_BET)} ₽ и не больше половины баланса`); return 0; }
@@ -2955,6 +2994,99 @@
     return b;
   }
   function casinoWin(v) { if (v > 0) { S.money += v; S.total += v; } }
+
+  // --- честная игра («provably fair»): результат раунда запечатан до ставки, после раунда его можно пересчитать.
+  // До ставки игрок видит SHA-256 от секретного зерна. Результат = HMAC-SHA256(секретное зерно, «зерно игрока:номер раунда:блок»).
+  // После раунда секретное зерно раскрывается: хэш от него обязан совпасть с показанным, а числа — дать тот же результат.
+  // SHA-256 написан прямо здесь и считается сразу (без await) — работает и там, где нет crypto.subtle.
+  const SHA_K = [], SHA_H0 = [];
+  (() => {
+    const frac = x => ((x - Math.floor(x)) * 4294967296) | 0;
+    for (let n = 2; SHA_K.length < 64; n++) {
+      let prime = true;
+      for (let d = 2; d * d <= n; d++) if (n % d === 0) { prime = false; break; }
+      if (!prime) continue;
+      if (SHA_H0.length < 8) SHA_H0.push(frac(Math.sqrt(n)));
+      SHA_K.push(frac(Math.cbrt(n)));
+    }
+  })();
+  function shaBytes(m) {
+    const l = m.length, n = ((l + 72) >> 6) << 6, buf = new Uint8Array(n), w = new Int32Array(64), h = SHA_H0.slice();
+    buf.set(m); buf[l] = 0x80;
+    const dv = new DataView(buf.buffer);
+    dv.setUint32(n - 8, Math.floor(l / 536870912)); dv.setUint32(n - 4, (l * 8) >>> 0);
+    const rr = (x, k) => (x >>> k) | (x << (32 - k));
+    for (let o = 0; o < n; o += 64) {
+      for (let i = 0; i < 16; i++) w[i] = dv.getInt32(o + i * 4);
+      for (let i = 16; i < 64; i++) {
+        const x = w[i - 15], y = w[i - 2];
+        w[i] = (w[i - 16] + (rr(x, 7) ^ rr(x, 18) ^ (x >>> 3)) + w[i - 7] + (rr(y, 17) ^ rr(y, 19) ^ (y >>> 10))) | 0;
+      }
+      let a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], k = h[7];
+      for (let i = 0; i < 64; i++) {
+        const t1 = (k + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25)) + ((e & f) ^ (~e & g)) + SHA_K[i] + w[i]) | 0;
+        const t2 = ((rr(a, 2) ^ rr(a, 13) ^ rr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+        k = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+      }
+      h[0] = (h[0] + a) | 0; h[1] = (h[1] + b) | 0; h[2] = (h[2] + c) | 0; h[3] = (h[3] + d) | 0;
+      h[4] = (h[4] + e) | 0; h[5] = (h[5] + f) | 0; h[6] = (h[6] + g) | 0; h[7] = (h[7] + k) | 0;
+    }
+    const out = new Uint8Array(32), ov = new DataView(out.buffer);
+    h.forEach((x, i) => ov.setInt32(i * 4, x));
+    return out;
+  }
+  const utf8 = s => new TextEncoder().encode(s);
+  const hexOf = b => Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+  const shaHex = s => hexOf(shaBytes(utf8(s)));
+  function hmacHex(key, msg) {
+    let k = utf8(key); if (k.length > 64) k = shaBytes(k);
+    const cat = (a, b) => { const o = new Uint8Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; };
+    const ip = new Uint8Array(64), op = new Uint8Array(64);
+    for (let i = 0; i < 64; i++) { const x = k[i] || 0; ip[i] = x ^ 0x36; op[i] = x ^ 0x5c; }
+    return hexOf(shaBytes(cat(op, shaBytes(cat(ip, utf8(msg))))));
+  }
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function newSeed() {
+    const b = new Uint8Array(32);
+    (window.crypto && crypto.getRandomValues) ? crypto.getRandomValues(b) : b.forEach((_, i) => { b[i] = Math.random() * 256; });
+    return hexOf(b);
+  }
+  function fairState() {
+    if (!S.fair) S.fair = { ss: newSeed(), cs: newSeed().slice(0, 12), n: 0, log: [], st: {} };
+    return S.fair;
+  }
+  // Начало раунда: берём запечатанное зерно, а следующему раунду сразу готовим новое
+  function fairStart(g) {
+    const F = fairState(), r = { n: ++F.n, g, ss: F.ss, cs: F.cs, h: shaHex(F.ss), bet: 0, win: -1, o: '', res: '' };
+    F.ss = newSeed();
+    F.log.unshift(r);
+    if (F.log.length > FAIR_LOG) F.log.length = FAIR_LOG;
+    return r;
+  }
+  // Итог раунда: bet — поставлено, win — вернулось на баланс, o — что выпало (для сверки), res — человеческим языком
+  function fairEnd(n, bet, win, o, res) {
+    const F = fairState(), r = F.log.find(x => x.n === n), g = r ? r.g : '';
+    if (r) Object.assign(r, { bet, win, o, res });
+    if (!g) return;
+    const st = F.st[g] || (F.st[g] = { n: 0, bet: 0, win: 0 });
+    st.n++; st.bet += bet; st.win += win;
+  }
+  // Поток случайных чисел раунда: каждый HMAC даёт 8 чисел от 0 до 1 (по 8 hex-символов)
+  function fairFloats(r) {
+    let block = 0, buf = [];
+    return () => {
+      if (!buf.length) { const h = hmacHex(r.ss, `${r.cs}:${r.n}:${block++}`); for (let i = 0; i < 8; i++) buf.push(parseInt(h.substr(i * 8, 8), 16) / 4294967296); }
+      return buf.shift();
+    };
+  }
+  const fairNumber = r => Math.floor(fairFloats(r)() * 37);
+  // Колода из 52 карт (карта = номинал × 4 + масть), тасуется с конца — метод Фишера — Йетса
+  function fairDeck(r) {
+    const f = fairFloats(r), d = Array.from({ length: 52 }, (_, i) => i);
+    for (let i = 51; i > 0; i--) { const j = Math.floor(f() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
+    return d;
+  }
+  const fairLive = r => (S.bj && !S.bj.done && S.bj.fr === r.n) || (S.vp && !S.vp.done && S.vp.fr === r.n) || (rlBusy && rlBusy === r.n);
 
   // --- рулетка (европейская, 0–36)
   const RED = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
@@ -2975,91 +3107,106 @@
   function renderRoulette() {
     const btn = (id, cls = '') => `<button class="rl-bet ${cls}" data-action="rl-spin" data-id="${id}" ${rlBusy ? 'disabled' : ''}>${RL_BETS[id].name}<span>×${RL_BETS[id].pay + 1}</span></button>`;
     return `${betBar()}
-      <div class="card"><div class="wheel-window"><div class="wheel-strip" id="wheel-strip">${rlStripHTML([rlLast[0] ?? 0])}</div><div class="rl-marker"></div></div>
-        <div class="row" style="justify-content:center;gap:4px;margin-top:8px">${rlLast.slice(0, 10).map(n => `<span class="num ${numColor(n)}">${n}</span>`).join('') || '<span class="small muted">Сделай первую ставку</span>'}</div></div>
-      <div class="rl-grid">${btn('red', 'red')}${btn('black', 'black')}${btn('even')}${btn('odd')}${btn('low')}${btn('high')}${btn('d1')}${btn('d2')}${btn('d3')}${btn('zero', 'green')}</div>
+      <div class="card"><div class="wheel-window"><div class="wheel-strip" id="wheel-strip">${rlStripHTML(rlIdle())}</div><div class="rl-marker"></div></div>
+        <div class="row" style="justify-content:center;gap:4px;margin-top:10px;min-height:24px">${rlLast.slice(0, 10).map(n => `<span class="num ${numColor(n)}">${n}</span>`).join('') || '<span class="small muted">Колесо ждёт. Колесо терпеливое.</span>'}</div></div>
+      <div class="rl-grid">${btn('red', 'red')}${btn('black', 'black')}${btn('even')}${btn('odd')}${btn('low')}${btn('high')}${btn('d1', 'doz')}${btn('d2', 'doz')}${btn('d3', 'doz')}${btn('zero', 'green')}</div>
       <div class="card row"><span class="grow small muted">Ставка на число (выплата ×36)</span>
-        <input id="rl-num" class="input" type="number" min="0" max="36" placeholder="0–36" style="width:80px">
+        <input id="rl-num" class="input" type="number" inputmode="numeric" min="0" max="36" placeholder="0–36" style="width:80px">
         <button class="btn btn-sm" data-action="rl-spin" data-id="num" ${rlBusy ? 'disabled' : ''}>Ставлю</button></div>`;
   }
   const rlStripHTML = nums => nums.map(n => `<div class="wheel-num ${numColor(n)}">${n}</div>`).join('');
+  // в покое лента стоит на последнем числе; соседи — как на настоящем колесе
+  const RL_WHEEL = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+  const rlIdle = () => { const i = RL_WHEEL.indexOf(rlLast[0] ?? 0); return Array.from({ length: 9 }, (_, k) => RL_WHEEL[(i + k - 4 + 37) % 37]); };
+  function rlCenter(strip, idx, animate) {
+    const box = strip.parentElement.clientWidth;
+    strip.style.transition = animate ? 'transform 3.2s cubic-bezier(.1,.7,.15,1)' : 'none';
+    strip.style.transform = `translateX(${-(idx * 52 + 24 - box / 2)}px)`;
+  }
   function rlSpin(kind) {
     if (rlBusy) return;
     let bet;
     if (kind === 'num') {
       const n = parseInt(($('#rl-num') || {}).value, 10);
       if (!(n >= 0 && n <= 36)) { toast('Выбери число от 0 до 36'); return; }
-      bet = { name: 'Число ' + n, pay: 35, win: x => x === n, even: false };
-    } else bet = Object.assign({ even: RL_BETS[kind].pay === 1 }, RL_BETS[kind]);
+      bet = { name: 'Число ' + n, pay: 35, win: x => x === n };
+    } else bet = RL_BETS[kind];
     const stake = takeBet();
     if (!stake) return;
-    const n = Math.floor(Math.random() * 37);   // честная рулетка: 37 ячеек, без подкруток
-    const won = bet.win(n);
-    rlBusy = true;
+    const fr = fairStart('roulette'), n = fairNumber(fr);   // честная рулетка: 37 ячеек, число запечатано до ставки
+    const won = bet.win(n), win = won ? stake * (bet.pay + 1) : 0;
+    // результат уже определён — начисляем сразу (закрытая посреди вращения игра выигрыш не съест), а показываем после остановки
+    casinoWin(win); rlHold = win;
+    fairEnd(fr.n, stake, win, String(n), `Выпало ${n} · «${bet.name}» ${won ? 'зашло' : 'мимо'}`);
+    rlBusy = fr.n;
     save(); render();
-    const strip = $('#wheel-strip'), win = 40;
-    const seq = Array.from({ length: win + 5 }, (_, i) => (i === win ? n : Math.floor(Math.random() * 37)));
-    strip.innerHTML = rlStripHTML(seq);
+    const strip = $('#wheel-strip'), stop = 40;
+    const seq = Array.from({ length: stop + 5 }, (_, i) => (i === stop ? n : Math.floor(Math.random() * 37)));   // лента вокруг — просто декорация
+    strip.innerHTML = rlStripHTML(seq); strip.dataset.spin = 1;
     strip.style.transition = 'none'; strip.style.transform = 'translateX(0)';
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const box = strip.parentElement.clientWidth;
-      strip.style.transition = 'transform 3.2s cubic-bezier(.1,.7,.15,1)';
-      strip.style.transform = `translateX(${-(win * 52 + 24 - box / 2)}px)`;
-    }));
+    requestAnimationFrame(() => requestAnimationFrame(() => rlCenter(strip, stop, true)));
     setTimeout(() => {
-      rlBusy = false;
+      rlBusy = false; rlHold = 0;
       rlLast.unshift(n);
-      if (won) casinoWin(stake * (bet.pay + 1));
       haptic(won ? 'ok' : 'err');
       toast(won ? `Выпало ${n} · ${bet.name}: +${fmt(stake * bet.pay)} ₽` : `Выпало ${n} · ставка «${bet.name}» проиграла`);
-      save(); render();
-      const st = $('#wheel-strip'); if (st) st.innerHTML = rlStripHTML([n]);
+      render();
     }, 3400);
   }
+  // после каждой перерисовки ставим ленту рулетки ровно под маркер
+  function rlSettle() { const st = $('#wheel-strip'); if (st && !st.dataset.spin) rlCenter(st, 4, false); }
 
   // --- карты
   const SUITS = ['♠', '♥', '♦', '♣'], RANKS_C = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-  const drawCard = () => ({ r: Math.floor(Math.random() * 13), s: Math.floor(Math.random() * 4) });
-  const cardHTML = (c, hidden, extra = '') => hidden ? `<div class="pcard back"></div>`
+  const cardOf = x => ({ r: x >> 2, s: x & 3 });
+  const cardTxt = c => RANKS_C[c.r] + SUITS[c.s];
+  const cardHTML = (c, hidden, extra = '') => hidden ? `<div class="pcard back ${extra}"></div>`
     : `<div class="pcard ${c.s === 1 || c.s === 2 ? 'red' : ''} ${extra}"><b>${RANKS_C[c.r]}</b><span>${SUITS[c.s]}</span></div>`;
+  const deckTop = (deck, k) => deck.slice(0, k).map(x => cardTxt(cardOf(x))).join(' ');
 
-  // --- блэкджек
+  // --- блэкджек: одна колода на раздачу, карты идут сверху по порядку — тебе, дилеру, тебе, дилеру, дальше кто берёт
   function bjValue(cards) {
     let v = 0, aces = 0;
     for (const c of cards) { const r = RANKS_C[c.r]; if (r === 'A') { aces++; v += 11; } else v += ['J', 'Q', 'K'].includes(r) ? 10 : +r; }
     while (v > 21 && aces) { v -= 10; aces--; }
     return v;
   }
+  const bjDraw = () => cardOf(S.bj.deck[S.bj.k++]);
   function renderBlackjack() {
-    if (!bj) return `${betBar()}<div class="card" style="text-align:center"><p class="small muted">Набери больше дилера, но не больше 21. Блэкджек платит 3:2, дилер берёт до 17.</p>
+    const bj = S.bj;
+    if (!bj) return `${betBar()}<div class="card felt" style="text-align:center"><div class="felt-title">Блэкджек</div>
+      <p class="small">Набери больше дилера, но не больше 21. Блэкджек платит 3:2, дилер берёт до 17.</p>
       <button class="btn full" data-action="bj-deal">Раздать</button></div>`;
     const done = bj.done;
-    return `<div class="card">
-      <div class="label">Дилер · ${done ? bjValue(bj.dealer) : '?'}</div><div class="hand">${bj.dealer.map((c, i) => cardHTML(c, i === 1 && !done)).join('')}</div>
-      <div class="label" style="margin-top:12px">Ты · ${bjValue(bj.player)} · ставка ${fmt(bj.bet)} ₽</div><div class="hand">${bj.player.map(c => cardHTML(c)).join('')}</div>
-      ${done ? `<div class="big-text" style="text-align:center;margin:12px 0" class="${bj.win > 0 ? 'good' : ''}">${bj.msg}</div>
+    return `<div class="card felt">
+      <div class="label">Дилер · ${done ? bjValue(bj.dealer) : '?'}</div><div class="hand">${bj.dealer.map((c, i) => cardHTML(c, i === 1 && !done, casAnim === 'deal' || (casAnim === 'end' && i >= 1) ? 'in' : '')).join('')}</div>
+      <div class="label" style="margin-top:14px">Ты · ${bjValue(bj.player)} · ставка ${fmt(bj.bet)} ₽</div><div class="hand">${bj.player.map((c, i) => cardHTML(c, false, casAnim === 'deal' || (bjHit && i === bj.player.length - 1) ? 'in' : '')).join('')}</div>
+      ${done ? `<div class="big-text felt-msg ${bj.win > bj.bet ? 'good' : bj.win ? '' : 'bad'}">${bj.msg}</div>
         <button class="btn full" data-action="bj-new">Ещё раз</button>`
-      : `<div class="row" style="margin-top:12px"><button class="btn grow" data-action="bj-hit">Ещё</button>
+      : `<div class="row" style="margin-top:14px"><button class="btn grow" data-action="bj-hit">Ещё</button>
           <button class="btn btn-ghost grow" data-action="bj-stand">Хватит</button>
           ${bj.player.length === 2 && S.money >= bj.bet ? `<button class="btn btn-line grow" data-action="bj-double">Удвоить</button>` : ''}</div>`}</div>`;
   }
   function bjFinish() {
-    const p = bjValue(bj.player);
-    if (p <= 21) while (bjValue(bj.dealer) < 17) bj.dealer.push(drawCard());
+    const bj = S.bj, p = bjValue(bj.player);
+    if (p <= 21) while (bjValue(bj.dealer) < 17) bj.dealer.push(bjDraw());
     const d = bjValue(bj.dealer), pBJ = p === 21 && bj.player.length === 2, dBJ = d === 21 && bj.dealer.length === 2;
     let win = 0, msg;
     if (p > 21) msg = 'Перебор — проигрыш';
     else if (pBJ && !dBJ) { win = bj.bet * 2.5; msg = `Блэкджек! +${fmt(bj.bet * 1.5)} ₽`; }
     else if (d > 21 || p > d) { win = bj.bet * 2; msg = `Победа! +${fmt(bj.bet)} ₽`; }
     else if (p === d) { win = bj.bet; msg = 'Ничья — ставка возвращена'; }
-    else msg = 'Дилер выиграл';
+    else msg = dBJ ? 'У дилера блэкджек. Бывает' : 'Дилер выиграл';
     casinoWin(win);
     bj.done = true; bj.win = win; bj.msg = msg;
+    casAnim = casAnim || 'end';
+    fairEnd(bj.fr, bj.bet, win, deckTop(bj.deck, bj.k), `Ты ${p} · дилер ${d} — ${win > bj.bet ? 'победа' : win ? 'ничья' : 'проигрыш'}`);
+    bj.deck = [];   // доигранной раздаче колода больше не нужна
     haptic(win > bj.bet ? 'ok' : win ? 'light' : 'err');
     save(); render();
   }
 
-  // --- видеопокер «Валеты и выше»
+  // --- видеопокер «Валеты и выше»: 5 карт сверху колоды, замены — следующие по порядку слева направо
   function pokerHand(cards) {
     const ranks = cards.map(c => c.r).sort((a, b) => a - b), suits = cards.map(c => c.s);
     const cnt = {}; for (const r of ranks) cnt[r] = (cnt[r] || 0) + 1;
@@ -3078,14 +3225,101 @@
     return null;
   }
   function renderPoker() {
-    const table = POKER_PAYTABLE.map(p => `<div class="kv small ${vp && vp.done && vp.hand === p.id ? 'gold' : ''}"><span>${p.name}</span><b>×${p.pay + 1}</b></div>`).join('');
-    if (!vp) return `${betBar()}<div class="card"><p class="small muted">Тебе раздают 5 карт. Отметь, какие оставить, и замени остальные. Выигрыш — по таблице.</p>
-      <button class="btn full" data-action="vp-deal">Раздать</button></div><div class="card">${table}</div>`;
-    return `<div class="card"><div class="label">Ставка ${fmt(vp.bet)} ₽ · ${vp.done ? 'итог' : 'нажми на карты, которые оставляешь'}</div>
-      <div class="hand five">${vp.cards.map((c, i) => `<button class="hold-btn" data-action="vp-hold" data-id="${i}" ${vp.done ? 'disabled' : ''}>${cardHTML(c, false, vp.hold[i] ? 'held' : '')}<span>${vp.hold[i] ? 'держу' : ''}</span></button>`).join('')}</div>
-      ${vp.done ? `<div class="big-text" style="text-align:center;margin:12px 0">${vp.msg}</div><button class="btn full" data-action="vp-new">Ещё раз</button>`
-        : `<button class="btn full" style="margin-top:12px" data-action="vp-draw">Заменить</button>`}</div>
-      <div class="card">${table}</div>`;
+    const vp = S.vp;
+    const table = `<div class="card pay-table">${POKER_PAYTABLE.map(p => `<div class="kv small ${vp && vp.done && vp.hand === p.id ? 'hit' : ''}"><span>${p.name}</span><b>×${p.pay}</b></div>`).join('')}
+      <div class="small muted" style="margin-top:6px">Множитель — сколько вернётся со ставкой вместе. Пара валетов просто возвращает своё.</div></div>`;
+    if (!vp) return `${betBar()}<div class="card felt" style="text-align:center"><div class="felt-title">Видеопокер</div>
+      <p class="small">Тебе раздают 5 карт. Отметь, какие оставить, и замени остальные. Выигрыш — по таблице.</p>
+      <button class="btn full" data-action="vp-deal">Раздать</button></div>${table}`;
+    return `<div class="card felt"><div class="label">Ставка ${fmt(vp.bet)} ₽ · ${vp.done ? 'итог' : 'выбери, что оставить'}</div>
+      <div class="hand five">${vp.cards.map((c, i) => `<button class="hold-btn" data-action="vp-hold" data-id="${i}" ${vp.done ? 'disabled' : ''}>${cardHTML(c, false, (vp.hold[i] ? 'held' : '') + (casAnim === 'deal' || (casAnim === 'draw' && !vp.hold[i]) ? ' in' : ''))}<span>${vp.hold[i] ? 'держу' : ''}</span></button>`).join('')}</div>
+      ${vp.done ? `<div class="big-text felt-msg ${vp.win > vp.bet ? 'good' : vp.win ? '' : 'bad'}">${vp.msg}</div><button class="btn full" data-action="vp-new">Ещё раз</button>`
+        : `<button class="btn full" style="margin-top:12px" data-action="vp-draw">${vp.hold.some(Boolean) ? (vp.hold.every(Boolean) ? 'Оставить все' : 'Заменить остальные') : 'Заменить все'}</button>`}</div>
+      ${table}`;
+  }
+
+  // --- окно «Честная игра»
+  const FAIR_GAMES = {
+    roulette: { e: '🎡', name: 'Рулетка', rtp: '97,3', note: 'одно зеро на 37 ячеек' },
+    bj: { e: '🃏', name: 'Блэкджек', rtp: '99,6', note: 'если играть по базовой стратегии' },
+    poker: { e: '♠️', name: 'Видеопокер', rtp: '98,4', note: 'если менять карты идеально' },
+  };
+  function fairCard() {
+    const F = fairState();
+    return `<button class="fair tap" data-action="fair">
+      <div class="fair-head">${ic('shield-check')} Честная игра<span class="grow"></span><span class="fair-more">раунд №${F.n + 1} · проверить ${ic('chevron-right')}</span></div>
+      <div class="small muted" style="margin:6px 0 5px">Следующий раунд уже запечатан — вот его отпечаток. После игры сверишь, что ничего не подкрутили:</div>
+      <div class="hash">${shaHex(F.ss)}</div></button>`;
+  }
+  function showFair() {
+    const F = fairState();
+    const stats = Object.entries(FAIR_GAMES).map(([g, d]) => {
+      const s = F.st[g];
+      return `<div class="fair-row"><span class="fair-ico">${d.e}</span><div class="grow"><b>${d.name}</b> <span class="gold">${d.rtp}%</span>
+        <div class="small muted">${d.note}</div>
+        ${s && s.n && s.bet ? `<div class="small" style="margin-top:2px">У тебя: ${s.n} ${plural(s.n, 'раунд', 'раунда', 'раундов')}, вернулось <b class="${s.win >= s.bet ? 'good' : 'bad'}">${(s.win / s.bet * 100).toFixed(1).replace('.', ',')}%</b> · ${s.win >= s.bet ? '+' : '−'}${fmt(Math.abs(s.win - s.bet))} ₽</div>` : ''}</div></div>`;
+    }).join('');
+    const log = F.log.map(r => {
+      const d = FAIR_GAMES[r.g];
+      if (fairLive(r)) return `<div class="fair-row"><span class="fair-ico">⏳</span><div class="grow"><b>№${r.n} · ${d.name}</b><div class="small muted">идёт прямо сейчас — секрет раскроется после раунда</div></div></div>`;
+      const diff = r.win - r.bet;
+      return `<button class="fair-row tap" data-action="fair-round" data-id="${r.n}"><span class="fair-ico">${d.e}</span><div class="grow"><b>№${r.n} · ${d.name}</b>
+        <div class="small muted">${r.win < 0 ? 'не доигран' : esc(r.res)}</div></div>
+        ${r.win < 0 ? '' : `<b class="${diff > 0 ? 'good' : diff < 0 ? 'bad' : 'muted'}">${diff > 0 ? '+' : diff < 0 ? '−' : ''}${fmt(Math.abs(diff))}</b>`}${ic('chevron-right', 'muted')}</button>`;
+    }).join('');
+    showModal(`${sheetHead('Честная игра')}
+      <div class="card">
+        <div class="fair-step"><b>1</b><div>До ставки казино загадывает <b>секретное зерно</b> и показывает его отпечаток — хэш SHA-256. Подменить зерно после этого нельзя: отпечаток не сойдётся. Это как переобуться в прыжке — заметят все.</div></div>
+        <div class="fair-step"><b>2</b><div>К секрету подмешивается <b>твоё зерно</b>. Его задаёшь ты, поэтому заранее подогнать результат под твою ставку казино не может.</div></div>
+        <div class="fair-step"><b>3</b><div>После раунда секрет <b>раскрывается</b>. Пересчитай результат в этом окне или на любом стороннем сайте — математика одна на всех.</div></div></div>
+      <div class="section">Следующий раунд · №${F.n + 1}</div>
+      <div class="card"><div class="label">Отпечаток секретного зерна</div>
+        <div class="hash tap" data-action="copy" data-id="${shaHex(F.ss)}">${shaHex(F.ss)}</div>
+        <div class="label" style="margin-top:12px">Твоё зерно</div>
+        <div class="row"><input id="fair-cs" class="input grow" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(F.cs)}">
+          <button class="btn btn-sm" data-action="fair-seed">Сменить</button>
+          <button class="btn btn-sm btn-ghost" data-action="fair-seed" data-id="rnd">🎲</button></div>
+        <div class="small muted" style="margin-top:6px">Впиши что угодно: счастливое число, кличку кота, фамилию участкового. Действует со следующего раунда.</div></div>
+      <div class="section">Сколько возвращают игры</div>
+      <div class="card">${stats}<div class="small muted" style="margin-top:8px">Это средний возврат со ставки на длинной дистанции. На короткой бывает всё — за этим сюда и ходят.</div></div>
+      <div class="section">Последние раунды</div>
+      <div class="card">${log || '<div class="small muted" style="text-align:center;padding:10px 0">Пока пусто. Сыграй раунд — и сможешь его проверить.</div>'}</div>`, true);
+  }
+  function showFairRound(n, checked) {
+    const r = fairState().log.find(x => x.n === +n);
+    if (!r || fairLive(r)) return;
+    const d = FAIR_GAMES[r.g], cards = r.g !== 'roulette';
+    const field = (label, v) => `<div class="label" style="margin-top:10px">${label}</div><div class="hash tap" data-action="copy" data-id="${esc(v)}">${esc(v)}</div>`;
+    let check = `<button class="btn full" data-action="fair-check" data-id="${r.n}">${ic('shield-check')} Проверить раунд</button>`;
+    if (checked) {
+      const h = shaHex(r.ss), okH = h === r.h, msg = `${r.cs}:${r.n}:0`, mac = hmacHex(r.ss, msg);
+      let calc, okO;
+      if (!cards) {
+        const u = parseInt(mac.slice(0, 8), 16), num = Math.floor(u / 4294967296 * 37);
+        okO = String(num) === r.o;
+        calc = `Первые 8 символов <b>${mac.slice(0, 8)}</b> — это число ${u.toLocaleString('ru-RU')}. Делим на 2³², умножаем на 37, дробь отбрасываем: <b>${num}</b>.`;
+      } else {
+        const k = r.o ? r.o.split(' ').length : 10, top = deckTop(fairDeck(r), k);
+        okO = !r.o || top === r.o;
+        calc = `Каждые 8 символов — число от 0 до 1 (блоки :0, :1, :2…). Ими тасуется колода из 52 карт — с конца, методом Фишера — Йетса. Сверху колоды легли: <b>${top}</b>.`;
+      }
+      const mark = ok => `<b class="${ok ? 'ok' : 'no'}">${ok ? '✓' : '✗'}</b>`;
+      check = `<div class="card">
+        <div class="fair-step">${mark(okH)}<div>SHA-256 от секретного зерна:<div class="hash ${okH ? 'ok' : 'no'}">${h}</div>${okH ? 'Совпал с отпечатком, который висел до ставки. Зерно не подменили.' : 'Не совпал с отпечатком. Так быть не должно — напиши разработчику.'}</div></div>
+        <div class="fair-step"><b>2</b><div>HMAC-SHA256: ключ — секретное зерно, сообщение — <b>${esc(msg)}</b><div class="hash">${mac}</div></div></div>
+        <div class="fair-step">${mark(okO)}<div>${calc} ${r.win < 0 ? 'Раунд не доигран, сверять не с чем.' : okO ? 'Ровно это и было в игре.' : 'А в игре было иначе. Так быть не должно — напиши разработчику.'}</div></div></div>
+        <p class="small muted">Не веришь и этому окну? Правильно, доверяй, но проверяй. Нажми на любую строку выше — она скопируется. Посчитай SHA-256 и HMAC-SHA256 в любом онлайн-калькуляторе: цифры сойдутся.</p>`;
+    }
+    const diff = r.win - r.bet;
+    showModal(`${sheetHead(`${d.e} Раунд №${r.n}`)}
+      <div class="card"><div class="kv"><span>Игра</span><b>${d.name}</b></div>
+        <div class="kv"><span>Итог</span><b>${r.win < 0 ? 'не доигран' : esc(r.res)}</b></div>
+        ${r.win < 0 ? '' : `<div class="kv"><span>Ставка</span><b>${fmt(r.bet)} ₽</b></div>
+        <div class="kv"><span>Результат</span><b class="${diff > 0 ? 'good' : diff < 0 ? 'bad' : ''}">${diff > 0 ? '+' : diff < 0 ? '−' : ''}${fmt(Math.abs(diff))} ₽</b></div>`}
+        ${cards && r.o ? `<div class="kv"><span>Карты по порядку</span><b>${esc(r.o)}</b></div>` : ''}</div>
+      <div class="card">${field('Отпечаток — был виден до ставки', r.h)}${field('Секретное зерно — раскрыто после раунда', r.ss)}${field('Твоё зерно', r.cs)}</div>
+      ${check}
+      <button class="btn btn-ghost full" style="margin-top:8px" data-action="fair">${ic('chevron-left')} Все раунды</button>`, true);
   }
 
   function renderCasino() {
@@ -3096,7 +3330,8 @@
         <button class="${v === 'bj' ? 'active' : ''}" data-sub="casino:bj">Блэкджек</button>
         <button class="${v === 'poker' ? 'active' : ''}" data-sub="casino:poker">Покер</button></div>
       ${v === 'roulette' ? renderRoulette() : v === 'bj' ? renderBlackjack() : renderPoker()}
-      <p class="small muted" style="text-align:center">Казино всегда немного в плюсе. Играй на то, что не жалко потерять.</p>`;
+      ${fairCard()}
+      <p class="small muted" style="text-align:center;margin-top:12px">Казино всегда немного в плюсе — честно, зато стабильно. Играй на то, что не жалко.</p>`;
   }
 
   const VIEWS = { home: renderHome, inv: renderInv, cases: renderCases, career: renderCareer, biz: renderBiz, casino: renderCasino };
@@ -3181,7 +3416,7 @@
     const car = id => `<img src="${ITEM[id].img}" alt="">`;
     return [
       `<div class="ia ia-hero">${car('c_chiron')}<div class="ia-logo">ЖИТУХА</div></div>`,
-      `<div class="ia ia-flow"><div><b>📄</b><span>листовки</span><i>${fmt(ph(JOBS[0].pay))}/ч</i></div><em>→</em><div><b>💼</b><span>директор</span><i>${fmt(ph(JOB.director.pay))}/ч</i></div><em>→</em><div><b>🏢</b><span>бизнес</span><i>млн/ч</i></div></div>`,
+      `<div class="ia ia-flow"><div><b>📄</b><span>листовки</span><i>${fmt(ph(JOBS[0].pay))}/ч</i></div><em>→</em><div><b>💼</b><span>директор</span><i>${fmt(ph(JOB.director.pay))}/ч</i></div><em>→</em><div><b>🏢</b><span>бизнес</span><i>без потолка</i></div></div>`,
       `<div class="ia ia-cards"><div class="ia-c">${car('c_supra')}<span>машины</span></div><div class="ia-c"><img src="${ITEM.h_monaco.img}" alt="" class="cover"><span>жильё</span></div><div class="ia-c"><b>🤝</b><span>связи</span></div></div>`,
       `<div class="ia ia-paths"><div><b>👔</b><span>Гражданский</span><i>работа · бизнес</i></div><div class="vs">или</div><div><img src="img/ranks/a6.png" alt="" class="pogon"><span>Силовик</span><i>звания · «крыша»</i></div></div>`,
       `<div class="ia ia-risk"><b>🐀</b><b>🚓</b><b>🦈</b><b>🎰</b><b>📜</b></div>`,
@@ -3216,19 +3451,47 @@
       <button class="btn full" style="margin-top:12px" data-action="close">Погнали</button></div>`);
   }
 
+  // Деньги в шапке вспыхивают зелёным или красным, когда сумма заметно меняется от действия (а не от секундного дохода)
+  let shownMoney = null;
+  function flashMoney() {
+    const m = S.money - rlHold, el = $('.money');
+    if (shownMoney !== null && Math.abs(m - shownMoney) > Math.max(1, Math.abs(shownMoney) * 0.004)) {
+      el.classList.remove('up', 'down');
+      void el.offsetWidth;
+      el.classList.add(m > shownMoney ? 'up' : 'down');
+    }
+    shownMoney = m;
+  }
+  // Плавное появление экрана — только при переходе между разделами
+  function enterView() {
+    const v = $('#view');
+    v.classList.remove('enter');
+    void v.offsetWidth;
+    v.classList.add('enter');
+    clearTimeout(enterView.t);
+    enterView.t = setTimeout(() => v.classList.remove('enter'), 900);
+  }
   function render() {
     $('#view').innerHTML = VIEWS[tab]();
+    casAnim = ''; bjHit = false;
+    flashMoney();
     const navTab = tab === 'inv' ? 'home' : tab;
     document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === navTab));
     updateLive();
+    rlSettle();
+    // в прокручиваемых вкладках активная всегда на виду
+    const seg = $('.seg-scroll'), act = seg && seg.querySelector('.active');
+    if (act) seg.scrollLeft = act.offsetLeft - (seg.clientWidth - act.offsetWidth) / 2;
     tutTick();
   }
 
   // То, что меняется каждую секунду, обновляем точечно
   function updateLive() {
-    $('#money').textContent = fmt(S.money);
+    $('#money').textContent = fmt(S.money - rlHold);
     const im = incomeMonth();
     $('#inc').textContent = (im >= 0 ? '+' : '') + fmt(ph(im));
+    $('.inc').classList.toggle('neg', im < 0);
+    $('.ava-wrap').style.setProperty('--xp', S.lvl >= LEVEL_MAX ? 100 : Math.min(100, S.xp / levelNeed(S.lvl) * 100).toFixed(1));
     $('#prank').textContent = S.sil ? `${STR().icon} ${svcRank().name} · ${STR().name}` : rankInfo().cur.icon + ' ' + rankInfo().cur.name;
     $('#plvl').textContent = S.lvl;
     $('.hdr').style.setProperty('--lc', lvlColor(S.lvl));
@@ -3334,7 +3597,7 @@
         earn(v);
         toast(`Задание выполнено: +${fmt(v)} ₽`);
       } else {
-        const t = WEEKLY_TICKETS[+i % WEEKLY_TICKETS.length];
+        const t = questTix().weekly[+i % 3];
         giveTicket(t);
         toast(`Получен ${ticketName(t)}`);
       }
@@ -3347,12 +3610,12 @@
       if (kind === 'daily') {
         const v = monthsMoney(DAILY_BONUS.hours, DAILY_BONUS.min);
         earn(v);
-        giveTicket(DAILY_BONUS.ticket);
+        giveTicket(questTix().daily);
         progress('daily_all');
-        toast(`+${fmt(v)} ₽ и ${ticketName(DAILY_BONUS.ticket)}`);
+        toast(`+${fmt(v)} ₽ и ${ticketName(questTix().daily)}`);
       } else {
-        giveTicket(WEEKLY_BONUS.ticket);
-        toast(`Получен ${ticketName(WEEKLY_BONUS.ticket)}`);
+        giveTicket(questTix().bonus);
+        toast(`Получен ${ticketName(questTix().bonus)}`);
       }
       haptic('ok'); save(); render(); showProfile();
     },
@@ -3409,53 +3672,63 @@
       }
       save(); render();
     },
-    'cas-bet': v => { casBet = +v; render(); },
+    'cas-bet': v => { if (rlBusy) return; casBet = +v; render(); },
     'rl-spin': kind => rlSpin(kind),
     'bj-deal': () => {
+      if (S.bj && !S.bj.done) return;
       const bet = takeBet(); if (!bet) return;
-      bj = { bet, player: [drawCard(), drawCard()], dealer: [drawCard(), drawCard()] };
+      const fr = fairStart('bj'), deck = fairDeck(fr);
+      S.bj = { bet, deck, k: 4, player: [cardOf(deck[0]), cardOf(deck[2])], dealer: [cardOf(deck[1]), cardOf(deck[3])], fr: fr.n };
       save();
-      if (bjValue(bj.player) === 21 || bjValue(bj.dealer) === 21) bjFinish(); else render();
+      casAnim = 'deal';
+      if (bjValue(S.bj.player) === 21 || bjValue(S.bj.dealer) === 21) bjFinish(); else render();
     },
-    'bj-hit': () => { if (!bj || bj.done) return; bj.player.push(drawCard()); if (bjValue(bj.player) >= 21) bjFinish(); else render(); },
-    'bj-stand': () => { if (bj && !bj.done) bjFinish(); },
+    'bj-hit': () => { const bj = S.bj; if (!bj || bj.done) return; bj.player.push(bjDraw()); bjHit = true; casAnim = 'end'; if (bjValue(bj.player) >= 21) bjFinish(); else { casAnim = 'hit'; save(); render(); } },
+    'bj-stand': () => { if (S.bj && !S.bj.done) bjFinish(); },
     'bj-double': () => {
+      const bj = S.bj;
       if (!bj || bj.done || bj.player.length !== 2 || S.money < bj.bet) return;
-      S.money -= bj.bet; bj.bet *= 2; bj.player.push(drawCard()); bjFinish();
+      S.money -= bj.bet; bj.bet *= 2; bj.player.push(bjDraw()); bjHit = true; casAnim = 'end'; bjFinish();
     },
-    'bj-new': () => { bj = null; render(); },
+    'bj-new': () => { S.bj = null; save(); render(); },
     'vp-deal': () => {
+      if (S.vp && !S.vp.done) return;
       const bet = takeBet(); if (!bet) return;
-      let cards = [];
-      while (cards.length < 5) { const c = drawCard(); if (!cards.some(x => x.r === c.r && x.s === c.s)) cards.push(c); }
-      // подарок от разработчика: один раз — роял-флэш с первой раздачи (ID из ROYAL_GIFT в data.js)
-      if (ROYAL_GIFT.includes(S.pid) && !S.royalUsed) {
-        const suit = Math.floor(Math.random() * 4);
-        cards = [8, 9, 10, 11, 12].map(r => ({ r, s: suit })).sort(() => Math.random() - 0.5);
-        S.royalUsed = true;
-      }
-      vp = { bet, cards, hold: [false, false, false, false, false], royal: S.royalUsed && cards.every(c => c.r >= 8 && c.s === cards[0].s) };
-      save(); render();
+      const fr = fairStart('poker'), deck = fairDeck(fr);
+      S.vp = { bet, deck, k: 5, cards: deck.slice(0, 5).map(cardOf), hold: [false, false, false, false, false], fr: fr.n };
+      casAnim = 'deal'; save(); render();
     },
-    'vp-hold': i => { if (!vp || vp.done) return; vp.hold[+i] = !vp.hold[+i]; render(); },
+    'vp-hold': i => { const vp = S.vp; if (!vp || vp.done) return; vp.hold[+i] = !vp.hold[+i]; render(); },
     'vp-draw': () => {
+      const vp = S.vp;
       if (!vp || vp.done) return;
-      if (vp.royal) vp.hold = [true, true, true, true, true];   // подаренный роял-флэш замена не испортит
-      vp.cards = vp.cards.map((c, i) => {
-        if (vp.hold[i]) return c;
-        let n; do { n = drawCard(); } while (vp.cards.some(x => x.r === n.r && x.s === n.s));
-        return n;
-      });
+      vp.cards = vp.cards.map((c, i) => (vp.hold[i] ? c : cardOf(vp.deck[vp.k++])));
       vp.hand = pokerHand(vp.cards);
       const p = POKER_PAYTABLE.find(x => x.id === vp.hand);
-      const win = p ? vp.bet * (p.pay + 1) : 0;
+      const win = p ? vp.bet * p.pay : 0;
       casinoWin(win);
-      vp.done = true;
-      vp.msg = p ? `${p.name}! +${fmt(win - vp.bet)} ₽` : 'Ничего не собралось';
-      haptic(p ? 'ok' : 'err');
-      save(); render();
+      vp.done = true; vp.win = win;
+      vp.msg = !p ? 'Ничего не собралось' : win > vp.bet ? `${p.name}! +${fmt(win - vp.bet)} ₽` : 'Старшая пара — ставка вернулась';
+      fairEnd(vp.fr, vp.bet, win, deckTop(vp.deck, vp.k), `${vp.cards.map(cardTxt).join(' ')} — ${p ? p.name.toLowerCase() : 'пусто'}`);
+      vp.deck = [];
+      haptic(win > vp.bet ? 'ok' : win ? 'light' : 'err');
+      casAnim = 'draw'; save(); render();
     },
-    'vp-new': () => { vp = null; render(); },
+    'vp-new': () => { S.vp = null; save(); render(); },
+    'fair': () => showFair(),
+    'fair-round': n => showFairRound(n, false),
+    'fair-check': n => { haptic('ok'); showFairRound(n, true); },
+    'fair-seed': how => {
+      const F = fairState();
+      const v = how === 'rnd' ? newSeed().slice(0, 12) : (($('#fair-cs') || {}).value || '').trim().replace(/[:\s]+/g, '-').slice(0, 32);
+      if (!v) { toast('Зерно не может быть пустым. Даже у хлеба есть зёрна.'); return; }
+      F.cs = v; save(); showFair(); toast('Зерно обновлено — действует со следующего раунда');
+    },
+    'copy': v => {
+      const done = () => { haptic('light'); toast('Скопировано'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(done, () => toast('Не скопировалось — выдели текст пальцем'));
+      else toast('Не скопировалось — выдели текст пальцем');
+    },
     'race-car': id => { S.raceCar = id; save(); render(); },
     'repair-home': id => { if (ITEM[id] && S.inv[id]) showRepair(id); },
     'repair-go': id => {
@@ -3533,7 +3806,7 @@
       haptic(failed ? 'err' : 'ok'); save(); render();
       showModal(`<div class="drop"><div class="drop-name">${failed ? '😬 Не вышло' : '✅ ' + m.title}</div>
         <p style="margin-top:8px">${failed ? c.fail.text : c.risk ? 'Деньги у тебя. Никто ничего не видел… пока.' : 'Сделано чисто — начальство заметило.'}</p>
-        <div class="big">${money ? '+' + fmt(money) + ' ₽ · ' : ''}${xpText(got, xp)}</div>
+        ${money ? `<div class="big">+${fmt(money)} ₽</div><div class="big-sub">${xpText(got, xp)}</div>` : `<div class="big">${xpText(got, xp)}</div>`}
         <button class="btn full" data-action="close">Дальше</button></div>`);
     },
     rescue: id => {
@@ -3694,13 +3967,13 @@
     },
     'race-tap': () => raceTap(),
     service: id => {
-      const st = carState(id), c = ITEM[id].value * SERVICE_COST;
+      const st = carState(id), c = serviceCost(id);
       if (st.wear <= 0 || !pay(c)) return;
       st.wear = 0;
       haptic('light'); toast('ТО пройдено: износ 0%'); save(); render();
     },
     repair: id => {
-      const st = carState(id), c = ITEM[id].value * REPAIR_COST;
+      const st = carState(id), c = repairCost(id);
       if (!st.broken || !pay(c)) return;
       st.broken = false; st.wear = 0;
       haptic('ok'); toast('Машина отремонтирована'); save(); render();
@@ -3814,11 +4087,29 @@
       const sp = it.special;
       if (sp.type === 'closeEvent') {
         if (!S.event || EV[S.event.id].good) return;
-        toast(`${it.icon} ${it.name} закрыл вопрос «${EV[S.event.id].title}»`);
+        toast(`${it.icon} ${it.name} ${gen(it, 'закрыл', 'закрыла')} вопрос «${EV[S.event.id].title}»`);
         S.event = null;
       } else if (sp.type === 'ticket') {
         giveTicket(sp.case);
         toast(`${it.icon} ${ticketName(sp.case)}`);
+      } else if (sp.type === 'omen') {
+        S.omen = true;
+        toast(`${it.icon} Карты легли удачно: следующее событие — приятное`);
+      } else if (sp.type === 'banquet') {
+        for (const c of Object.values(S.conn)) c.cd = {};
+        toast(`${it.icon} Стол накрыт: все встречи доступны снова`);
+      } else if (sp.type === 'party') {
+        let n = 0;
+        for (const cid of Object.keys(S.conn)) {
+          if (cid === id || !ITEM[cid]) continue;
+          const c = S.conn[cid];
+          c.xp = Math.min(cxp(cid, CONN_MAX_LV - 1), c.xp + sp.v); c.last = Date.now(); n++;
+        }
+        toast(`${it.icon} Вечеринка удалась: +${sp.v} доверия · ${n} ${plural(n, 'связь', 'связи', 'связей')}`);
+      } else if (sp.type === 'refuel') {
+        S.pool = { n: RACE_POOL, ts: Date.now() };
+        for (const g of Object.values(S.garage)) { g.tank = TANK_RACES; g.ts = Date.now(); }
+        toast(`${it.icon} Баки полные, заезды восстановлены`);
       } else if (sp.type === 'taxHoliday') {
         S.taxFreeUntil = Date.now() + sp.hours * 3600e3;
         toast(`${it.icon} Налоговые каникулы на ${sp.hours} ч`);
@@ -3871,7 +4162,7 @@
     'dbg-favor': () => {
       if (!isDebug()) return;
       if (!Object.keys(S.conn).length) { toast('Сначала нужна хотя бы одна связь'); return; }
-      S.favor = null; S.nextFavor = 0; maybeFavor(); closeModal(); tab = 'conn'; render();
+      S.favor = null; S.nextFavor = 0; maybeFavor(); closeModal(); tab = 'career'; sub.career = 'conn'; render();
     },
     'dbg-free': () => {
       if (!isDebug()) return;
@@ -3931,6 +4222,7 @@
       window.scrollTo(0, 0);
     }
     render();
+    enterView();
   });
   // Шапка закреплена; тень появляется, только когда под ней уже есть прокрученный контент
   addEventListener('scroll', () => $('.hdr').classList.toggle('scrolled', scrollY > 4), { passive: true });
@@ -3950,8 +4242,8 @@
     tg.ready();
     tg.expand();
     if (inTelegram) {
-      tg.setHeaderColor && tg.setHeaderColor('#111214');
-      tg.setBackgroundColor && tg.setBackgroundColor('#111214');
+      tg.setHeaderColor && tg.setHeaderColor('#07080d');
+      tg.setBackgroundColor && tg.setBackgroundColor('#07080d');
       tg.disableVerticalSwipes && tg.disableVerticalSwipes();
     }
   }

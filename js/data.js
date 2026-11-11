@@ -266,6 +266,53 @@ const ITEMS = [
   { id: 'c_roma', cat: 'car', name: 'Ferrari Roma', icon: '🏎️', rarity: 'legendary', bonus: 33, value: 30e6, img: 'img/cars/c_roma_v80.webp', credit: 'Alexander-93 · CC BY-SA 4.0' },
   { id: 'c_gt3rs', cat: 'car', name: 'Porsche 911 GT3 RS', icon: '🏎️', rarity: 'legendary', bonus: 33, t: ['de'], value: 32e6, img: 'img/cars/c_gt3rs_v80.webp', credit: 'Alexander Migl · CC BY-SA 4.0' },
   { id: 'c_huracan', cat: 'car', name: 'Lamborghini Huracán EVO', icon: '🏎️', rarity: 'legendary', bonus: 34, t: ['sc'], value: 35e6, img: 'img/cars/c_huracan_v80.webp', credit: 'Matti Blume · CC BY-SA 4.0' },
+  // v82: народные «вёдра», китайский автопром, легенды девяностых и гиперкары между Aventador и Nevera
+  { id: 'c_nexia', cat: 'car', name: 'Daewoo Nexia', icon: '🚗', rarity: 'common', bonus: 2, value: 300e3, img: 'img/cars/c_nexia_v82.webp', credit: 'Ilya Plekhanov · CC BY-SA 4.0' },
+  { id: 'c_matiz2', cat: 'car', name: 'Daewoo Matiz', icon: '🚗', rarity: 'common', bonus: 2, value: 350e3, img: 'img/cars/c_matiz2_v82.webp', credit: 'Benespit · CC BY-SA 4.0' },
+  { id: 'c_priora', cat: 'car', name: 'Lada Priora «Не бита, не крашена»', icon: '🚗', rarity: 'common', bonus: 2, t: ['ru'], value: 450e3, img: 'img/cars/c_priora_v82.webp', credit: 'Rifter0666 · CC BY-SA 4.0' },
+  { id: 'c_gazel', cat: 'car', name: 'ГАЗель «Маршрутка»', icon: '🚐', rarity: 'common', bonus: 3, t: ['ru'], value: 1.2e6, img: 'img/cars/c_gazel_v82.webp', credit: 'Ilya Plekhanov · CC BY-SA 4.0' },
+  { id: 'c_coolray', cat: 'car', name: 'Geely Coolray', icon: '🚙', rarity: 'common', bonus: 4, t: ['cn'], value: 2.4e6, img: 'img/cars/c_coolray_v82.webp', credit: 'User3204 · CC BY-SA 4.0' },
+  { id: 'c_e38', cat: 'car', name: 'BMW 7 E38 «Бумер»', icon: '🚘', rarity: 'rare', bonus: 9, t: ['de'], value: 3.4e6, img: 'img/cars/c_e38_v82.webp', credit: 'Alexander Migl · CC BY-SA 4.0' },
+  { id: 'c_silvia', cat: 'car', name: 'Nissan Silvia S15', icon: '🏎️', rarity: 'rare', bonus: 9, t: ['jp'], value: 3.9e6, img: 'img/cars/c_silvia_v82.webp', credit: 'Ethan Llamas · CC BY-SA 4.0' },
+  { id: 'c_tank300', cat: 'car', name: 'Tank 300', icon: '🚙', rarity: 'rare', bonus: 10, t: ['cn'], value: 4.4e6, img: 'img/cars/c_tank300_v82.webp', credit: 'Li Yinghonghh · CC BY-SA 4.0' },
+  { id: 'c_evo', cat: 'car', name: 'Mitsubishi Lancer Evolution IX', icon: '🏎️', rarity: 'rare', bonus: 10, t: ['jp'], value: 4.6e6, img: 'img/cars/c_evo_v82.webp', credit: 'MrWalkr · CC BY-SA 4.0' },
+  { id: 'c_w140', cat: 'car', name: 'Mercedes S 600 W140 «Кабан»', icon: '🚘', rarity: 'epic', bonus: 13, t: ['de'], value: 6.5e6, img: 'img/cars/c_w140_v82.webp', credit: 'Dinkun Chen · CC BY-SA 4.0' },
+  { id: 'c_zeekr', cat: 'car', name: 'Zeekr 001', icon: '🚘', rarity: 'epic', bonus: 14, t: ['cn'], value: 7.5e6, img: 'img/cars/c_zeekr_v82.webp', credit: 'Nikolai Bulykin · CC BY-SA 4.0' },
+  { id: 'c_hongqi', cat: 'car', name: 'Hongqi H9', icon: '🚘', rarity: 'epic', bonus: 14, t: ['cn'], value: 8e6, img: 'img/cars/c_hongqi_v82.webp', credit: 'Jengtingchen · CC BY-SA 4.0' },
+  { id: 'c_hellcat', cat: 'car', name: 'Dodge Challenger SRT', icon: '🏎️', rarity: 'epic', bonus: 15, value: 9e6, img: 'img/cars/c_hellcat_v82.webp', credit: 'Ermell · CC BY-SA 4.0' },
+  { id: 'c_lixiang', cat: 'car', name: 'Lixiang L9', icon: '🚙', rarity: 'epic', bonus: 15, t: ['cn'], value: 9.5e6, img: 'img/cars/c_lixiang_v82.webp', credit: 'Zotyefan · CC BY-SA 4.0' },
+  { id: 'c_cybertruck', cat: 'car', name: 'Tesla Cybertruck', icon: '🚙', rarity: 'epic', bonus: 17, value: 15e6, img: 'img/cars/c_cybertruck_v82.webp', credit: 'Alexander-93 · CC BY-SA 4.0' },
+  { id: 'c_escalade', cat: 'car', name: 'Cadillac Escalade', icon: '🚙', rarity: 'epic', bonus: 17, value: 16e6, img: 'img/cars/c_escalade_v82.webp', credit: 'Kevauto · CC BY-SA 4.0' },
+  { id: 'c_nsx', cat: 'car', name: 'Honda NSX', icon: '🏎️', rarity: 'legendary', bonus: 31, t: ['jp'], value: 26e6, img: 'img/cars/c_nsx_v82.webp', credit: '先従隗始 · CC0' },
+  { id: 'c_sls', cat: 'car', name: 'Mercedes-Benz SLS AMG', icon: '🏎️', rarity: 'legendary', bonus: 32, t: ['de'], value: 28e6, img: 'img/cars/c_sls_v82.webp', credit: 'M 93 · CC BY-SA 3.0 de' },
+  { id: 'c_sf90', cat: 'car', name: 'Ferrari SF90 Stradale', icon: '🏎️', rarity: 'mythic', bonus: 57, t: ['sc'], value: 90e6, img: 'img/cars/c_sf90_v82.webp', credit: 'Calreyn88 · CC BY 4.0' },
+  { id: 'c_revuelto', cat: 'car', name: 'Lamborghini Revuelto', icon: '🏎️', rarity: 'mythic', bonus: 57, t: ['sc'], value: 110e6, img: 'img/cars/c_revuelto_v82.webp', credit: 'Alexander Migl · CC BY-SA 4.0' },
+  { id: 'c_lfa', cat: 'car', name: 'Lexus LFA', icon: '🏎️', rarity: 'mythic', bonus: 57, t: ['sc'], value: 120e6, img: 'img/cars/c_lfa_v82.webp', credit: 'MrWalkr · CC BY-SA 4.0' },
+  { id: 'c_senna', cat: 'car', name: 'McLaren Senna', icon: '🏎️', rarity: 'mythic', bonus: 58, t: ['sc'], value: 150e6, img: 'img/cars/c_senna_v82.webp', credit: 'Matti Blume · CC BY-SA 4.0' },
+  { id: 'c_918', cat: 'car', name: 'Porsche 918 Spyder', icon: '🏎️', rarity: 'mythic', bonus: 58, t: ['sc'], value: 180e6, img: 'img/cars/c_918_v82.webp', credit: 'Thomas Wolf, www.foto-tw.de · CC BY-SA 3.0 de' },
+  // v82: от юрты до пентхауса в Бурдж-Халифе — закрывают пустоты между эпиком, легендой и мификом
+  { id: 'h_yurta', cat: 'home', name: 'Юрта в степи (соседи — в 40 км)', icon: '⛺', rarity: 'common', bonus: 3.375e3, t: ['country'], value: 900e3,
+    img: 'img/homes/h_yurta.jpg', credit: 'P.Lechien · CC0' },
+  { id: 'h_vladik', cat: 'home', name: 'Квартира во Владивостоке с видом на мост', icon: '🌉', rarity: 'rare', bonus: 35.625e3, value: 9.5e6,
+    img: 'img/homes/h_vladik.jpg', credit: 'Svetlov Artem · CC0' },
+  { id: 'h_mayak', cat: 'home', name: 'Маяк на Балтике', icon: '🗼', rarity: 'epic', bonus: 97.5e3, value: 26e6,
+    img: 'img/homes/h_mayak.jpg', credit: 'Gwydion13 · CC BY-SA 4.0' },
+  { id: 'h_altai', cat: 'home', name: 'Турбаза на Катуни', icon: '🏕️', rarity: 'epic', bonus: 123.75e3, t: ['country'], value: 33e6,
+    img: 'img/homes/h_altai.jpg', credit: 'ru:Участник:Darius · Public domain' },
+  { id: 'h_bali', cat: 'home', name: 'Вилла на Бали', icon: '🏝️', rarity: 'epic', bonus: 135e3, t: ['abroad'], value: 36e6,
+    img: 'img/homes/h_bali.jpg', credit: 'a.canvas.of.light · CC BY 2.0' },
+  { id: 'h_vysotka', cat: 'home', name: 'Квартира в сталинской высотке', icon: '🏛️', rarity: 'legendary', bonus: 318.75e3, t: ['msk'], value: 85e6,
+    img: 'img/homes/h_vysotka.jpg', credit: 'Юрий Д.К. · CC BY 4.0' },
+  { id: 'h_kamenny', cat: 'home', name: 'Особняк на Каменном острове', icon: '🏡', rarity: 'legendary', bonus: 375e3, value: 100e6,
+    img: 'img/homes/h_kamenny.jpg', credit: 'Florstein · CC BY-SA 4.0' },
+  { id: 'h_bunker', cat: 'home', name: 'Бункер «На случай всего»', icon: '☢️', rarity: 'legendary', bonus: 487.5e3, value: 130e6,
+    img: 'img/homes/h_bunker.jpg', credit: 'UlyssesThirtyOne · CC BY 2.0' },
+  { id: 'h_como', cat: 'home', name: 'Вилла на озере Комо', icon: '⛵', rarity: 'legendary', bonus: 2.25e6, t: ['abroad'], value: 600e6,
+    img: 'img/homes/h_como.jpg', credit: 'Scott Thompson · CC BY 2.0' },
+  { id: 'h_hampton', cat: 'home', name: 'Поместье «Хэмптон» с привидением', icon: '👻', rarity: 'legendary', bonus: 3e6, t: ['abroad'], value: 800e6,
+    img: 'img/homes/h_hampton.jpg', credit: 'Eli Pousson · CC BY-SA 2.0' },
+  { id: 'h_burj', cat: 'home', name: 'Пентхаус в Бурдж-Халифе', icon: '🏙️', rarity: 'mythic', bonus: 4.125e6, t: ['abroad'], value: 1.1e9,
+    img: 'img/homes/h_burj.jpg', credit: 'Tim Reckmann · CC BY 2.0' },
   { id: 'h_dorm2', cat: 'home', name: 'Апарт-отель «Студия»', icon: '🏨', rarity: 'common', bonus: 5.6e3, value: 1.5e6,
     img: 'img/homes/h_dorm2.jpg', credit: 'Michal Klajban · CC BY-SA 4.0' },
   { id: 'h_khrush', cat: 'home', name: 'Хрущёвка в Подольске', icon: '🏢', rarity: 'common', bonus: 11.2e3, value: 3e6,
@@ -284,19 +331,28 @@ const ITEMS = [
     img: 'img/homes/h_courch.jpg', credit: 'DimiTalen · CC0' },
 
   // Связи: cat conn, perk — что даёт (см. PERKS), lv — сила по уровню доверия 1–5,
-  // special — особая услуга на максимальном доверии (см. SPECIALS)
+  // special — особая услуга на максимальном доверии (см. SPECIALS); f: true — о ней пишем в женском роде («не смогла помочь»)
   { id: 'k_police',   cat: 'conn', name: 'Участковый Петрович',     icon: '👮',   rarity: 'common',    perk: 'fineCut',    lv: [20, 30, 40, 50, 60], special: { type: 'closeEvent' } },
   { id: 'k_gibdd',    cat: 'conn', name: 'Инспектор ГИБДД',         icon: '🚓',   rarity: 'common',    perk: 'gibdd',      lv: [1, 1, 1, 1, 1], special: { type: 'ticket', case: 'car_used' } },
-  { id: 'k_zhkh',     cat: 'conn', name: 'Начальница ЖКХ',          icon: '🧹',   rarity: 'common',    perk: 'rentUp',     lv: [3, 5, 7, 9, 12], special: { type: 'ticket', case: 'home_dorm' } },
+  { id: 'k_zhkh',     cat: 'conn', name: 'Начальница ЖКХ',          icon: '🧹',   rarity: 'common',    perk: 'rentUp',     lv: [3, 5, 7, 9, 12], special: { type: 'ticket', case: 'home_dorm' }, f: true },
+  { id: 'k_mech',     cat: 'conn', name: 'Автомеханик дядя Вася',   icon: '🔧',   rarity: 'common',    perk: 'carFix',     lv: [10, 18, 26, 34, 45], special: { type: 'ticket', case: 'car_grandpa' } },
+  { id: 'k_fortune',  cat: 'conn', name: 'Гадалка Аза',             icon: '🔮',   rarity: 'common',    perk: 'luck',       lv: [3, 5, 7, 9, 12], special: { type: 'omen' }, f: true },
   { id: 'k_tax',      cat: 'conn', name: 'Налоговый инспектор',     icon: '🧾',   rarity: 'rare',      perk: 'taxCut',     lv: [2, 3, 4, 5, 7], special: { type: 'taxHoliday', hours: 24 } },
   { id: 'k_official', cat: 'conn', name: 'Чиновник мэрии',          icon: '🏛️',   rarity: 'rare',      perk: 'license',    lv: [20, 30, 40, 55, 70], special: { type: 'cash', hours: 6 } },
   { id: 'k_banker',   cat: 'conn', name: 'Банкир',                  icon: '🏦',   rarity: 'rare',      perk: 'sellUp',     lv: [3, 4, 6, 8, 10], special: { type: 'cash', hours: 8 } },
+  { id: 'k_secretary', cat: 'conn', name: 'Секретарша Леночка',     icon: '☎️',   rarity: 'rare',      perk: 'callUp',     lv: [4, 6, 8, 10, 12], special: { type: 'closeEvent' }, f: true },
+  { id: 'k_rector',   cat: 'conn', name: 'Ректор университета',     icon: '🎓',   rarity: 'rare',      perk: 'skillCheap', lv: [6, 10, 14, 18, 22], special: { type: 'cash', hours: 5 } },
+  { id: 'k_restaurateur', cat: 'conn', name: 'Ресторатор Арам',     icon: '🍷',   rarity: 'rare',      perk: 'meetCheap',  lv: [10, 15, 20, 25, 30], special: { type: 'banquet' } },
   { id: 'k_prosecutor', cat: 'conn', name: 'Прокурор',              icon: '⚖️',   rarity: 'epic',      perk: 'safe',       lv: [20, 35, 50, 75, 100], special: { type: 'closeEvent' } },
   { id: 'k_judge',    cat: 'conn', name: 'Судья',                   icon: '👨‍⚖️', rarity: 'epic',      perk: 'court',      lv: [1, 1, 1, 1, 1], special: { type: 'closeEvent' } },
+  { id: 'k_socialite', cat: 'conn', name: 'Светская львица Жанна',  icon: '💃',   rarity: 'epic',      perk: 'trustUp',    lv: [10, 16, 22, 28, 35], special: { type: 'party', v: 60 }, f: true },
+  { id: 'k_promoter', cat: 'conn', name: 'Промоутер гонок Тимур',   icon: '🏁',   rarity: 'epic',      perk: 'prizeUp',    lv: [3, 5, 7, 9, 12], special: { type: 'refuel' } },
   { id: 'k_deputy',   cat: 'conn', name: 'Депутат',                 icon: '🎩',   rarity: 'legendary', perk: 'demandUp',   lv: [5, 8, 11, 15, 20], special: { type: 'tender', hours: 20 } },
   { id: 'k_governor', cat: 'conn', name: 'Губернатор',              icon: '🏢',   rarity: 'legendary', perk: 'licenseCut', lv: [30, 45, 60, 75, 90], special: { type: 'tender', hours: 20 } },
+  { id: 'k_media',    cat: 'conn', name: 'Медиамагнат',             icon: '📺',   rarity: 'legendary', perk: 'growCut',    lv: [8, 12, 16, 20, 25], special: { type: 'tender', hours: 20 } },
   { id: 'k_oligarch', cat: 'conn', name: 'Олигарх',                 icon: '💼',   rarity: 'mythic',    perk: 'deal',       lv: [20, 25, 30, 40, 50], special: { type: 'cash', hours: 36 } },
   { id: 'k_minister', cat: 'conn', name: 'Министр экономики',       icon: '🕴️',   rarity: 'mythic',    perk: 'bizBoost',   lv: [10, 13, 16, 20, 25], special: { type: 'tender', hours: 40 } },
+  { id: 'k_swiss',    cat: 'conn', name: 'Швейцарский банкир Ганс', icon: '🏔️',   rarity: 'mythic',    perk: 'offline',    lv: [1, 2, 3, 4, 6], special: { type: 'cash', hours: 36 } },
 ];
 
 // Шансы редкостей в процентах; выпадают только редкости, которые есть в списке предметов кейса
@@ -318,113 +374,123 @@ const CASES = [
     desc: 'Советская классика: Запорожец, «копейка», Москвич — и шанс на «Волгу»', w: { common: 95, rare: 5, epic: 0, legendary: 0, mythic: 0 },
     items: ['c_zaz', 'c_oka', 'c_izh', 'c_2101', 'c_moskvich', 'c_2107', 'c_2109', 'c_volga'] },
   { id: 'car_people', cover: 'img/cases/car_people_v52.jpg', name: 'Народные иномарки', icon: '🚗', price: 'auto', tier: 'cheap',
-    desc: 'Logan, Solaris, Polo, Rio, Leaf, Lancer — и иногда что-то солиднее', w: { common: 89, rare: 9.8, epic: 1.2, legendary: 0, mythic: 0 },
-    items: ['c_logan', 'c_solaris', 'c_polo', 'c_rio', 'c_leaf', 'c_lancerx', 'c_corolla', 'c_octavia', 'c_k5', 'c_eclass', 'c_prado'] },
+    desc: 'Logan, Solaris, Polo, Nexia, Matiz, Leaf — и иногда что-то солиднее', w: { common: 89, rare: 9.8, epic: 1.2, legendary: 0, mythic: 0 },
+    items: ['c_logan', 'c_solaris', 'c_polo', 'c_rio', 'c_leaf', 'c_lancerx', 'c_corolla', 'c_octavia', 'c_k5', 'c_eclass', 'c_prado', 'c_nexia', 'c_matiz2', 'c_coolray'] },
   { id: 'car_used', cover: 'img/cases/car_used_v52.jpg', name: 'Авторынок и гаражи', icon: '🚗', price: 'auto', tier: 'cheap',
-    desc: 'Лады и подержанные иномарки, а в дальнем боксе — «Волга», Mark II, Impala или даже Supra', w: { common: 85, rare: 14, epic: 1, legendary: 0, mythic: 0 },
-    items: ['c_granta', 'c_vesta', 'c_largus', 'c_focus', 'c_volga', 'c_markii', 'c_ae86', 'c_mazda6', 'c_passat', 'c_350z', 'c_mini', 'c_impala', 'c_rx7', 'c_supra'] },
+    desc: 'Лады, «ГАЗель» и подержанные иномарки, а в дальнем боксе — «Бумер», Silvia, Supra или даже «Кабан»', w: { common: 85, rare: 14, epic: 1, legendary: 0, mythic: 0 },
+    items: ['c_granta', 'c_vesta', 'c_largus', 'c_focus', 'c_volga', 'c_markii', 'c_ae86', 'c_mazda6', 'c_passat', 'c_350z', 'c_mini', 'c_impala', 'c_rx7', 'c_supra', 'c_priora', 'c_nexia', 'c_gazel', 'c_e38', 'c_silvia', 'c_w140'] },
   { id: 'car_new', cover: 'img/cases/car_new_v52.jpg', name: 'Автосалон', icon: '🚘', price: 'auto', tier: 'mid',
     desc: 'Новые машины на любой вкус: седаны, кроссоверы, хот-хэтчи и маслкары — и шанс на 911 или Skyline', w: { common: 0, rare: 72, epic: 26.5, legendary: 1.5, mythic: 0 },
-    items: ['c_camry', 'c_k5', 'c_rav4', 'c_tiguan', 'c_model3', 'c_stinger', 'c_wrx', 'c_civic', 'c_mustang', 'c_wrangler', 'c_m3', 'c_corvette', 'c_prado', 'c_911', 'c_skyline'] },
+    items: ['c_camry', 'c_k5', 'c_rav4', 'c_tiguan', 'c_model3', 'c_stinger', 'c_wrx', 'c_civic', 'c_mustang', 'c_wrangler', 'c_m3', 'c_corvette', 'c_prado', 'c_911', 'c_skyline', 'c_evo', 'c_zeekr', 'c_hellcat'] },
   { id: 'car_biz', cover: 'img/cases/car_biz_v52.jpg', name: 'Бизнес-класс', icon: '💼', price: 'auto', tier: 'mid',
     desc: 'Солидные седаны и внедорожники для делового человека', w: { common: 0, rare: 44, epic: 54, legendary: 2, mythic: 0 },
-    items: ['c_a4', 'c_passat', 'c_mazda6', 'c_eclass', 'c_x5', 'c_lc300', 'c_tesla', 'c_range', 'c_g63', 'c_m340i', 'c_cls', 'c_macan', 'c_levante'] },
+    items: ['c_a4', 'c_passat', 'c_mazda6', 'c_eclass', 'c_x5', 'c_lc300', 'c_tesla', 'c_range', 'c_g63', 'c_m340i', 'c_cls', 'c_macan', 'c_levante', 'c_hongqi', 'c_lixiang', 'c_w140', 'c_escalade', 'c_cybertruck'] },
   { id: 'car_sport', cover: 'img/cases/car_sport_v52.jpg', name: 'Спорт и премиум', icon: '🏁', price: 'auto', tier: 'mid',
-    desc: 'Только эпические и выше: M5, RS6, GT-R, Corvette — шанс на 911 и Aventador', w: { common: 0, rare: 0, epic: 93, legendary: 6, mythic: 1 },
-    items: ['c_m5', 'c_rs6', 'c_gtr', 'c_corvette', 'c_m3', 'c_cayenne', 'c_911', 'c_amggt', 'c_db11', 'c_skyline', 'c_aventador', 'c_rs7', 'c_m8', 'c_taycan', 'c_vantage', 'c_r8'] },
+    desc: 'Только эпические и выше: M5, RS6, GT-R, Corvette — шанс на 911, NSX и Aventador', w: { common: 0, rare: 0, epic: 91, legendary: 8, mythic: 1 },
+    items: ['c_m5', 'c_rs6', 'c_gtr', 'c_corvette', 'c_m3', 'c_cayenne', 'c_911', 'c_amggt', 'c_db11', 'c_skyline', 'c_aventador', 'c_rs7', 'c_m8', 'c_taycan', 'c_vantage', 'c_r8', 'c_hellcat', 'c_nsx', 'c_sls'] },
   { id: 'car_premium', cover: 'img/cases/car_premium_v53.jpg', name: 'Премиум-салон', icon: '💼', price: 'auto', tier: 'elite',
-    desc: 'S-класс, LX, Range Rover, Гелик — шанс на Lamborghini Aventador', w: { common: 0, rare: 0, epic: 79.3, legendary: 20, mythic: 0.7 },
-    items: ['c_sclass', 'c_lx', 'c_range', 'c_cayenne', 'c_m5', 'c_g63', 'c_bentley', 'c_urus', 'c_aventador', 'c_x6m', 'c_bentayga', 'c_lc500'] },
+    desc: 'S-класс, LX, Escalade, Гелик — шанс на Lamborghini Aventador', w: { common: 0, rare: 0, epic: 79.3, legendary: 20, mythic: 0.7 },
+    items: ['c_sclass', 'c_lx', 'c_range', 'c_cayenne', 'c_m5', 'c_g63', 'c_bentley', 'c_urus', 'c_aventador', 'c_x6m', 'c_bentayga', 'c_lc500', 'c_escalade', 'c_cybertruck'] },
   { id: 'car_elite', cover: 'img/cases/car_elite_v52.jpg', name: 'Элитный автосалон Дубая', icon: '🏎️', price: 'auto', tier: 'elite',
-    desc: 'Спорткары и редкие роскошные машины', w: { common: 0, rare: 0, epic: 0, legendary: 85, mythic: 15 },
-    items: ['c_mclaren', 'c_ferrari', 'c_urus', 'c_bentley', 'c_db11', 'c_amggt', 'c_aventador', 'c_phantom', 'c_cullinan', 'c_huracan', 'c_roma', 'c_gt3rs'] },
+    desc: 'Спорткары и редкая роскошь: от SLS до Revuelto и LFA', w: { common: 0, rare: 0, epic: 0, legendary: 85, mythic: 15 },
+    items: ['c_mclaren', 'c_ferrari', 'c_urus', 'c_bentley', 'c_db11', 'c_amggt', 'c_aventador', 'c_phantom', 'c_cullinan', 'c_huracan', 'c_roma', 'c_gt3rs', 'c_sls', 'c_sf90', 'c_revuelto', 'c_lfa'] },
   { id: 'car_hyper', cover: 'img/cases/car_hyper_v52.jpg', name: 'Гиперкары', icon: '🏁', price: 'auto', tier: 'elite',
-    desc: 'Только здесь: Bugatti, Pagani, Koenigsegg', w: { common: 0, rare: 0, epic: 0, legendary: 55, mythic: 45 },
-    items: ['c_mclaren', 'c_ferrari', 'c_urus', 'c_aventador', 'c_huayra', 'c_jesko', 'c_chiron', 'c_laferrari', 'c_nevera'] },
+    desc: 'Только здесь: Bugatti, Pagani, Koenigsegg, Senna и 918 Spyder', w: { common: 0, rare: 0, epic: 0, legendary: 55, mythic: 45 },
+    items: ['c_mclaren', 'c_ferrari', 'c_urus', 'c_aventador', 'c_huayra', 'c_jesko', 'c_chiron', 'c_laferrari', 'c_nevera', 'c_lfa', 'c_senna', 'c_918'] },
   { id: 'car_suv', cover: 'img/cases/car_suv_v52.jpg', name: 'Джипы и внедорожники', icon: '🚙', price: 'auto', tier: 'mid', theme: true,
-    desc: 'Нива, УАЗ, Haval, Chery — и шанс на Wrangler, Land Cruiser или Гелик', w: { common: 55, rare: 35, epic: 9.5, legendary: 0.5, mythic: 0 },
-    items: ['c_niva', 'c_uaz', 'c_jolion', 'c_tiggo', 'c_xtrail', 'c_monjaro', 'c_rav4', 'c_prado', 'c_wrangler', 'c_lc300', 'c_g63'] },
+    desc: 'Нива, УАЗ, Haval, Tank — и шанс на Wrangler, Land Cruiser, Escalade или Гелик', w: { common: 55, rare: 35, epic: 9.5, legendary: 0.5, mythic: 0 },
+    items: ['c_niva', 'c_uaz', 'c_jolion', 'c_tiggo', 'c_xtrail', 'c_monjaro', 'c_rav4', 'c_prado', 'c_wrangler', 'c_lc300', 'c_g63', 'c_tank300', 'c_lixiang', 'c_escalade', 'c_cybertruck'] },
   { id: 'car_cn', cover: 'img/cases/car_cn_v52.jpg', name: 'Китайцы', icon: '🇨🇳', price: 'auto', tier: 'cheap', theme: true,
-    desc: 'Haval, Chery, Geely', w: { common: 55, rare: 45, epic: 0, legendary: 0, mythic: 0 }, items: ['c_jolion', 'c_tiggo', 'c_monjaro'] },
+    desc: 'Haval, Chery, Geely, Tank — и флагманы: Zeekr, Lixiang и «Красное знамя» Hongqi', w: { common: 50, rare: 38, epic: 12, legendary: 0, mythic: 0 }, items: ['c_jolion', 'c_tiggo', 'c_monjaro', 'c_coolray', 'c_tank300', 'c_zeekr', 'c_hongqi', 'c_lixiang'] },
   { id: 'car_jp', cover: 'img/cases/car_jp_v52.jpg', name: 'Японцы', icon: '🇯🇵', price: 'auto', tier: 'mid', theme: true,
-    desc: 'Toyota, Nissan, Mazda, Subaru, Honda, Lexus', w: { common: 0, rare: 63, epic: 35, legendary: 2, mythic: 0 },
-    items: ['c_mazda6', 'c_xtrail', 'c_camry', 'c_rav4', 'c_corolla', 'c_markii', 'c_wrx', 'c_civic', 'c_lc300', 'c_gtr', 'c_lx', 'c_prado', 'c_supra', 'c_rx7', 'c_skyline', 'c_lc500'] },
+    desc: 'Toyota, Nissan, Mazda, Subaru, Honda, Mitsubishi, Lexus', w: { common: 0, rare: 62, epic: 35, legendary: 3, mythic: 0 },
+    items: ['c_mazda6', 'c_xtrail', 'c_camry', 'c_rav4', 'c_corolla', 'c_markii', 'c_wrx', 'c_civic', 'c_lc300', 'c_gtr', 'c_lx', 'c_prado', 'c_supra', 'c_rx7', 'c_skyline', 'c_lc500', 'c_silvia', 'c_evo', 'c_nsx'] },
   { id: 'car_de', cover: 'img/cases/car_de_v52.jpg', name: 'Немецкое качество', icon: '🇩🇪', price: 'auto', tier: 'mid', theme: true,
     desc: 'VW, Skoda, BMW, Mercedes, Audi, Porsche', w: { common: 0, rare: 55, epic: 42, legendary: 3, mythic: 0 },
-    items: ['c_octavia', 'c_tiguan', 'c_eclass', 'c_x5', 'c_cayenne', 'c_m5', 'c_rs6', 'c_sclass', 'c_911', 'c_g63', 'c_passat', 'c_a4', 'c_m3', 'c_amggt', 'c_m340i', 'c_cls', 'c_x6m', 'c_rs7', 'c_macan', 'c_taycan', 'c_m8', 'c_r8', 'c_gt3rs'] },
+    items: ['c_octavia', 'c_tiguan', 'c_eclass', 'c_x5', 'c_cayenne', 'c_m5', 'c_rs6', 'c_sclass', 'c_911', 'c_g63', 'c_passat', 'c_a4', 'c_m3', 'c_amggt', 'c_m340i', 'c_cls', 'c_x6m', 'c_rs7', 'c_macan', 'c_taycan', 'c_m8', 'c_r8', 'c_gt3rs', 'c_e38', 'c_w140', 'c_sls'] },
 
   { id: 'home_dorm', cover: 'img/cases/home_dorm_v52.jpg', name: 'Общаги и гаражи', icon: '🛏️', price: 'auto', tier: 'cheap',
-    desc: 'Койка, гараж, дача, дом в деревне', w: { common: 98.5, rare: 1.5, epic: 0, legendary: 0, mythic: 0 }, items: ['h_bed', 'h_garage', 'h_dacha', 'h_village', 'h_studio', 'h_flat', 'h_dorm2', 'h_khrush'] },
+    desc: 'Койка, гараж, дача, юрта, дом в деревне', w: { common: 98.5, rare: 1.5, epic: 0, legendary: 0, mythic: 0 }, items: ['h_bed', 'h_garage', 'h_dacha', 'h_village', 'h_studio', 'h_flat', 'h_dorm2', 'h_khrush', 'h_yurta'] },
   { id: 'home_used', cover: 'img/cases/home_used_v52.jpg', name: 'Вторичка', icon: '🏚️', price: 'auto', tier: 'cheap',
     desc: 'Комнаты и квартиры в старых домах', w: { common: 74, rare: 25, epic: 1, legendary: 0, mythic: 0 },
-    items: ['h_garage', 'h_room', 'h_studio', 'h_flat', 'h_brezh', 'h_kazan', 'h_house', 'h_khrush', 'h_nsk'] },
+    items: ['h_garage', 'h_room', 'h_studio', 'h_flat', 'h_brezh', 'h_kazan', 'h_house', 'h_khrush', 'h_nsk', 'h_vladik'] },
   { id: 'home_town', cover: 'img/cases/home_town_v52.jpg', name: 'Таунхаусы и дома', icon: '🏡', price: 'auto', tier: 'mid',
     desc: 'Хорошие квартиры и первые свои дома', w: { common: 0, rare: 29, epic: 69.5, legendary: 1.5, mythic: 0 },
-    items: ['h_newflat', 'h_loft', 'h_sochi', 'h_house', 'h_town', 'h_polyana', 'h_city', 'h_pent', 'h_ekb', 'h_townmo'] },
+    items: ['h_newflat', 'h_loft', 'h_sochi', 'h_house', 'h_town', 'h_polyana', 'h_city', 'h_pent', 'h_ekb', 'h_townmo', 'h_mayak', 'h_kamenny'] },
   { id: 'home_chalet', cover: 'img/cases/home_chalet_v52.jpg', name: 'Шале и апартаменты', icon: '🏔️', price: 'auto', tier: 'elite',
-    desc: 'Альпы, Дубай, Патрики — только эпическое', w: { common: 0, rare: 0, epic: 97, legendary: 3, mythic: 0 },
-    items: ['h_town', 'h_polyana', 'h_chalet', 'h_cottage', 'h_dubai_apt', 'h_patriki', 'h_city', 'h_pent', 'h_courch', 'h_karelia'] },
+    desc: 'Альпы, Бали, Дубай, Патрики — только эпическое и выше', w: { common: 0, rare: 0, epic: 97, legendary: 3, mythic: 0 },
+    items: ['h_town', 'h_polyana', 'h_chalet', 'h_cottage', 'h_dubai_apt', 'h_patriki', 'h_city', 'h_pent', 'h_courch', 'h_karelia', 'h_mayak', 'h_altai', 'h_bali', 'h_kamenny'] },
   { id: 'home_dream', cover: 'img/cases/home_dream_v52.jpg', name: 'Дом мечты', icon: '🏰', price: 'auto', tier: 'elite',
-    desc: 'Особняки и шанс на апартаменты в «Сити»', w: { common: 0, rare: 0, epic: 81.7, legendary: 18, mythic: 0.3 },
-    items: ['h_chalet', 'h_cottage', 'h_dubai_apt', 'h_patriki', 'h_city', 'h_castle'] },
+    desc: 'Особняки, высотка, бункер — и шанс на замок', w: { common: 0, rare: 0, epic: 81.7, legendary: 18, mythic: 0.3 },
+    items: ['h_chalet', 'h_cottage', 'h_dubai_apt', 'h_patriki', 'h_city', 'h_castle', 'h_vysotka', 'h_kamenny', 'h_bunker'] },
   { id: 'home_new', cover: 'img/cases/home_new_v52.jpg', name: 'Новостройки', icon: '🏗️', price: 'auto', tier: 'mid',
-    desc: 'Квартиры, таунхаусы и дома', w: { common: 0, rare: 74, epic: 25, legendary: 1, mythic: 0 }, items: ['h_studio', 'h_flat', 'h_newflat', 'h_house', 'h_town', 'h_kazan', 'h_spb', 'h_loft', 'h_polyana', 'h_city', 'h_nsk', 'h_ekb', 'h_townmo'] },
+    desc: 'Квартиры, таунхаусы и дома', w: { common: 0, rare: 74, epic: 25, legendary: 1, mythic: 0 }, items: ['h_studio', 'h_flat', 'h_newflat', 'h_house', 'h_town', 'h_kazan', 'h_spb', 'h_loft', 'h_polyana', 'h_city', 'h_nsk', 'h_ekb', 'h_townmo', 'h_vladik'] },
   { id: 'home_elite', cover: 'img/cases/home_elite_v52.jpg', name: 'Элитная Москва', icon: '🌆', price: 'auto', tier: 'elite',
-    desc: 'Патриаршие, Москва-Сити, пентхаусы', w: { common: 0, rare: 0, epic: 70, legendary: 30, mythic: 0 },
-    items: ['h_patriki', 'h_city', 'h_pent', 'h_hotel', 'h_spain', 'h_courch'] },
+    desc: 'Патриаршие, Москва-Сити, пентхаусы и сталинская высотка', w: { common: 0, rare: 0, epic: 70, legendary: 30, mythic: 0 },
+    items: ['h_patriki', 'h_city', 'h_pent', 'h_hotel', 'h_spain', 'h_courch', 'h_vysotka'] },
   { id: 'home_abroad', cover: 'img/cases/home_abroad_v52.jpg', name: 'Зарубежная элитка', icon: '✈️', price: 'auto', tier: 'elite',
-    desc: 'Дубай, Лондон, Лазурный берег, Монако', w: { common: 0, rare: 0, epic: 60, legendary: 36, mythic: 4 },
-    items: ['h_cottage', 'h_dubai_apt', 'h_palm', 'h_london', 'h_riviera', 'h_monaco', 'h_chalet', 'h_tuscany', 'h_ny', 'h_spain', 'h_courch'] },
+    desc: 'Дубай, Лондон, Комо, Лазурный берег, Монако', w: { common: 0, rare: 0, epic: 60, legendary: 36, mythic: 4 },
+    items: ['h_cottage', 'h_dubai_apt', 'h_palm', 'h_london', 'h_riviera', 'h_monaco', 'h_chalet', 'h_tuscany', 'h_ny', 'h_spain', 'h_courch', 'h_bali', 'h_como', 'h_hampton', 'h_burj'] },
   { id: 'home_castle', cover: 'img/cases/home_castle_v52.jpg', name: 'Замки и острова', icon: '🏰', price: 'auto', tier: 'elite',
-    desc: 'Только здесь: замок и частный остров', w: { common: 0, rare: 0, epic: 0, legendary: 65, mythic: 35 },
-    items: ['h_rublyovka', 'h_palm', 'h_london', 'h_castle', 'h_island', 'h_riviera', 'h_monaco', 'h_ny', 'h_tower'] },
+    desc: 'Замок, частный остров, бункер и пентхаус в Бурдж-Халифе', w: { common: 0, rare: 0, epic: 0, legendary: 65, mythic: 35 },
+    items: ['h_rublyovka', 'h_palm', 'h_london', 'h_castle', 'h_island', 'h_riviera', 'h_monaco', 'h_ny', 'h_tower', 'h_bunker', 'h_como', 'h_hampton', 'h_burj'] },
   { id: 'home_resort', cover: 'img/cases/home_resort_v52.jpg', name: 'Курорты', icon: '🏖️', price: 'auto', tier: 'mid', theme: true,
-    desc: 'Батуми, Алания, Сочи, Дубай', w: { common: 35, rare: 55, epic: 10, legendary: 0, mythic: 0 },
-    items: ['h_batumi', 'h_alanya', 'h_sochi', 'h_dubai_apt', 'h_polyana', 'h_karelia'] },
+    desc: 'Батуми, Алания, Сочи, Алтай, Бали, Дубай', w: { common: 35, rare: 55, epic: 10, legendary: 0, mythic: 0 },
+    items: ['h_batumi', 'h_alanya', 'h_sochi', 'h_dubai_apt', 'h_polyana', 'h_karelia', 'h_mayak', 'h_altai', 'h_bali'] },
   { id: 'home_country', cover: 'img/cases/home_country_v52.jpg', name: 'Загородная жизнь', icon: '🌲', price: 'auto', tier: 'mid', theme: true,
-    desc: 'Дачи, дома в деревне, коттеджи и таунхаусы', w: { common: 50, rare: 0, epic: 50, legendary: 0, mythic: 0 },
-    items: ['h_dacha', 'h_village', 'h_house', 'h_town', 'h_polyana', 'h_karelia', 'h_townmo'] },
+    desc: 'Дачи, юрта, дома в деревне, коттеджи и турбаза', w: { common: 50, rare: 0, epic: 50, legendary: 0, mythic: 0 },
+    items: ['h_dacha', 'h_village', 'h_house', 'h_town', 'h_polyana', 'h_karelia', 'h_townmo', 'h_yurta', 'h_altai'] },
   { id: 'home_msk', cover: 'img/cases/home_msk_v52.jpg', name: 'Москва', icon: '🏙️', price: 'auto', tier: 'mid', theme: true,
-    desc: 'От коммуналки до квартиры на Патриарших', w: { common: 30, rare: 55, epic: 15, legendary: 0, mythic: 0 },
-    items: ['h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_patriki', 'h_loft'] },
+    desc: 'От коммуналки до сталинской высотки', w: { common: 30, rare: 55, epic: 14, legendary: 1, mythic: 0 },
+    items: ['h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_patriki', 'h_loft', 'h_vysotka'] },
 
   { id: 'conn_free', cover: 'img/cases/conn_free_v52.jpg', name: 'Знакомство дня', icon: '🍀', price: 0, cooldown: 24 * 3600e3, tier: 'free',
     desc: 'Раз в сутки: полезный человек', w: { common: 75, rare: 20, epic: 4, legendary: 0.9, mythic: 0.1 },
-    items: ['k_police', 'k_gibdd', 'k_zhkh', 'k_tax', 'k_official', 'k_banker', 'k_prosecutor', 'k_judge', 'k_deputy', 'k_governor', 'k_oligarch', 'k_minister'] },
+    items: ['k_police', 'k_gibdd', 'k_zhkh', 'k_mech', 'k_fortune', 'k_tax', 'k_official', 'k_banker', 'k_secretary', 'k_rector', 'k_restaurateur', 'k_prosecutor', 'k_judge', 'k_socialite', 'k_promoter', 'k_deputy', 'k_governor', 'k_media', 'k_oligarch', 'k_minister', 'k_swiss'] },
   { id: 'conn_district', cover: 'img/cases/conn_district_v52.jpg', name: 'Районные знакомства', icon: '🏘️', price: 150e3, tier: 'cheap',
-    desc: 'Участковый, гаишник, ЖКХ — иногда кто-то повыше', w: W_CHEAP,
-    items: ['k_police', 'k_gibdd', 'k_zhkh', 'k_tax', 'k_banker'] },
+    desc: 'Участковый, гаишник, механик, гадалка — иногда кто-то повыше', w: W_CHEAP,
+    items: ['k_police', 'k_gibdd', 'k_zhkh', 'k_mech', 'k_fortune', 'k_tax', 'k_banker', 'k_secretary', 'k_rector'] },
   { id: 'conn_forum', cover: 'img/cases/conn_forum_v52.jpg', name: 'Деловой форум', icon: '🎤', price: 4e6, tier: 'mid',
-    desc: 'Чиновники, банкиры, силовики', w: W_MID,
-    items: ['k_tax', 'k_official', 'k_banker', 'k_prosecutor', 'k_judge'] },
+    desc: 'Чиновники, банкиры, ректор, ресторатор — и те, кто повыше', w: W_MID,
+    items: ['k_tax', 'k_official', 'k_banker', 'k_rector', 'k_restaurateur', 'k_secretary', 'k_prosecutor', 'k_judge', 'k_socialite'] },
   { id: 'conn_power', cover: 'img/cases/conn_power_v52.jpg', name: 'Коридоры власти', icon: '🏛️', price: 10e6, tier: 'mid',
     desc: 'Чиновники, прокурор, судья — и шанс на депутата', w: { common: 0, rare: 40, epic: 50, legendary: 10, mythic: 0 },
-    items: ['k_tax', 'k_official', 'k_banker', 'k_prosecutor', 'k_judge', 'k_deputy'] },
+    items: ['k_tax', 'k_official', 'k_banker', 'k_secretary', 'k_prosecutor', 'k_judge', 'k_deputy'] },
   { id: 'conn_high', cover: 'img/cases/conn_high_v52.jpg', name: 'Высший свет', icon: '🎭', price: 28e6, tier: 'elite',
-    desc: 'Губернаторы и депутаты, редко — олигарх или министр', w: { common: 0, rare: 0, epic: 50, legendary: 45, mythic: 5 },
-    items: ['k_prosecutor', 'k_judge', 'k_deputy', 'k_governor', 'k_oligarch', 'k_minister'] },
+    desc: 'Губернаторы, депутаты и светские львицы, редко — олигарх, министр или банкир из Цюриха', w: { common: 0, rare: 0, epic: 50, legendary: 45, mythic: 5 },
+    items: ['k_prosecutor', 'k_judge', 'k_socialite', 'k_promoter', 'k_deputy', 'k_governor', 'k_media', 'k_oligarch', 'k_minister', 'k_swiss'] },
   { id: 'conn_club', cover: 'img/cases/conn_club_v52.jpg', name: 'Закрытый клуб', icon: '🥃', price: 150e6, tier: 'elite',
     desc: 'Только влиятельные люди', w: { common: 0, rare: 0, epic: 60, legendary: 32, mythic: 8 },
-    items: ['k_prosecutor', 'k_judge', 'k_deputy', 'k_governor', 'k_oligarch', 'k_minister'] },
+    items: ['k_prosecutor', 'k_judge', 'k_socialite', 'k_promoter', 'k_deputy', 'k_governor', 'k_media', 'k_oligarch', 'k_minister', 'k_swiss'] },
 ];
-// Цена кейсов с price: 'auto' — от средней стоимости (округлённо до двух значащих цифр)
+const MULTI_OPEN = [1, 3, 5, 10];   // варианты открытия за раз
+// Опт и харизма вместе дают не больше ~20% скидки: цена кейса всегда заметно выше того, что перекупщик даст
+// за его содержимое (SELL_RATE), — иначе «купил ×10, всё продал» превращается в печатный станок.
+const MULTI_DISCOUNT = { 3: 0.02, 5: 0.03, 10: 0.05 }; // оптом дешевле: ×3 −2%, ×5 −3%, ×10 −5%
+const CASE_DISC_PER_CHA = 0.5;  // харизма: −0,5% к цене кейса за уровень…
+const CASE_DISC_MAX = 15;       // …но все скидки на кейсы (харизма + профессия) вместе — не больше 15%
+const PITY = 30;          // не позже чем на 30-м открытии кейса гарантированно эпик или выше (счётчик у каждого кейса свой)
+const PITY_MIN_W = 5;     // …но только в кейсах, где эпик и выше и так выпадает хотя бы в 5%: иначе крошечные джекпоты дешёвых кейсов стали бы «гарантированными»
+// Цена кейсов с price: 'auto' — AUTO_PRICE_RATE от средней стоимости выпадающего С УЧЁТОМ гарантии (она поднимает долю
+// эпиков: при шансе 5% — до ~6,4%), округлённо вверх (шаг — две значащие цифры, у чисел на 1–4 — полшага).
 for (const c of CASES) {
   if (c.price !== 'auto') continue;
   const pool = c.items.map(id => ITEMS.find(i => i.id === id));
   const rars = RARITY_ORDER.filter(r => c.w[r] > 0 && pool.some(i => i.rarity === r));
-  const tw = rars.reduce((a, r) => a + c.w[r], 0);
-  let ev = 0;
-  for (const r of rars) {
-    const list = pool.filter(i => i.rarity === r);
-    ev += list.reduce((a, i) => a + i.value, 0) / list.length * c.w[r] / tw;
+  const mean = rs => { const tw = rs.reduce((a, r) => a + c.w[r], 0); let ev = 0;
+    for (const r of rs) { const list = pool.filter(i => i.rarity === r); ev += list.reduce((a, i) => a + i.value, 0) / list.length * c.w[r] / tw; }
+    return ev; };
+  const hi = rars.filter(r => RARITY_ORDER.indexOf(r) >= 2), lo = rars.filter(r => RARITY_ORDER.indexOf(r) < 2);
+  const pHi = hi.reduce((a, r) => a + c.w[r], 0) / rars.reduce((a, r) => a + c.w[r], 0);
+  let ev = mean(rars);
+  if (hi.length && lo.length && pHi * 100 >= PITY_MIN_W) {
+    const rate = pHi / (1 - Math.pow(1 - pHi, PITY));   // доля эпиков с учётом гарантии
+    ev = rate * mean(hi) + (1 - rate) * mean(lo);
   }
   const p = ev * AUTO_PRICE_RATE, mag = Math.pow(10, Math.floor(Math.log10(p)) - 1);
-  c.price = Math.round(p / mag) * mag;
+  const step = p / mag < 50 ? mag / 2 : mag;   // 1,45 млн · 8,3 млн · 135 млн: вверх, но не больше чем на пару процентов
+  c.price = Math.ceil(p / step - 1e-9) * step;
 }
-const MULTI_OPEN = [1, 3, 5, 10];   // варианты открытия за раз
-const MULTI_DISCOUNT = { 3: 0.03, 5: 0.05, 10: 0.1 }; // оптом дешевле: ×3 −3%, ×5 −5%, ×10 −10%
-const PITY = 30;          // не позже чем на 30-м кейсе гарантированно эпик или выше
-const PITY_MIN_W = 5;     // …но только в кейсах, где эпик и выше и так выпадает хотя бы в 5%: иначе крошечные джекпоты дешёвых кейсов стали бы «гарантированными»
 // ---------- связи: доверие ----------
 const CONN_MAX_LV = 5;
 const CONN_XP = [0, 150, 400, 900, 1800];  // сколько доверия нужно для уровней 1–5 (у обычной связи)
@@ -454,6 +520,15 @@ const CONN_MEETS = {
   k_governor:   [['Приём в резиденции', 'tools-kitchen-2', 1.5e6], ['Охота с вертолёта', 'helicopter', 12e6], ['Яхта на неделю', 'sailboat', 45e6]],
   k_oligarch:   [['Покер по-крупному', 'cards', 5e6], ['Ралли в Монако', 'car', 40e6], ['Остров на неделю', 'trees', 150e6]],
   k_minister:   [['Закрытый ужин', 'tools-kitchen-2', 4e6], ['Форум в Давосе', 'plane', 35e6], ['Часы в подарок', 'clock', 120e6]],
+  k_mech:       [['Пиво после смены', 'beer', 2e3], ['Ключи «как у немцев»', 'tool', 50e3], ['Подъёмник в гараж', 'car-crane', 220e3]],
+  k_fortune:    [['Позолотить ручку', 'coin', 3e3], ['Расклад на всю родню', 'cards', 45e3], ['Хрустальный шар из Праги', 'crystal-ball', 230e3]],
+  k_secretary:  [['Шоколадка и комплимент', 'candy', 20e3], ['Духи «как у жены шефа»', 'perfume', 160e3], ['Отпуск на Мальдивах', 'beach', 800e3]],
+  k_rector:     [['Коньяк «для кафедры»', 'glass-full', 35e3], ['Грант на «исследования»', 'certificate', 250e3], ['Корпус твоего имени', 'building', 1.2e6]],
+  k_restaurateur: [['Чаевые всему залу', 'coin', 40e3], ['Трюфели из Пьемонта', 'chef-hat', 300e3], ['Гид «Мишлен» в гости', 'star', 1.5e6]],
+  k_socialite:  [['Бранч с просекко', 'glass-full', 130e3], ['Показ мод в Милане', 'hanger', 1.4e6], ['Колье «просто так»', 'diamond', 5.5e6]],
+  k_promoter:   [['Пит-стоп с шашлыком', 'flame', 140e3], ['Комплект слик-резины', 'steering-wheel', 1.6e6], ['Ложа на «Формуле-1»', 'trophy', 6e6]],
+  k_media:      [['Эфир в прайм-тайм', 'device-tv', 1.2e6], ['Обложка журнала', 'news', 10e6], ['Телеканал в подарок', 'broadcast', 38e6]],
+  k_swiss:      [['Фондю с видом на Альпы', 'mountain', 4.5e6], ['Неделя в Санкт-Морице', 'snowflake', 38e6], ['Именной сейф в Цюрихе', 'lock', 130e6]],
 };
 // Просьбы: время от времени одна из связей о чём-то просит. Выполнил — много доверия, отказал — немного теряешь.
 // cost: hours — столько часов твоего дохода (не меньше min); salary — столько месячных зарплат сотрудника бизнеса
@@ -479,6 +554,10 @@ const SPECIALS = {
   ticket:     'Свой человек: бесплатное открытие «{case}»',
   taxHoliday: 'Налоговые каникулы: {h} ч без налога на бизнес',
   tender:     'Госзаказ: {h} мес. прибыли бизнеса сразу',
+  omen:       'Расклад на удачу: следующее событие будет приятным',
+  banquet:    'Банкет за счёт заведения: все встречи со связями доступны сразу',
+  party:      'Вечеринка года: +{v} доверия каждой связи',
+  refuel:     'Свой автодром: баки полные, лимит заездов восстановлен',
 };
 
 
@@ -509,7 +588,7 @@ const START_MONEY = 600e3;
 const SKILL_MAX = 50;
 const SKILLS = [
   { id: 'int', name: 'Интеллект', icon: '🧠', desc: '+1% к зарплате за уровень. Нужен для умных профессий.' },
-  { id: 'cha', name: 'Харизма',   icon: '🗣️', desc: '−1% к цене кейсов за уровень (до −30%). Нужна для работы с людьми.' },
+  { id: 'cha', name: 'Харизма',   icon: '🗣️', desc: '−0,5% к цене кейсов за уровень (до −15%). Нужна для работы с людьми.' },
   { id: 'fit', name: 'Физуха',    icon: '💪', desc: '+5% к оплате подработок за уровень. Нужна для физической работы.' },
   { id: 'biz', name: 'Бизнес',    icon: '📈', desc: '+1% к аренде за уровень. Нужен для руководящих должностей.' },
 ];
@@ -565,12 +644,18 @@ const WEEKLY_QUESTS = [
 ];
 const QUESTS_PER_DAY = 3;
 const QUESTS_PER_WEEK = 3;
-// Награды: деньги — в месяцах текущего дохода (не меньше min), билеты — бесплатное открытие кейса
-// Награды заданий — небольшой бонус к прогрессу: доля месяца текущего дохода (не меньше min)
-const DAILY_REWARD = { hours: 0.3, min: 5e3 };
-const DAILY_BONUS = { hours: 0.75, min: 10e3, ticket: 'car_grandpa' };          // за все ежедневные
-const WEEKLY_TICKETS = ['car_used', 'home_dorm', 'conn_district'];         // по одному за каждое недельное
-const WEEKLY_BONUS = { ticket: 'car_cn' };                           // за все недельные
+// Награды заданий — заметный, но не решающий бонус: деньги — в месяцах текущего дохода (не меньше min).
+// Три ежедневных и бонус за все вместе дают 6 месяцев дохода — это час игры (за день набегает 10–14 таких часов).
+const DAILY_REWARD = { hours: 1, min: 5e3 };
+const DAILY_BONUS = { hours: 3, min: 10e3 };          // за все ежедневные — ещё и билет (см. QUEST_TICKETS)
+// Билеты за задания растут вместе со статусом: «Гараж деда» миллиардеру — не награда.
+// rank — с какого статуса; daily — за все ежедневные; weekly — по одному за каждое недельное; bonus — за все недельные.
+const QUEST_TICKETS = [
+  { rank: 0, daily: 'car_grandpa', weekly: ['car_used', 'home_dorm', 'conn_district'],  bonus: 'car_cn' },
+  { rank: 3, daily: 'car_used',    weekly: ['car_new', 'home_used', 'conn_forum'],      bonus: 'car_jp' },
+  { rank: 5, daily: 'car_new',     weekly: ['car_sport', 'home_town', 'conn_power'],    bonus: 'car_premium' },
+  { rank: 7, daily: 'car_biz',     weekly: ['car_premium', 'home_chalet', 'conn_high'], bonus: 'car_elite' },
+];
 
 // «Жизненный путь» — цепочка целей по порядку. type: job (зарплата от v), car, skills (сумма уровней),
 // home (объектов от v), rank (статус от v), carRarity (редкость машины от v),
@@ -585,15 +670,15 @@ const LIFE_PATH = [
   { type: 'biz',       v: 1,     text: 'Открой свой бизнес',         reward: { money: 250000 } },
   { type: 'conn',      v: 3,     text: 'Заведи 3 полезные связи',     reward: { ticket: 'conn_district' } },
   { type: 'raceWins',  v: 5,     text: 'Выиграй 5 гонок',            reward: { money: 300e3 } },
-  { type: 'job',       v: 150e3, text: 'Зарплата от 1,2 млн ₽/ч',  reward: { money: 500000 } },
+  { type: 'job',       v: 150e3, text: 'Зарплата от 900 тыс ₽/ч',  reward: { money: 500000 } },
   { type: 'connLv',    v: 3,     text: 'Подними доверие любой связи до 3', reward: { ticket: 'home_dorm' } },
   { type: 'rank',      v: 3,     text: 'Стань «Средним классом»',    reward: { money: 1e06 } },
   { type: 'carRarity', v: 2,     text: 'Получи эпическую машину',    reward: { ticket: 'car_new' } },
   { type: 'home',      v: 5,     text: 'Собери 5 объектов недвижимости', reward: { money: 2.5e06 } },
   { type: 'rank',      v: 4,     text: 'Стань «Успешным»',           reward: { ticket: 'home_used' } },
-  { type: 'bizProfit', v: 1e6,   text: 'Прибыль бизнеса от 8 млн ₽/ч', reward: { ticket: 'car_new' } },
+  { type: 'bizProfit', v: 1e6,   text: 'Прибыль бизнеса от 6 млн ₽/ч', reward: { ticket: 'car_new' } },
   { type: 'connLv',    v: 5,     text: 'Доведи связь до полного доверия', reward: { money: 1e07 } },
-  { type: 'job',       v: 450e3, text: 'Зарплата от 3,6 млн ₽/ч',  reward: { money: 1.5e07 } },
+  { type: 'job',       v: 450e3, text: 'Зарплата от 2,7 млн ₽/ч',  reward: { money: 1.5e07 } },
   { type: 'rank',      v: 5,     text: 'Стань «Богачом»',            reward: { ticket: 'car_new' } },
   { type: 'biz',       v: 4,     text: 'Владей четырьмя бизнесами',   reward: { money: 5e07 } },
   { type: 'conn',      v: 8,     text: 'Собери 8 разных связей',     reward: { ticket: 'conn_forum' } },
@@ -797,7 +882,7 @@ const PERKS = {
   rentUp:     '+{v}% к аренде (без простоев и ремонтов)',
   taxCut:     'Налог бизнеса меньше на {v} п.п.',
   license:    'Взятка за лицензию безопаснее: риск −{v}%',
-  sellUp:     'Продажа вещей и бизнеса дороже на {v} п.п.',
+  sellUp:     'Продажа бизнеса дороже на {v} п.п.',
   safe:       'Риск попасться на взятке −{v}%',
   court:      'Суды и рейдеры решаются бесплатно',
   demandUp:   '+{v}% спроса во всех бизнесах',
@@ -812,6 +897,11 @@ const PERKS = {
   bizEff:     '+{v}% к эффективности бизнесов без управляющего',
   callUp:     'Звонки связям помогают на {v}% чаще',
   osbCut:     'Служебных проверок меньше на {v}%',
+  carFix:     'ТО и ремонт машин дешевле на {v}%',
+  luck:       'Приятные события случаются чаще: +{v} п.п.',
+  prizeUp:    '+{v}% к призовым в гонках',
+  growCut:    'Места и реклама в бизнесе дешевле на {v}%',
+  offline:    'Без тебя доход копится на {v} ч дольше',
 };
 
 // Работа или бизнес: без управляющего бизнес работает с такой эффективностью
@@ -834,7 +924,7 @@ const DEAL_INCOME_H = 24;    // максимум вложения — столь
 // Событие с need: 'biz' касается одного случайного бизнеса — {biz} в тексте заменяется его названием.
 // via — связь, которая решает бесплатно (ещё помогают профессии с solves); fine: true — дешевле с участковым;
 // freeze: true — пока не решено, этот бизнес опечатан (выручки нет, расходы идут).
-// good: true — хорошее событие, reward — награда в месяцах дохода (небольшая: 0,5–3 мес., не меньше EVENT_REWARD_MIN). need: 'sil' — только на службе, 'civil' — только гражданским.
+// good: true — хорошее событие, reward — награда в месяцах дохода (1–6 мес., то есть 10–60 минут игры; не меньше EVENT_REWARD_MIN). need: 'sil' — только на службе, 'civil' — только гражданским.
 const EVENTS = [
   { id: 'e_gibdd', need: 'car', icon: '🚓', title: 'Остановил ГИБДД',
     text: 'Превышение скорости и просроченная страховка. Инспектор многозначительно молчит.',
@@ -855,19 +945,19 @@ const EVENTS = [
     text: 'Бывший жилец подал в суд: якобы ты не вернул залог.',
     hours: 6, min: 300e3, via: 'k_judge' },
   { id: 'e_tender', need: 'biz', good: true, conn: 'k_deputy', icon: '📑', title: 'Госзаказ',
-    text: 'Знакомый депутат подкинул выгодный контракт для «{biz}».', reward: 3 },
+    text: 'Знакомый депутат подкинул выгодный контракт для «{biz}».', reward: 6 },
   { id: 'e_review', need: 'biz', good: true, icon: '📸', title: 'Вирусное видео',
-    text: 'Блогер снял ролик про «{biz}», и он залетел в рекомендации. Очередь до вечера!', reward: 1.5 },
+    text: 'Блогер снял ролик про «{biz}», и он залетел в рекомендации. Очередь до вечера!', reward: 3 },
   { id: 'e_rival', need: 'biz', good: true, icon: '🏳️', title: 'Конкурент закрылся',
-    text: 'Главный конкурент «{biz}» обанкротился — его клиенты теперь идут к тебе.', reward: 2 },
+    text: 'Главный конкурент «{biz}» обанкротился — его клиенты теперь идут к тебе.', reward: 4 },
   { id: 'e_tenant', need: 'home', good: true, icon: '🤝', title: 'Арендатор на год вперёд',
-    text: 'Солидный арендатор заплатил за год вперёд — со скидкой, но сразу.', reward: 2 },
+    text: 'Солидный арендатор заплатил за год вперёд — со скидкой, но сразу.', reward: 4 },
   { id: 'e_car_buyer', need: 'car', good: true, icon: '🚘', title: 'Коллекционер',
-    text: 'Коллекционер просто так заплатил за фото с твоей машиной для журнала.', reward: 0.5 },
+    text: 'Коллекционер просто так заплатил за фото с твоей машиной для журнала.', reward: 1 },
   { id: 'e_inherit', good: true, icon: '📬', title: 'Наследство',
-    text: 'Дальний родственник, о котором ты не слышал, оставил тебе немного денег.', reward: 1.5 },
+    text: 'Дальний родственник, о котором ты не слышал, оставил тебе немного денег.', reward: 3 },
   { id: 'e_cashback', good: true, icon: '🎉', title: 'Удачный месяц',
-    text: 'Банк вернул кэшбэк, а старый друг наконец отдал долг.', reward: 0.5 },
+    text: 'Банк вернул кэшбэк, а старый друг наконец отдал долг.', reward: 1 },
   { id: 'e_tow', need: 'car', icon: '🚛', title: 'Эвакуатор',
     text: 'Машину увезли на штрафстоянку: знак «Остановка запрещена» прятался за деревом.',
     hours: 0.4, min: 10e3, via: 'k_gibdd', fine: true },
@@ -878,7 +968,31 @@ const EVENTS = [
     text: 'Арендаторы устроили вечеринку, соседи вызвали полицию. Теперь штраф и разборки.',
     hours: 0.6, min: 20e3, via: 'k_police', fine: true },
   { id: 'e_lottery', good: true, icon: '🎟️', title: 'Лотерея',
-    text: 'Билет, купленный на сдачу, оказался выигрышным.', reward: 1 },
+    text: 'Билет, купленный на сдачу, оказался выигрышным.', reward: 2 },
+  { id: 'e_engine', need: 'car', icon: '🔩', title: 'Стук под капотом',
+    text: 'В двигателе что-то стучит. В сервисе послушали и насчитали «замену всего, кроме пепельницы».',
+    hours: 0.8, min: 25e3, via: 'k_mech' },
+  { id: 'e_evil', icon: '🐈‍⬛', title: 'Чёрная полоса',
+    text: 'Чёрная кошка, разбитое зеркало и соседка с пустыми вёдрами — и всё за одно утро. Экстрасенс из телевизора готов снять сглаз, но только по предоплате.',
+    hours: 0.5, min: 15e3, via: 'k_fortune' },
+  { id: 'e_papers', icon: '🗂️', title: 'Потеряли документы',
+    text: 'В МФЦ потеряли твои документы и просят принести справку о том, что прошлая справка была настоящей. Ускоренное восстановление — платное.',
+    hours: 0.7, min: 20e3, via: 'k_secretary' },
+  { id: 'e_diploma', minRank: 2, icon: '📜', title: 'Диплом под вопросом',
+    text: 'Выяснилось, что твой диплом подписал человек, уволенный за год до твоего поступления. Комиссия требует пересдать всё — или оплатить «экспертизу».',
+    hours: 1, min: 30e3, via: 'k_rector' },
+  { id: 'e_banquet', minRank: 2, icon: '🍾', title: 'Счёт за банкет',
+    text: 'Вчера ты отмечал сделку в ресторане. Сегодня принесли счёт: разбитый аквариум, караоке до пяти утра и осётр, которого никто не заказывал.',
+    hours: 1.2, min: 40e3, via: 'k_restaurateur' },
+  { id: 'e_blackpr', need: 'biz', minRank: 4, icon: '📺', title: 'Разоблачение по ТВ',
+    text: 'Телеканал снял сюжет «Вся правда о „{biz}“»: скрытая камера, тревожная музыка и эксперт в маске. Снять сюжет с эфира стоит денег.',
+    hours: 3, min: 200e3, via: 'k_media' },
+  { id: 'e_vernissage', good: true, conn: 'k_socialite', icon: '🥂', title: 'Нужное знакомство',
+    text: 'Жанна на вернисаже представила тебя «одному человеку». Человек оказался щедрым и очень хотел кому-нибудь помочь.', reward: 4 },
+  { id: 'e_showrun', need: 'car', good: true, conn: 'k_promoter', icon: '🏁', title: 'Показательный заезд',
+    text: 'Тимур позвал открыть шоу на автодроме: один круг, много дыма — и конверт за выступление.', reward: 3 },
+  { id: 'e_dividend', good: true, conn: 'k_swiss', icon: '🏔️', title: 'Привет из Цюриха',
+    text: 'Ганс прислал открытку с Маттерхорном и перевод: «Ваш маленький вклад немного подрос. С уважением, банк, которого не существует».', reward: 5 },
   // служба
   // у каждого ведомства свой «надзор»: на полицию жалуются в прокуратуру, ФСБ получает запрос из прокуратуры,
   // а на прокурора — в Генпрокуратуру (звонить «прокурору» тут бессмысленно, выручает судья)
@@ -895,9 +1009,9 @@ const EVENTS = [
     text: 'Журналист готовит материал о твоих «доходах». Нужен юрист, пиар — или нужный звонок.',
     hours: 4, min: 300e3, via: 'k_deputy' },
   { id: 'e_sil_award', need: 'sil', good: true, icon: '🏅', title: 'Премия к празднику',
-    text: 'Начальство отметило твою службу квартальной премией.', reward: 1 },
+    text: 'Начальство отметило твою службу квартальной премией.', reward: 2 },
   { id: 'e_sil_trip', need: 'sil', good: true, icon: '✈️', title: 'Командировка',
-    text: 'Отправили в командировку — суточные и «боевые» пришли разом.', reward: 1.5 },
+    text: 'Отправили в командировку — суточные и «боевые» пришли разом.', reward: 3 },
 ];
 
 // ---------- промокоды и значки ----------
@@ -914,7 +1028,6 @@ const PROMO_CODES = [
   // Именной код: only — Telegram-тег (без @), только он может его ввести. Сработает один раз на его телефоне.
   { hash: 'a3d82fcbbbf379a4e78360aa63317ca9cc68e1c453375dd8a85e1bd97ebf17c4', label: 'Для тестера', only: 'rustyk10',
     reward: { money: 10e6, tickets: { home_new: 1 } } },
-  { hash: 'd4583c2c030d4cea6630f254c689b1cf5d5a8b563e5ea5cfad288db6e08b3565', label: 'Бонус', reward: { money: 10e6 } },
 ];
 // Заблокированные игроки: сюда вписывают личные ID (ZH-XXXXXX из профиля → «Ещё»). Блокировка работает без сервера,
 // поэтому обходится сбросом сохранения на другом устройстве — это защита от случайных нарушителей, а не от решительных.
@@ -925,9 +1038,19 @@ const BANNED_IDS = [];
 // Окно «Что нового» — показывается всем игрокам один раз после обновления (новичкам — нет). Новый id — новое окно.
 // Каждая новость показывается игроку один раз (по её id, последний элемент): старые не повторяются, в окне — только новое.
 const UPDATE_NOTES = {
-  id: 'v80',
+  id: 'v82',
   title: 'Что нового',
   items: [
+    ['🌃', 'Игра в новом облике', 'Всё перерисовано: ночной город, новые карточки, шрифты и иконки. Кнопки остались на своих местах — просто теперь на них приятно смотреть.', 'design82'],
+    ['🎲', 'Казино: проверь сам', 'Перед каждой игрой казино показывает «отпечаток» результата, а после — раскрывает ключ. Кнопка «Честность» в казино: сверь и убедись, что шарик и карты никто не подкручивает.', 'fair82'],
+    ['🃏', 'Покер платит по таблице', 'Выигрыш в покере теперь ровно «ставка × коэффициент» из таблицы. Раньше ставка возвращалась ещё и сверху, и автомат раздавал деньги, как банкомат с багом.', 'poker82'],
+    ['🚗', '23 новые машины', 'От Daewoo Matiz, «Приоры» и ГАЗели-маршрутки до «Бумера» E38, «Кабана» W140, Silvia S15, Lancer Evolution, Tank 300, Zeekr, Cybertruck и Escalade. На вершине — Honda NSX, SLS AMG, Lexus LFA, Ferrari SF90, Lamborghini Revuelto, McLaren Senna и Porsche 918.', 'cars82'],
+    ['🏠', '11 новых видов жилья', 'Юрта в степи, квартира во Владивостоке, маяк на Балтике, турбаза на Катуни, вилла на Бали, сталинская высотка, особняк на Каменном острове, бункер «На случай всего», вилла на озере Комо, поместье с привидением и пентхаус в Бурдж-Халифе.', 'homes82'],
+    ['🤝', '9 новых связей', 'Автомеханик дядя Вася, гадалка Аза, секретарша Леночка, ректор, ресторатор Арам, светская львица Жанна, промоутер гонок Тимур, медиамагнат и швейцарский банкир Ганс. У каждого своя польза, своя особая услуга и свои события.', 'conn82'],
+    ['🎁', 'Кейсы: удача копится в каждом своя', 'Гарантия редкой вещи теперь считается отдельно для каждого кейса — накопленное не пропало. Цены пересчитаны под новое содержимое. Скидка за обаяние — 0,5% за уровень, до 15%; оптом — 2, 3 и 5%.', 'cases82'],
+    ['📅', 'Задания щедрее', 'Ежедневное задание платит втрое больше, бонус за все — вчетверо. Билеты за задания растут вместе со статусом: богачу дешёвый кейс не подсунут. Приятные события приносят вдвое больше.', 'quests82'],
+    ['🏆', 'Коллекции подросли', 'Награды выше, появились наборы на 60, 80 и 100 машин. Тематические наборы стали длиннее — новых машин хватило на всех.', 'coll82'],
+    ['🏦', 'Банкир занялся бизнесом', 'Банкир теперь поднимает цену продажи бизнеса. Вещи перекупщик всегда берёт за 70% — без исключений и знакомств.', 'banker82'],
     ['🕴️', '«Крыши» стали скромнее', 'Бизнес под «крышей» платит не больше 10 окладов звания в месяц. У генерала это около 145 млн ₽/ч.', 'roofs'],
     ['🏠', 'Жильё приносит меньше', 'Аренда стала на четверть ниже, и каждое жильё сдаётся один раз: одинаковые копии больше не складываются, лишние лучше продать.', 'housing'],
     ['🚓', 'Перехват', 'На красные клетки по краю карты посты ставить нельзя — это выезды из города. Зато на старте больше домов и тупиков.', 'chase'],
@@ -970,9 +1093,7 @@ const UPDATE_NOTES = {
   ],
 };
 // Личные ID с режимом разработчика (тестовая панель в профиле): для игры в Telegram, где ?debug в адрес не добавить
-const DEV_IDS = ['ZH-3Y6ZWJ'];
-// Один раз роял-флэш в первой раздаче видеопокера (подарок разработчика)
-const ROYAL_GIFT = ['ZH-3Y6ZWJ'];
+const DEV_IDS = [];
 const PLAYER_MESSAGES = [
   { id: 'm1', to: 'ZH-CPNMHF', icon: '👀', title: 'Сообщение от разработчика', text: 'Матвей всё видит.' },
   { id: 'h1', to: 'ZH-77WXJN', icon: '🏅', title: 'Награда за честность', text: 'Ты — честный игрок, который не поддался соблазну промокодов. За это ты получаешь… ничего. Зато уважение разработчика — бесценно 😄' },
@@ -999,12 +1120,15 @@ const COLLECTIONS = [
   { id: 'col20',  name: 'Свой автосалон',          n: 20,    money: 3,  ticket: 'car_new' },
   { id: 'col30',  name: 'Музей на колёсах',        n: 30,    money: 5,  ticket: 'car_premium' },
   { id: 'col45',  name: 'Легендарная коллекция',   n: 45,    money: 8,  ticket: 'car_elite' },
-  { id: 'colall', name: 'Все машины игры',         n: 'all', money: 12, badge: 'collector' },
-  { id: 'set_cn', name: 'Поднебесная',             t: 'cn',  money: 1 },
-  { id: 'set_ru', name: 'Отечественный автопром',  t: 'ru',  money: 2 },
-  { id: 'set_jp', name: 'Японская школа',          t: 'jp',  money: 3 },
-  { id: 'set_de', name: 'Немецкое качество',       t: 'de',  money: 4 },
-  { id: 'set_sc', name: 'Суперкары',               t: 'sc',  money: 6, badge: 'supercar' },
+  { id: 'col60',  name: 'Ангар коллекционера',     n: 60,    money: 10, ticket: 'car_elite' },
+  { id: 'col80',  name: 'Автомузей имени себя',    n: 80,    money: 12, ticket: 'car_hyper' },
+  { id: 'col100', name: 'Сто машин и ни одной пешей прогулки', n: 100, money: 15, ticket: 'car_hyper' },
+  { id: 'colall', name: 'Все машины игры',         n: 'all', money: 20, badge: 'collector' },
+  { id: 'set_cn', name: 'Поднебесная',             t: 'cn',  money: 3 },
+  { id: 'set_ru', name: 'Отечественный автопром',  t: 'ru',  money: 3 },
+  { id: 'set_jp', name: 'Японская школа',          t: 'jp',  money: 4 },
+  { id: 'set_de', name: 'Немецкое качество',       t: 'de',  money: 5 },
+  { id: 'set_sc', name: 'Суперкары',               t: 'sc',  money: 10, badge: 'supercar' },
 ];
 
 // ---------- обучение для новичков ----------
@@ -1023,7 +1147,7 @@ const TUTORIAL = [
     text: 'Баланс и доход в час. Нажми на доход — покажет в игровой месяц. Чем выше доход, тем быстрее всё остальное.' },
   { id: 'cases',   sel: '.nav button[data-tab="cases"]', title: 'Кейсы', text: 'Здесь крутятся машины, жильё и связи. Открой вкладку «Кейсы».' },
   { id: 'free',    sel: '[data-cdcase="free"]', title: 'Бесплатный кейс', text: 'Раз в сутки — бесплатный кейс. Жми и смотри, что выпадет!' },
-  { id: 'career',  sel: '.nav button[data-tab="career"]', title: 'Карьера', text: 'Машина из кейса уже прибавила к зарплате. Теперь — «Карьера».' },
+  { id: 'career',  sel: '.nav button[data-tab="career"]', title: 'Карьера', text: 'Добыча из кейса уже работает на тебя: машина прибавляет к зарплате, жильё сдаётся. Теперь — «Карьера».' },
   { id: 'study',   sel: '[data-sub="career:skills"]', title: 'Учёба', text: 'Без навыков на хорошую работу не возьмут. Открой «Учёбу».' },
   { id: 'skill',   sel: '[data-action="skill"]', title: 'Первый курс', text: 'Пройди любой курс. Интеллект поднимает зарплату, харизма даёт скидки в кейсах, «Бизнес» — нужен для своего дела.' },
   { id: 'jobs',    sel: '[data-sub="career:jobs"]', title: 'Работа', text: 'Навыки открывают профессии — от курьера до владельца холдинга. Загляни в «Работу».' },
@@ -1050,6 +1174,7 @@ const CAR_HP = {
   c_leaf: 150, c_lancerx: 143, c_volga: 95, c_markii: 280, c_ae86: 130, c_350z: 287, c_mini: 192, c_wrx: 300, c_stinger: 370, c_civic: 320, c_model3: 460,
   c_rx7: 280, c_impala: 250, c_mustang: 450, c_wrangler: 285, c_supra: 330, c_corvette: 495, c_skyline: 280,
   c_m340i: 387, c_cls: 435, c_macan: 440, c_levante: 430, c_lc500: 477, c_x6m: 625, c_taycan: 761, c_rs7: 600, c_m8: 625, c_vantage: 510, c_r8: 620, c_bentayga: 550, c_roma: 620, c_gt3rs: 525, c_huracan: 640,
+  c_nexia: 80, c_matiz2: 51, c_priora: 98, c_gazel: 107, c_coolray: 150, c_e38: 286, c_silvia: 250, c_tank300: 220, c_evo: 280, c_w140: 394, c_zeekr: 544, c_hongqi: 283, c_hellcat: 485, c_lixiang: 449, c_cybertruck: 845, c_escalade: 426, c_nsx: 280, c_sls: 571, c_sf90: 1000, c_revuelto: 1015, c_lfa: 560, c_senna: 800, c_918: 887,
 };
 // Ставки зависят от цены машины: единица ставки U = RACE_CAR_SHARE её стоимости (не меньше RACE_UNIT_MIN).
 // Взнос и выплата уровня — в U: fee — платишь на старте, prize — получаешь при победе.
@@ -1266,7 +1391,7 @@ const ROOF_TRAITS = {
   b_bakery:    { rate: 1.0, risk: 0.8, fit: 'spn', note: 'стабильно, скучно' },
   b_service:   { rate: 1.3, risk: 1.3, fit: 'mvd', note: 'угнанные машины проходят мимо' },
   b_gym:       { rate: 1.0, risk: 0.9, fit: 'spn', note: 'свои люди' },
-  b_furniture: { rate: 0.9, risk: 0.8, fit: 'spn', note: 'надёжно, но мало' },
+  b_furniture: { rate: 0.9, risk: 0.8, fit: 'spn', note: 'тихо, как в шкафу-купе' },
   b_logistics: { rate: 1.4, risk: 1.5, fit: 'fsb', note: 'фуры, которые не досматривают' },
   b_gas:       { rate: 1.2, risk: 1.2, fit: 'spn', note: 'топливо и талоны' },
   b_factory:   { rate: 1.1, risk: 1.0, fit: 'spn', note: 'госзаказы' },
@@ -1380,8 +1505,8 @@ const COURT_CHARGES = ['ограбление ювелирного «Брилли
   'мошенничество с «гарантированной» криптой', 'кража кассы из бани «Пар и точка»', 'подделка справок для автошколы', 'вывоз бюджета на яхту',
   'продажа «лекарства от лени»', 'кража 300 метров кабеля у РЖД', 'рейдерский захват шаурмичной', 'подпольное казино в подвале библиотеки',
   'перепродажа «элитной» воды из-под крана', 'липовый ремонт дороги за 40 млн', 'похищение золотого унитаза из ресторана'];
-const COURT_DEFENDANTS = ['Глеб Скользкин', 'Эдуард Невиноватов', 'Тамара «Касса» Петровна', 'Стас Подпольный', 'Вадим Отмазов', 'Жанна Офшорова',
-  'Аркаша «Миллион»', 'Зоя Безналова', 'Игорь Тендеров', 'Лёва «Ключник»', 'Римма Откатова', 'Боря Кабельщик'];
+const COURT_DEFENDANTS = ['Глеб Скользкин', 'Эдуард Невиноватов', 'Толик «Касса» Петрович', 'Стас Подпольный', 'Вадим Отмазов', 'Жора Офшоров',
+  'Аркаша «Миллион»', 'Захар Безналов', 'Игорь Тендеров', 'Лёва «Ключник»', 'Рома Откатов', 'Боря Кабельщик'];
 const COURT_LAWYERS = ['Аркадий Вертлявый', 'Эльвира Протестова', 'Борис «Лазейка» Кац', 'Марго Срокова', 'Феликс Апелляционный', 'Жорж «Оправдание» Луков'];
 const COURT_TRICKS = [
   { id: 'aunt',    need: ['time', 'place'],     text: ['«Весь вечер подзащитный вязал носки у тёти — вот тётя!»', '«В момент преступления он был на дне рождения кума. Кум подтвердит!»'] },
@@ -1518,7 +1643,7 @@ const INT_NEED = 2;
 const INT_LIES = 3;
 const INT_CRIMES = ['ограбление ларька «Шаурма 24»', 'угон «Приоры» у соседа', 'кражу кота-медалиста с выставки', 'разбитую витрину ювелирного',
   'пропажу кассы из бани', 'кражу самоката у прокурора', 'налёт на банкомат с помощью тросика'];
-const INT_SUSPECTS = ['Колян «Шнурок»', 'Валера Тихоходов', 'Гена Невидимка', 'Эдик «Я ни при чём»', 'Толик Будильник', 'Света «Алиби»'];
+const INT_SUSPECTS = ['Колян «Шнурок»', 'Валера Тихоходов', 'Гена Невидимка', 'Эдик «Я ни при чём»', 'Толик Будильник', 'Славик «Алиби»'];
 const INT_TOPICS = [
   { k: 'where',   q: 'Где был в 22:30?',   req: 'Камеры у места преступления', vals: ['дома, смотрел сериал', 'у тёщи на даче', 'в спортзале', 'в баре «Кружка»', 'на ночной рыбалке', 'в круглосуточном магазине'] },
   { k: 'move',    q: 'На чём передвигался?', req: 'Камеры ГИБДД',            vals: ['на такси', 'на своей «Приоре»', 'пешком', 'на самокате', 'на электричке', 'на велосипеде'] },
@@ -1562,25 +1687,28 @@ const MISSIONS = [
 // ---------- бесплатные кейсы растут вместе с игроком ----------
 // Ежедневный кейс: набор вещей зависит от статуса (индекс в RANKS) — от «копейки» до машин бизнес-класса.
 const FREE_TIERS = [
-  { rank: 0, items: ['c_2101', 'c_2107', 'c_2109', 'c_moskvich', 'h_bed', 'h_garage'] },
-  { rank: 2, items: ['c_logan', 'c_granta', 'c_lancerx', 'c_leaf', 'c_focus', 'c_largus', 'h_bed', 'h_garage', 'h_dacha', 'h_village'] },
-  { rank: 4, items: ['c_granta', 'c_polo', 'c_vesta', 'c_solaris', 'c_rio', 'c_octavia', 'c_corolla', 'c_markii', 'c_ae86', 'h_dacha', 'h_village', 'h_room', 'h_studio', 'h_brezh'] },
-  { rank: 6, items: ['c_solaris', 'c_rio', 'c_camry', 'c_k5', 'c_tiguan', 'c_350z', 'c_mini', 'c_eclass', 'h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_house', 'c_passat', 'c_a4', 'h_kazan'] },
+  { rank: 0, items: ['c_2101', 'c_2107', 'c_2109', 'c_moskvich', 'c_nexia', 'h_bed', 'h_garage'] },
+  { rank: 2, items: ['c_logan', 'c_granta', 'c_lancerx', 'c_leaf', 'c_focus', 'c_largus', 'c_priora', 'c_matiz2', 'c_gazel', 'h_bed', 'h_garage', 'h_dacha', 'h_village', 'h_yurta'] },
+  { rank: 4, items: ['c_granta', 'c_polo', 'c_vesta', 'c_solaris', 'c_rio', 'c_coolray', 'c_octavia', 'c_corolla', 'c_markii', 'c_ae86', 'h_dacha', 'h_village', 'h_room', 'h_studio', 'h_brezh'] },
+  { rank: 6, items: ['c_solaris', 'c_rio', 'c_camry', 'c_k5', 'c_tiguan', 'c_350z', 'c_mini', 'c_e38', 'c_silvia', 'c_eclass', 'h_room', 'h_studio', 'h_flat', 'h_newflat', 'h_house', 'c_passat', 'c_a4', 'h_kazan'] },
 ];
 // Связи появляются в «Знакомстве дня», когда они игроку уже полезны (минимальный статус)
 const CONN_MIN_RANK = {
-  k_police: 0, k_gibdd: 0, k_zhkh: 0,
-  k_banker: 2, k_tax: 2, k_official: 3,
-  k_prosecutor: 4, k_judge: 4,
-  k_deputy: 5, k_governor: 5,
-  k_oligarch: 6, k_minister: 6,
+  k_police: 0, k_gibdd: 0, k_zhkh: 0, k_mech: 0, k_fortune: 0,
+  k_banker: 2, k_tax: 2, k_secretary: 2, k_rector: 2, k_official: 3, k_restaurateur: 3,
+  k_prosecutor: 4, k_judge: 4, k_socialite: 4, k_promoter: 4,
+  k_deputy: 5, k_governor: 5, k_media: 5,
+  k_oligarch: 6, k_minister: 6, k_swiss: 6,
 };
 
 // ---------- казино ----------
 // Ставка — не больше CASINO_MAX_SHARE от баланса. Все игры с небольшим преимуществом казино, как в жизни.
 const CASINO_MAX_SHARE = 0.5;
 const CASINO_MIN_BET = 1000;
-// Видеопокер «Валеты и выше»: выплата × ставка
+// Сколько последних раундов хранить для проверки честности
+const FAIR_LOG = 12;
+// Видеопокер «Валеты и выше»: pay — во сколько раз возвращается ставка (вместе с ней самой), как в настоящих автоматах 9/6.
+// Возврат при идеальной игре ≈ 98,4%. Было «ставка × (pay + 1)» — возврат 143%, печатный станок.
 const POKER_PAYTABLE = [
   { id: 'royal', name: 'Роял-флэш', pay: 250 },
   { id: 'sflush', name: 'Стрит-флэш', pay: 50 },
