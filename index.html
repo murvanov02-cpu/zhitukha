@@ -7,8 +7,10 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@700&display=swap">
-  <link rel="stylesheet" href="style.css?v=81">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <meta name="theme-color" content="#07080d">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Unbounded:wght@600;700;800&family=Roboto+Mono:wght@700&display=swap">
+  <link rel="stylesheet" href="style.css?v=82">
 </head>
 <body>
   <div id="app">
@@ -22,7 +24,7 @@
       </button>
       <div class="bal">
         <div class="money"><span id="money">0</span> ₽</div>
-        <button class="inc" data-action="inc-toggle" title="Нажми: в месяц / в реальный час"><span id="inc">+0</span> ₽/ч</button>
+        <button class="inc" data-action="inc-toggle"><i class="ti ti-trending-up"></i><span id="inc">+0</span> ₽/ч</button>
       </div>
     </header>
 
@@ -31,10 +33,10 @@
 
   <nav class="nav">
     <button data-tab="home" class="active"><i class="ti ti-home"></i>Главная</button>
-    <button data-tab="cases"><i class="ti ti-box"></i>Кейсы</button>
+    <button data-tab="cases"><i class="ti ti-package"></i>Кейсы</button>
     <button data-tab="career"><i class="ti ti-briefcase"></i>Карьера</button>
-    <button data-tab="biz"><i class="ti ti-building-factory-2"></i>Бизнес</button>
-    <button data-tab="casino"><i class="ti ti-cards"></i>Казино</button>
+    <button data-tab="biz"><i class="ti ti-building-skyscraper"></i>Бизнес</button>
+    <button data-tab="casino"><i class="ti ti-poker-chip"></i>Казино</button>
   </nav>
 
   <div id="roulette" class="overlay hidden">
@@ -51,7 +53,7 @@
   <div id="modal" class="overlay hidden"><div class="modal" id="modal-body"></div></div>
   <div id="toast" class="toast"></div>
 
-  <script src="js/data.js?v=81"></script>
-  <script src="js/game.js?v=81"></script>
+  <script src="js/data.js?v=82"></script>
+  <script src="js/game.js?v=82"></script>
 </body>
 </html>
