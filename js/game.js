@@ -140,10 +140,12 @@
       // номер 97 на нынешней служебной генерала — в серию своего ведомства и с ценой коллекционера
       const st = s.sil && STRUCTURES.find(x => x.id === s.sil.s);
       for (const p of s.plates || []) if (st && p.svc && p.r === '97' && !s.p97[st.id]) {
-        p.a = st.series[0]; p.b = st.series.slice(1);
+        p.a = st.series[0][0]; p.b = st.series[0].slice(1);
         p.collect = Math.round((PLATE_97_COLLECT[0] + Math.random() * (PLATE_97_COLLECT[1] - PLATE_97_COLLECT[0])) / 1e6) * 1e6;
       }
     }
+    // v83: 97-й — один на всю игру: если свой уже выкуплен, 97-й на нынешней служебной переезжает на 77
+    if (Object.values(s.p97 || {}).some(Boolean)) for (const p of s.plates || []) if (p.svc && p.r === '97') { p.r = '77'; delete p.collect; }
     if (o.tut === -1 && o.tutPaid === undefined) s.tutPaid = true;   // подарок за обучение — один раз, даже если пройти заново
     if (s.sil && s.sil.spec && ((s.sil.spec.t === 'raid' && s.sil.spec.v !== 3) || (s.sil.spec.t === 'court' && s.sil.spec.v !== 3))) s.sil.spec = null;   // v68: штурм и суд переделаны
     if (o.news === undefined) s.news = '';   // старым игрокам — показать «Что нового»
@@ -1076,6 +1078,11 @@
   const plateReg = () => (S.plateReg === 'all' ? ALL_REG : PLATE_REGIONS.find(r => r.id === S.plateReg) || PLATE_REGIONS[0]);
   // Шансы редкостей набора в регионе: госномер в Москве и Питере реже
   const boxW = (box, reg) => Object.fromEntries(Object.entries(box.w).map(([rar, w]) => [rar, rar === 'mythic' ? w * (reg.gov || 1) : w]));
+  // Набор с твёрдой ценой (price) живёт в своём регионе, выбор региона на него не действует
+  const boxReg = box => (box.reg ? PLATE_REGIONS.find(r => r.id === box.reg) : plateReg());
+  const boxOdds = (box, reg) => (box.price ? box.w : boxW(box, reg));
+  // 97-й регион выкупают один раз за всю игру (S.p97 — по ведомствам, но хватает любого)
+  const has97 = () => Object.values(S.p97 || {}).some(Boolean);
   const plateOf = carId => S.plates.find(p => p.car === carId);
   const plateSell = p => p.collect || Math.round(p.v * PLATE_SELL_RATE);   // collect — цена коллекционера за единственный 97-й
   const isGov = carId => { const p = plateOf(carId); return !!p && p.rar === 'mythic'; };
@@ -1117,25 +1124,29 @@
     return Object.entries(w).reduce((ev, [rar, x]) => ev + x / tw * PLATE_RARITY[rar].value * reg.mult, 0);
   };
   function plateBoxPrice(box, reg) {
+    if (box.price) return box.price;
     const ev = reg.id === 'all' ? PLATE_REGIONS.reduce((a, r) => a + plateEV(box, r), 0) / PLATE_REGIONS.length : plateEV(box, reg);
     return round2(ev * PLATE_PRICE_RATE);
   }
   function rollPlateRarity(box, reg) {
-    const w = reg ? boxW(box, reg) : box.w;
+    const w = reg ? boxOdds(box, reg) : box.w;
     let x = Math.random() * Object.values(w).reduce((a, b) => a + b, 0);
     for (const [rar, v] of Object.entries(w)) if ((x -= v) < 0) return rar;
     return 'common';
   }
   // Номер как настоящий: буквы ниже цифр, у каждого символа своя ячейка — все номера одного размера.
-  // reel — вместо символов барабаны: случайные символы и в конце настоящий (крутятся при открытии набора).
-  const REEL_N = 14;
-  const reelOf = (fin, pool) => Array.from({ length: REEL_N }, () => `<span>${pick(pool)}</span>`).join('') + `<span>${fin}</span>`;
+  // reel — вместо символов барабаны: REEL_N случайных символов, настоящий и ещё один (его видно, когда барабан чуть проскакивает).
+  // Крутятся все сразу, а встают по очереди слева направо (REEL_T + i × REEL_STEP); регион — последним, с паузой.
+  const REEL_N = 24, REEL_T = 1.15, REEL_STEP = 0.22, REEL_REG = 0.5;
+  const reelStop = i => (i < 6 ? REEL_T + i * REEL_STEP : REEL_T + 5 * REEL_STEP + REEL_REG);
+  const reelOf = (fin, pool) => Array.from({ length: REEL_N }, () => `<span>${pick(pool)}</span>`).join('') + `<span>${fin}</span><span>${pick(pool)}</span>`;
+  const reelCell = (fin, pool) => `<span class="pc-s" style="--n:${REEL_N}">${reelOf(fin, pool)}</span>`;
   function plateInner(p, reel) {
     const cells = [[p.a, 'L'], [p.d[0], 'D'], [p.d[1], 'D'], [p.d[2], 'D'], [p.b[0], 'L'], [p.b[1], 'L']];
-    const cell = ([ch, k], i) => `<span class="pc ${k}${reel ? '' : ' st'}">${reel ? `<span class="pc-s" style="--t:${(0.9 + i * 0.14).toFixed(2)}s">${reelOf(ch, k === 'L' ? PLATE_LETTERS.split('') : '0123456789'.split(''))}</span>` : ch}</span>`;
-    const code = reel ? `<span class="pc-s" style="--t:${(0.9 + 6 * 0.14).toFixed(2)}s">${reelOf(p.r, reel)}</span>` : p.r;
+    const t = i => (reel ? ` style="--t:${reelStop(i).toFixed(2)}s"` : '');
+    const cell = ([ch, k], i) => `<span class="pc ${k}${reel ? '' : ' st'}"${t(i)}>${reel ? reelCell(ch, k === 'L' ? PLATE_LETTERS.split('') : '0123456789'.split('')) : ch}</span>`;
     return `<span class="pl-main${reel ? '' : ' st'}">${cells.map(cell).join('')}</span>
-      <span class="pl-reg"><span class="pc R ${p.r.length > 2 ? 'c3' : ''}">${code}</span><span class="pl-rus">RUS<i class="pl-flag"></i></span></span>`;
+      <span class="pl-reg"><span class="pc R ${p.r.length > 2 ? 'c3' : ''}"${t(6)}>${reel ? reelCell(p.r, reel) : p.r}</span><span class="pl-rus">RUS<i class="pl-flag"></i></span></span>`;
   }
   // Рамка и свечение — цвета редкости (у прокручивающегося номера редкости ещё нет — он нейтральный)
   const plateHTML = (p, cls = '', reel) => `<span class="plate ${p.rar ? 'r-' + p.rar : ''} ${cls}" style="--rc:${p.rar ? RARITIES[p.rar].color : '#8a8f98'}">${plateInner(p, reel)}</span>`;
@@ -1148,21 +1159,13 @@
     if (c.id === 'conn_free') ids = ids.filter(id => rankIdx() >= (CONN_MIN_RANK[id] || 0));
     return ids.map(id => ITEM[id]).filter(Boolean);
   }
-  // real = настоящий дроп (учитывает и двигает гарантию), иначе — заполнитель ленты рулетки
+  // Дроп из кейса: шансы ровно как в c.w, гарантии нет (v83). real — настоящий дроп, иначе — заполнитель ленты рулетки
   function rollItem(c, real) {
     const pool = poolOf(c);
-    let rars = RARITY_ORDER.filter(r => c.w[r] > 0 && pool.some(i => i.rarity === r));
-    const hiW = rars.filter(r => rarIdx(r) >= 2).reduce((x, r) => x + c.w[r], 0) / rars.reduce((x, r) => x + c.w[r], 0) * 100;
-    const elig = hiW >= PITY_MIN_W && hiW < 100, P = S.pityBy || (S.pityBy = {});
-    if (real && elig && S.pity) { P[c.id] = Math.max(P[c.id] || 0, S.pity); S.pity = 0; }   // старый общий счётчик достаётся первому открытому кейсу
-    if (real && elig && (P[c.id] || 0) >= PITY - 1) {
-      const hi = rars.filter(r => rarIdx(r) >= 2);
-      if (hi.length) rars = hi;
-    }
+    const rars = RARITY_ORDER.filter(r => c.w[r] > 0 && pool.some(i => i.rarity === r));
     let x = Math.random() * rars.reduce((a, r) => a + c.w[r], 0);
     let rar = rars[rars.length - 1];
     for (const r of rars) { if ((x -= c.w[r]) < 0) { rar = r; break; } }
-    if (real && elig) P[c.id] = rarIdx(rar) >= 2 ? 0 : (P[c.id] || 0) + 1;
     const list = pool.filter(i => i.rarity === rar);
     return list[Math.floor(Math.random() * list.length)];
   }
@@ -1736,13 +1739,14 @@
         <div class="grow"><div class="small muted">Регион номера</div><div class="val">${reg.id === 'all' ? 'Все регионы · выпадет случайно' : `${reg.name} · ${reg.codes.slice(0, 3).join(', ')}${reg.codes.length > 3 ? '…' : ''}`}</div></div>
         <span class="small gold">${reg.id !== 'all' && reg.mult > 1 ? '×' + String(reg.mult).replace('.', ',') : ''}</span><span class="chev">${ic('chevron-down')}</span></div></button>`;
     const boxes = PLATE_BOXES.map(box => {
-      const price = plateBoxPrice(box, reg), locked = rankIdx() < box.rank;
-      const bw = reg.id === 'all' ? box.w : boxW(box, reg), tw = Object.values(bw).reduce((a, b) => a + b, 0);
+      const breg = box.reg ? boxReg(box) : reg;
+      const price = plateBoxPrice(box, breg), locked = rankIdx() < box.rank;
+      const bw = box.price || breg.id === 'all' ? box.w : boxW(box, breg), tw = Object.values(bw).reduce((a, b) => a + b, 0);
       const odds = Object.entries(bw).filter(([, w]) => w > 0)
         .map(([rar, w]) => `<span style="color:${RARITIES[rar].color}">${PLATE_RARITY[rar].name} ${pct(w / tw * 100)}</span>`).join(' · ');
       return `<div class="card ${locked ? 'locked' : ''}">
         <div class="row"><div class="job-ico">${box.icon}</div>
-          <div class="grow"><div class="job-name">${box.name}</div><div class="small">${odds}</div></div>
+          <div class="grow"><div class="job-name">${box.name}</div><div class="small">${odds}</div>${box.reg ? `<div class="small muted">${breg.name}, кроме 97 · регион не выбирается</div>` : ''}</div>
           ${locked ? `<span class="tag lock" title="нужен статус">${ic('lock')} ${RANKS[box.rank].name}</span>`
             : `<button class="btn btn-sm btn-col" data-action="plate-open" data-id="${box.id}" data-confirm="${fmt(price)} ₽" ${S.money < price ? 'disabled' : ''}>Открыть<span class="btn-top">${fmt(price)} ₽</span></button>`}</div></div>`;
     }).join('');
@@ -1761,7 +1765,7 @@
           <button class="btn btn-sm btn-ghost" data-action="plate-sell" data-id="${p.id}">Продать ${fmt(plateSell(p))}</button></div></div>`;
     }).join('');
     return `<p class="hint">Номер вешается на машину: его цена входит в твой статус и в цену машины при продаже.
-        Чем красивее номер и «дороже» регион — тем он ценнее. Госномера ${PLATE_GOV.join(' и ')} выпадают в любом регионе, самые редкие и дорогие — московские; 97-й регион — только у генералов на службе. С госномером ГИБДД не штрафует.</p>
+        Чем красивее номер и «дороже» регион — тем он ценнее. Госномера — ${PLATE_GOV.length} серий (${PLATE_GOV.slice(0, 4).join(', ')}…) — выпадают в любом регионе, самые редкие и дорогие — московские. 97-й регион — только служебный и один на всю игру. С госномером ГИБДД не штрафует.</p>
       ${regs}
       ${boxes}
       <label class="toggle" style="margin:4px 0 12px"><input type="checkbox" data-toggle="fast" ${S.fast ? 'checked' : ''}><i></i>Быстрое открытие</label>
@@ -1769,18 +1773,22 @@
       ${S.plates.some(p => !p.svc) ? totalsCard(S.plates.filter(p => !p.svc).length, S.plates.filter(p => !p.svc).reduce((a, p) => a + p.v, 0), S.plates.filter(p => !p.svc).reduce((a, p) => a + plateSell(p), 0), 'Служебный номер не считается.') : ''}`;
   }
   function openPlate(boxId) {
-    const box = PBOX[boxId], sel = plateReg();
+    const box = PBOX[boxId], sel = boxReg(box || {});
     if (!box || spinning || rankIdx() < box.rank) return;
     if (!pay(plateBoxPrice(box, sel))) return;
     const reg = sel.id === 'all' ? pick(PLATE_REGIONS) : sel;
     const p = makePlate(rollPlateRarity(box, reg), reg);
     S.plates.push(p);
     save(); render();
+    const timers = [];
     const final = () => {
       spinning = false;
+      timers.forEach(clearTimeout);
       const el = $('#pl-roll');
       if (!el) return;
-      el.outerHTML = plateHTML(p, 'big win');
+      // барабаны уже стоят на нужных символах — номер не перерисовываем, а только «зажигаем» рамку редкости
+      if (S.fast) el.outerHTML = plateHTML(p, 'lg win');
+      else { el.classList.add('win', 'r-' + p.rar); el.style.setProperty('--rc', RARITIES[p.rar].color); }
       $('#pl-info').innerHTML = `<div class="drop-name" style="color:${RARITIES[p.rar].color}">${PLATE_RARITY[p.rar].name}</div>
         <div class="big">${fmt(p.v)} ₽</div>${sel.id === 'all' ? `<div class="small muted">${reg.name}</div>` : ''}`;
       $('#pl-actions').classList.remove('hidden');
@@ -1789,7 +1797,7 @@
     // барабаны региона: в режиме «Все регионы» крутятся коды всех регионов
     const codes = (sel.id === 'all' ? PLATE_REGIONS.flatMap(r => r.codes) : reg.codes);
     showModal(`<div class="drop" style="${rStyle(p.rar)}">
-        <div class="plate-stage">${plateHTML(Object.assign({}, p, { rar: null }), 'big', S.fast ? null : codes)}</div>
+        <div class="plate-stage">${plateHTML(Object.assign({}, p, { rar: null }), 'lg', S.fast ? null : codes)}</div>
         <div id="pl-info" style="min-height:64px;margin-top:10px"></div>
         <div class="row hidden" id="pl-actions" style="margin-top:6px">
           <button class="btn btn-ghost grow" data-action="plate-sell" data-id="${p.id}">Продать ${fmt(plateSell(p))}</button>
@@ -1799,7 +1807,8 @@
     // барабаны останавливаются по очереди слева направо, последний — регион
     spinning = true;
     requestAnimationFrame(() => requestAnimationFrame(() => { const el = $('#pl-roll'); if (el) el.classList.add('go'); }));
-    setTimeout(final, (0.9 + 6 * 0.14) * 1000 + 250);
+    for (let i = 0; i < 7; i++) timers.push(setTimeout(() => haptic('tick'), reelStop(i) * 1000));
+    setTimeout(final, reelStop(6) * 1000 + 300);
   }
   // Выбор машины для номера
   function plateChooseCar(pid) {
@@ -1848,7 +1857,7 @@
         <button class="${sec === 'car' ? 'active' : ''}" data-sub="cases:car">Авто${dot(CASE.free)}</button>
         <button class="${sec === 'home' ? 'active' : ''}" data-sub="cases:home">Жильё</button>
         <button class="${sec === 'conn' ? 'active' : ''}" data-sub="cases:conn">Связи${dot(CASE.conn_free)}</button></div>
-      <p class="pity mb">${ic('target')} Гарантия: в кейсах, где шанс эпика от ${PITY_MIN_W}%, эпик или выше — не позже ${PITY}-го открытия${caseDisc() ? ` · твоя скидка ${String(caseDisc()).replace('.', ',')}%` : ''}</p>
+      ${caseDisc() ? `<p class="pity mb">${ic('discount')} Твоя скидка на кейсы — ${String(caseDisc()).replace('.', ',')}%</p>` : ''}
       ${freeCaseCard(sec === 'conn' ? CASE.conn_free : CASE.free)}
       ${tierBlock('cheap', 'Недорогие')}${tierBlock('mid', 'Средние')}${tierBlock('elite', 'Дорогие')}
       ${themed.length ? `<details class="more"><summary>${ic('category')} Тематические · ${themed.length}</summary>${themed.map(themeRow).join('')}</details>` : ''}`;
@@ -1860,13 +1869,10 @@
     const bar = rars.map(r => `<i style="width:${c.w[r] / tw * 100}%;background:${RARITIES[r].color}"></i>`).join('');
     const legend = rars.map(r => `<span style="color:${RARITIES[r].color}">${RARITIES[r].name} ${pct(c.w[r] / tw * 100)}</span>`).join('');
     const tickets = S.tickets[id] || 0;
-    const hiW = rars.filter(r => rarIdx(r) >= 2).reduce((x, r) => x + c.w[r], 0) / tw * 100;
-    const left = PITY - Math.max((S.pityBy || {})[id] || 0, S.pity || 0);
-    const pityLine = hiW >= PITY_MIN_W && hiW < 100 ? `<p class="pity" style="margin-top:10px">${ic('target')} ${left <= 1 ? 'Следующее открытие — гарантированно эпик или выше' : `Эпик или выше — не позже чем через ${left} ${plural(left, 'открытие', 'открытия', 'открытий')}`}</p>` : '';
     showModal(`${sheetHead(c.name)}
       <div class="case-tile" style="margin-bottom:12px"><div class="case-cover" style="height:140px">${coverHTML(c)}</div></div>
       <p>${c.desc}.</p>
-      <div class="chance-bar">${bar}</div><div class="chance-legend">${legend}</div>${pityLine}
+      <div class="chance-bar">${bar}</div><div class="chance-legend">${legend}</div>
       ${tickets ? `<button class="btn full" style="margin-top:12px" data-action="ticket" data-id="${id}">${ic('ticket')} Открыть по билету · осталось ${tickets}</button>` : ''}
       <div class="open-row">${MULTI_OPEN.map(n => `<button class="btn btn-ghost" data-action="open" data-id="${id}" data-n="${n}" data-confirm="×${n} · ${fmt(batchPrice(c, n))} ₽">
         <span class="btn-top">×${n}${MULTI_DISCOUNT[n] ? ` <s>−${MULTI_DISCOUNT[n] * 100}%</s>` : ''}</span>${fmt(batchPrice(c, n))} ₽
@@ -1959,15 +1965,16 @@
     S.sil.car = id;
     S.sil.carAt = Date.now();
     let p;
-    if (plate.gov) {
-      // своя серия у ведомства; 97-й регион — пока свой не выкуплен (один раз за игру), потом другие московские
-      const ser = STR().series, first = !(S.p97 || {})[S.sil.s];
+    const rar = plate.gov ? 'mythic' : rollPlateRarity({ w: plate });
+    if (rar === 'mythic') {
+      // случайная серия своего ведомства; 97-й регион — пока свой не выкуплен (один раз за всю игру), потом другие московские
+      const ser = pick(STR().series), first = !has97();
       p = makePlate('mythic', PLATE_REGIONS[0]);
       p.a = ser[0]; p.b = ser.slice(1);
       p.d = '0' + String(1 + Math.floor(Math.random() * 99)).padStart(2, '0');   // «блатной» номер 001–099
       p.r = first ? PLATE_SVC_CODE : pick(PLATE_SVC_REGIONS);
       if (first) p.collect = Math.round((PLATE_97_COLLECT[0] + Math.random() * (PLATE_97_COLLECT[1] - PLATE_97_COLLECT[0])) / 1e6) * 1e6;
-    } else p = makePlate(rollPlateRarity({ w: plate }), PLATE_REGIONS[0]);
+    } else p = makePlate(rar, PLATE_REGIONS[0]);
     for (const x of S.plates) if (x.car === id) x.car = null;
     p.car = id; p.svc = true;
     S.plates.push(p);
@@ -3752,7 +3759,7 @@
         ${STRUCTURES.map(x => `<div class="card dept">
           <div class="dept-head"><img class="pogon" src="img/ranks/${({ mvd: 'p', spn: 'k' })[x.id] || 'a'}6.png?v=2" alt="">
             <div class="grow"><div class="dept-name">${x.icon} ${x.name}</div><div class="dept-tag">${x.tag}</div>
-              <div class="dept-meta"><span class="chip">${ic('school')} ${x.skills.map(k => SKILL[k].name).join(' + ')}</span><span class="chip">${x.series[0]} 0XX ${x.series.slice(1)} 97</span></div></div></div>
+              <div class="dept-meta"><span class="chip">${ic('school')} ${x.skills.map(k => SKILL[k].name).join(' + ')}</span><span class="chip" title="серии госномеров на 97">${x.series.join(' · ')} · 97</span></div></div></div>
           <div class="dept-list">${x.perks.map(t => `<div class="good">${ic('circle-plus')} ${t}</div>`).join('')}${(x.cons || []).map(t => `<div class="bad">${ic('circle-minus')} ${t}</div>`).join('')}</div>
           <button class="btn full" style="margin-top:10px" data-action="sil-pick" data-id="${x.id}" ${block ? 'disabled' : ''}>Поступить ${({ spn: 'в прокуратуру' })[x.id] || 'в ' + x.name}</button></div>`).join('')}`, true);
     },
@@ -3887,7 +3894,7 @@
     'svc-writeoff': () => {
       if (!svcCar() || writeoffBlock()) return;
       const cost = writeoffCost(), id = S.sil.car, p0 = svcPlate(), uniq = p0 && p0.collect;
-      if (uniq) return askConfirm(`Выкупить «${ITEM[id].name}» с номером ${p0.a}${p0.d}${p0.b} ${p0.r} за ${fmt(cost)} ₽?\n\n⚠️ Это твой единственный номер 97 региона в ведомстве «${STR().name}». Государство больше такой не выдаст — на следующей служебной будет номер другой серии. Коллекционер даст за него ${fmt(p0.collect)} ₽.`, () => doWriteoff(cost, id));
+      if (uniq) return askConfirm(`Выкупить «${ITEM[id].name}» с номером ${p0.a}${p0.d}${p0.b} ${p0.r} за ${fmt(cost)} ₽?\n\n⚠️ Это твой единственный номер 97 региона на всю игру. Государство больше такой не выдаст — ни здесь, ни в другом ведомстве: дальше госномера будут на 77, 99 или 177. Коллекционер даст за него ${fmt(p0.collect)} ₽.`, () => doWriteoff(cost, id));
       askConfirm(`Выкупить «${ITEM[id].name}»${p0 ? ' со служебным номером' : ''} за ${fmt(cost)} ₽? Перекупщик даст за машину ${fmt(sellPrice(ITEM[id]))} ₽${p0 ? ` и за номер ${fmt(plateSell(p0))} ₽` : ''}. Продать можно будет через ${SVC_SELL_LOCK_MIN} мин, новую служебную выдадут через ${SVC_REISSUE_H} ч.`, () => doWriteoff(cost, id));
     },
     'roof-take': id => {
