@@ -938,6 +938,7 @@
     if (!m) return;
     (S.msgSeen = S.msgSeen || []).push(m.id);
     for (const t of m.tickets || []) if (CASE[t]) giveTicket(t);   // подарок: билеты в кейсы
+    if (m.money) earn(m.money);                                    // подарок: деньги
     save(); render();
     showModal(`<div class="drop"><div class="drop-icon" style="font-size:44px">${m.icon || '✉️'}</div>
       <div class="drop-name">${m.title}</div><p style="margin-top:10px;font-size:17px">${m.text}</p>
