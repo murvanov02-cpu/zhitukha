@@ -616,28 +616,47 @@ button.fair-row:active { opacity: .6; }
 
 /* номера: пропорции и шрифт как у настоящего, ширина у всех одинаковая */
 .plate { display: inline-flex; align-items: stretch; width: 11.4em; height: 2.5em; background: #f6f6f1; color: #111;
-  border: .12em solid #111; border-radius: .38em; font: 700 13px/1 'Roboto Mono', ui-monospace, Menlo, monospace;
+  border: .12em solid #111; border-radius: .38em; font: 500 13px/1 'Roboto Condensed', 'Arial Narrow', sans-serif; position: relative;
   flex: none; overflow: hidden; vertical-align: middle; }
 /* все знаки стоят на одной линии снизу, как на настоящем номере: буквы ниже цифр, но с общей нижней кромкой */
 .plate .pl-main { flex: 1; display: flex; align-items: flex-end; justify-content: center; gap: .05em; padding-bottom: .3em; }
 .plate .pc { display: block; height: 1em; line-height: 1; overflow: hidden; text-align: center; color: #111; flex: none; }
-.plate .pc.L { font-size: 1.3em; width: .7em; margin-bottom: -.07em; }
-.plate .pc.D { font-size: 1.7em; width: .64em; }
+.plate .pc.L { font-size: 1.5em; width: .6em; margin-bottom: -.07em; }
+.plate .pc.D { font-size: 1.95em; width: .54em; }
 .plate .pl-reg { width: 3em; flex: none; border-left: .12em solid #111; display: flex; flex-direction: column;
   align-items: center; justify-content: center; }
-.plate .pc.R { font-size: 1.25em; width: auto; }
-.plate .pc.R.c3 { font-size: 1.05em; letter-spacing: -.03em; }
+.plate .pc.R { font-size: 1.4em; width: auto; }
+.plate .pc.R.c3 { font-size: 1.2em; letter-spacing: -.02em; }
 .plate .pl-rus { color: #111; display: flex; align-items: center; gap: .25em; font-size: .4em; margin-top: .3em; letter-spacing: .05em; }
 .plate .pl-flag { width: 1.5em; height: 1em; border: 1px solid #888; background: linear-gradient(#fff 34%, #1c57a5 34% 67%, #d52b1e 67%); }
-.plate .pc-s { display: flex; flex-direction: column; transform: translateY(0); }
+/* барабаны: все крутятся сразу, встают по очереди (--t у ячейки), чуть проскакивают и возвращаются; на ходу — смаз */
+.plate .pc-s { display: flex; flex-direction: column; transform: translateY(0); will-change: transform; }
 .plate .pc-s > span { display: block; height: 1em; }
-.plate.go .pc-s { transform: translateY(-14em); transition: transform var(--t) cubic-bezier(.12, .7, .22, 1); }
+.plate.go .pc-s { animation: reelSpin var(--t) forwards, reelBlur var(--t) linear forwards; }
+.plate.go .pc { animation: reelLand .3s ease-out var(--t) both; }
+@keyframes reelSpin {
+  0% { transform: translateY(0); animation-timing-function: cubic-bezier(.3, .1, .2, 1); }
+  90% { transform: translateY(calc(var(--n) * -1em - .22em)); animation-timing-function: cubic-bezier(.4, 0, .4, 1); }
+  100% { transform: translateY(calc(var(--n) * -1em)); }
+}
+@keyframes reelBlur { 0% { filter: blur(0); } 10% { filter: blur(.05em); } 62% { filter: blur(.035em); } 86%, 100% { filter: blur(0); } }
+@keyframes reelLand { 0% { transform: scale(1); } 35% { transform: scale(1.14); } 100% { transform: scale(1); } }
+/* окно барабана: края в тени, пока номер крутится */
+.plate.go::before { content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(rgba(0,0,0,.2), transparent 32%, transparent 68%, rgba(0,0,0,.2)); transition: opacity .4s; }
+.plate.go.win::before { opacity: 0; }
+/* выпал — по номеру проходит блик; у госномера блик повторяется */
+.plate.win::after { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.85) 50%, transparent 62%);
+  transform: translateX(-130%); animation: plateShine 1s .1s ease-out forwards; }
+.plate.win.r-mythic::after { animation: plateShine 2.4s .1s ease-out infinite; }
+@keyframes plateShine { 0% { transform: translateX(-130%); } 45%, 100% { transform: translateX(130%); } }
 .plate.sm { font-size: 8px; }
-.plate.big { font-size: 24px; }
+.plate.lg { font-size: 24px; }
 /* рамка редкости вокруг номера; на выпавшем номере — пульсирующее свечение, чем реже — тем ярче */
 .plate { box-shadow: 0 0 0 2px var(--rc); }
 .plate.sm { box-shadow: 0 0 0 1.5px var(--rc); }
-.plate.big { box-shadow: 0 0 0 4px var(--rc); }
+.plate.lg { box-shadow: 0 0 0 4px var(--rc); transition: box-shadow .35s; }
 .plate.win { --glow: 0px; animation: winpop .5s ease-out, platePulse 1.6s ease-in-out .5s infinite; }
 .plate.win.r-rare { --glow: 14px; }
 .plate.win.r-epic { --glow: 24px; }
